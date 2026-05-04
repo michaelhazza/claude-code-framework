@@ -1,0 +1,32 @@
+{
+  "frameworkVersion": "2.2.0",
+  "managedFiles": [
+    { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
+    { "path": ".claude/hooks/*.{js,sh}", "category": "hook", "mode": "sync", "substituteAt": "never" },
+    { "path": ".claude/settings.json", "category": "settings", "mode": "settings-merge", "substituteAt": "never" },
+    { "path": ".claude/FRAMEWORK_VERSION", "category": "version", "mode": "sync", "substituteAt": "never" },
+    { "path": ".claude/CHANGELOG.md", "category": "changelog", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/decisions/0001-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/decisions/0002-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/decisions/0005-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/decisions/README.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/decisions/_template.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/context-packs/*.md", "category": "context-pack", "mode": "sync", "substituteAt": "adoption" },
+    { "path": "docs/spec-authoring-checklist.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/frontend-design-principles.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
+    { "path": "references/test-gate-policy.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
+    { "path": "references/spec-review-directional-signals.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/spec-context.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
+    { "path": "docs/frontend-design-examples.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
+    { "path": "docs/doc-sync.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
+    { "path": "references/verification-commands.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" }
+  ],
+  "removedFiles": [],
+  "doNotTouch": [
+    "CLAUDE.md",
+    "KNOWLEDGE.md",
+    "architecture.md",
+    "DEVELOPMENT_GUIDELINES.md",
+    "tasks/**"
+  ]
+}
