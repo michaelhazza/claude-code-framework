@@ -308,7 +308,16 @@ Print verbatim:
 > `tasks/current-focus.md` → status `MERGE_READY`. Active fields cleared.
 > Doc-sync sweep complete. KNOWLEDGE.md updated. `tasks/todo.md` cleaned.
 >
-> **Next:** wait for CI. If CI green → merge the PR via the GitHub UI. After merge, set `tasks/current-focus.md` status to `MERGED` (or `NONE` to clear the trail) — finalisation-coordinator does NOT auto-merge.
+> **Next — when CI is green and the operator says "merge":**
+>
+> 1. **First**, update `tasks/current-focus.md` ON THE FEATURE BRANCH to reflect the merged state — clear `last_merge_ready_*` keys, set `last_merged_*` keys (`last_merged_pr`, `last_merged_slug`, `last_merged_branch`, `last_merged_at`, `last_merged_commit`), set status `MERGE_READY → NONE`, replace the prose `Status:` block with a `**Just merged:** PR #N — <slug>` paragraph.
+> 2. Commit that update to the feature branch (`chore({slug}): post-merge — current-focus → NONE`).
+> 3. Push the feature branch.
+> 4. **Then** run `gh pr merge {N} --squash --delete-branch`.
+>
+> The order matters: doc update → commit → push → merge. Never merge first, then update docs after — the merge commit must reflect the final state. If you merge first, the doc update lands on `main` as a separate post-merge commit (or worse, sits uncommitted in the local working tree on `main`), and the squash-commit is no longer the source of truth for the merged build's final state.
+>
+> finalisation-coordinator does NOT auto-merge. The operator drives the merge sequence above.
 >
 > This session ends here.
 
