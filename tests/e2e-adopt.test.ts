@@ -9,6 +9,9 @@ import { spawnSync } from 'node:child_process';
 
 const FRAMEWORK_ROOT = path.resolve(__dirname, '../');
 const SYNC_JS = path.join(FRAMEWORK_ROOT, 'sync.js');
+const CANONICAL_VERSION = fs
+  .readFileSync(path.join(FRAMEWORK_ROOT, '.claude', 'FRAMEWORK_VERSION'), 'utf8')
+  .trim();
 
 function uuid() { return crypto.randomUUID(); }
 
@@ -81,7 +84,7 @@ test('e2e-adopt: first-run adoption writes all managed files', async () => {
 
     // Assert: state.json updated
     const state = await readState(tmpDir);
-    assert.equal(state.frameworkVersion, '2.2.0', 'frameworkVersion should be 2.2.0');
+    assert.equal(state.frameworkVersion, CANONICAL_VERSION, `frameworkVersion should be ${CANONICAL_VERSION}`);
     assert.ok(Object.keys(state.files).length > 0, 'state should have file entries');
     assert.ok(state.lastSubstitutionHash, 'state should have lastSubstitutionHash');
 

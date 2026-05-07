@@ -23,6 +23,10 @@ const {
 const testsDir = path.dirname(fileURLToPath(import.meta.url));
 const frameworkRoot = path.resolve(testsDir, '..');
 const syncJsPath = path.resolve(testsDir, '..', 'sync.js');
+// Read once at module load — keeps assertions in sync with FRAMEWORK_VERSION bumps without manual edits.
+const CANONICAL_VERSION = require('node:fs')
+  .readFileSync(path.join(frameworkRoot, '.claude', 'FRAMEWORK_VERSION'), 'utf8')
+  .trim();
 
 async function makeTmpDir(): Promise<string> {
   return fsp.mkdtemp(path.join(os.tmpdir(), `sync-flags-${crypto.randomUUID().slice(0, 8)}-`));
@@ -55,7 +59,7 @@ function runSync(targetRoot: string, args: string[] = []): { exitCode: number; s
 function makeState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   const subs = { PROJECT_NAME: 'TestProject', APP_NAME: 'TestApp' };
   return {
-    frameworkVersion: '2.2.0',
+    frameworkVersion: CANONICAL_VERSION,
     adoptedAt: new Date().toISOString(),
     adoptedFromCommit: null,
     profile: 'STANDARD',
@@ -106,7 +110,7 @@ describe('--adopt first-run', () => {
       const state = await readStateFile(targetRoot);
       assert.ok(typeof state.lastSubstitutionHash === 'string' || state.lastSubstitutionHash === undefined,
         'lastSubstitutionHash should be a string or undefined');
-      assert.equal(state.frameworkVersion, '2.2.0');
+      assert.equal(state.frameworkVersion, CANONICAL_VERSION);
     } finally {
       await fsp.rm(targetRoot, { recursive: true, force: true });
     }
@@ -230,7 +234,7 @@ describe('forward migration (no lastSubstitutionHash)', () => {
     const targetRoot = await makeTmpDir();
     try {
       const subs = { PROJECT_NAME: 'Acme' };
-      // Intentionally omit lastSubstitutionHash to simulate pre-2.2.0 state
+      // Intentionally omit lastSubstitutionHash to simulate pre-current-version state
       const { lastSubstitutionHash: _omit, ...stateWithoutHash } = makeState({
         frameworkVersion: '2.1.0',
         substitutions: subs,
@@ -322,7 +326,7 @@ describe('--check updates available', () => {
     try {
       const subs = { PROJECT_NAME: 'Acme' };
       await writeState(targetRoot, makeState({
-        frameworkVersion: '2.0.0', // older than current 2.2.0
+        frameworkVersion: '2.0.0', // older than the current canonical version → triggers sync
         substitutions: subs,
         lastSubstitutionHash: hashSubstitutions(subs),
       }));

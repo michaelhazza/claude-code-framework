@@ -1,6 +1,6 @@
 ---
 name: finalisation-coordinator
-description: Phase 3 orchestrator. Restores Phase 2 handoff, runs branch-sync S2 + G4 regression guard, runs chatgpt-pr-review (manual ChatGPT-web rounds), runs the full doc-sync sweep, updates KNOWLEDGE.md and tasks/todo.md, transitions current-focus to MERGE_READY, applies the ready-to-merge label so CI runs, and stops. Step 0 — context loading + REVIEW_GAP check. Step 1 — TodoWrite list. Step 2 — S2 branch sync. Step 3 — G4 regression guard. Step 4 — PR existence check. Step 5 — chatgpt-pr-review. Step 6 — full doc-sync sweep. Step 7 — KNOWLEDGE.md pattern extraction. Step 8 — tasks/todo.md cleanup. Step 9 — current-focus.md → MERGE_READY. Step 10 — apply ready-to-merge label. Step 11 — end-of-phase prompt.
+description: Phase 3 orchestrator. Restores Phase 2 handoff, runs branch-sync S2 (auto-resolves known-shape conflicts in append-only artefact files; pauses only on code-area conflicts) + G4 regression guard, runs chatgpt-pr-review (manual ChatGPT-web rounds), runs the full doc-sync sweep, updates KNOWLEDGE.md and tasks/todo.md, transitions current-focus to MERGE_READY, applies the ready-to-merge label so CI runs, and stops. Step 0 — context loading + REVIEW_GAP check. Step 1 — TodoWrite list. Step 2 — S2 branch sync. Step 3 — G4 regression guard. Step 4 — PR existence check. Step 5 — chatgpt-pr-review. Step 6 — full doc-sync sweep. Step 7 — KNOWLEDGE.md pattern extraction. Step 8 — tasks/todo.md cleanup. Step 9 — current-focus.md → MERGE_READY. Step 10 — apply ready-to-merge label. Step 11 — end-of-phase prompt.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -56,7 +56,7 @@ Emit a TodoWrite list before doing any other work. Update items in real time as 
 
 ## Step 2 — Branch-sync S2
 
-Per §8 of the spec. Operator just typed "launch finalisation" and is at the keyboard — pause-and-prompt on conflicts is safe.
+Per §8 of the spec. **Auto-resolve known-shape conflicts silently. Pause only when a code-area file conflicts.**
 
 **Canonical sync sequence (spec §8.2 / §8.4):**
 
@@ -85,9 +85,16 @@ else
   if [ $MERGE_EXIT -eq 0 ]; then
     git commit -m "chore(sync): merge main into <branch> (S2)"
   else
-    echo "Merge conflicts present:"
-    git diff --name-only --diff-filter=U
-    # Coordinator pauses here for operator resolution
+    # Auto-resolve known-shape conflicts before pausing for operator. See § Auto-resolve below.
+    auto_resolve_known_shapes
+    REMAINING=$(git diff --name-only --diff-filter=U)
+    if [ -z "$REMAINING" ]; then
+      git commit -m "chore(sync): merge main into <branch> (S2) — auto-resolved <list>"
+    else
+      echo "Conflicts in code-area files require operator review:"
+      echo "$REMAINING"
+      # Coordinator pauses here for operator resolution
+    fi
   fi
 fi
 ```
@@ -108,13 +115,71 @@ rm -f /tmp/branch-changed.txt /tmp/main-changed.txt
 
 `git diff origin/main...HEAD --name-only` (three-dot) is NOT the right calculation — it returns every file the feature branch changed, which is almost always non-empty and does not identify true overlap.
 
-If `$OVERLAP` is non-empty, **require explicit operator confirmation** before G4 runs:
+If `$OVERLAP` is non-empty, **continue silently** — overlap is normal for any branch that touches docs / specs / tasks / KNOWLEDGE alongside main's parallel work in the same areas. The conflict protocol (auto-resolve known shapes, pause on code-area conflicts) handles the actual collisions; overlap alone is not a signal.
 
-> Overlapping files detected: {list}. Type **continue** to proceed to G4 or **inspect** to pause.
+### Auto-resolve known-shape conflicts
 
-Do not proceed until the operator types "continue". If `$OVERLAP` is empty, continue silently.
+Append-only artefact files and feature-branch-canonical files have a deterministic correct resolution. Apply these rules silently before pausing for operator input:
 
-**Conflict handling:** if `git merge --no-commit --no-ff` exits non-zero, pause and prompt per the conflict protocol in spec §8.5. Print conflicting files, instruct operator to resolve and `git add`, then type "continue". On "abort": run `git merge --abort` and exit.
+| Path pattern | Resolution | Why |
+|--------------|-----------|-----|
+| `tasks/builds/{slug}/spec.md` | `git checkout --ours` + `git add` | The feature branch is the canonical authoring surface for its own spec. Main only carries earlier snapshots when other branches PR'd them in parallel. |
+| `tasks/builds/{slug}/plan.md` | `git checkout --ours` + `git add` | Same as spec.md — feature branch is canonical. |
+| `tasks/builds/{slug}/progress.md` | `git checkout --ours` + `git add` | Feature-branch-local working file; main never edits it directly. |
+| `tasks/builds/{slug}/handoff.md` | `git checkout --ours` + `git add` | Same — handoff is feature-branch-local. |
+| `tasks/builds/{slug}/mockup-log.md` | `git checkout --ours` + `git add` | Spec-coordinator's mockup round log; feature-branch-local. |
+| `tasks/todo.md` | strip conflict markers (union) + `git add` | Append-only backlog. Both sides' new entries should survive. |
+| `tasks/review-logs/_index.jsonl` | strip conflict markers (union) + `git add` | Append-only review log index. Both sides' new entries should survive. |
+| `tasks/current-focus.md` | `git checkout --ours` + `git add` | Feature-branch is authoritative for its own active build pointer. Main's value is irrelevant once a feature is in flight. |
+| `KNOWLEDGE.md` | strip conflict markers (union) + `git add` | Append-only learnings file. Both sides' new entries should survive. |
+| `tasks/lessons.md` | strip conflict markers (union) + `git add` | Append-only lessons file. |
+
+**Pause on**: any conflict in `client/`, `server/`, `shared/`, `worker/`, `scripts/`, `migrations/`, `architecture.md`, `CLAUDE.md`, `DEVELOPMENT_GUIDELINES.md`, or any file not matched by the table above. These need real judgement — pause and prompt: "Conflicts in code-area files: {list}. Resolve manually, `git add`, then type **continue** — or type **abort** to exit."
+
+**Implementation skeleton** for the `auto_resolve_known_shapes` function:
+
+```bash
+auto_resolve_known_shapes() {
+  AUTO_RESOLVED_FILES=()
+  while IFS= read -r f; do
+    case "$f" in
+      tasks/builds/*/spec.md \
+      | tasks/builds/*/plan.md \
+      | tasks/builds/*/progress.md \
+      | tasks/builds/*/handoff.md \
+      | tasks/builds/*/mockup-log.md \
+      | tasks/current-focus.md)
+        git checkout --ours -- "$f"
+        git add -- "$f"
+        AUTO_RESOLVED_FILES+=("$f (ours)")
+        ;;
+      tasks/todo.md \
+      | tasks/review-logs/_index.jsonl \
+      | tasks/lessons.md \
+      | KNOWLEDGE.md)
+        # Strip git conflict markers, keeping both sides' content (append-only union).
+        sed -i -E '/^<<<<<<< /d; /^=======$/d; /^>>>>>>> /d' "$f"
+        git add -- "$f"
+        AUTO_RESOLVED_FILES+=("$f (union)")
+        ;;
+      # Unknown path: leave for operator
+    esac
+  done < <(git diff --name-only --diff-filter=U)
+
+  if [ ${#AUTO_RESOLVED_FILES[@]} -gt 0 ]; then
+    echo "Auto-resolved ${#AUTO_RESOLVED_FILES[@]} known-shape conflict(s):"
+    printf '  - %s\n' "${AUTO_RESOLVED_FILES[@]}"
+  fi
+}
+```
+
+The strip-markers approach is safe ONLY for genuinely append-only files. Adding new entries to the auto-resolve table requires confirming the file is append-only by convention (no in-place edits to existing lines).
+
+**Why this is safe (and the rationale for not pausing):**
+- The "ours" rule applies only to files whose content is feature-branch-local by construction — main carries either a stale snapshot or no content at all.
+- The "union" rule applies only to files structured as append-only logs / backlogs / learnings — both sides' new entries are intended to survive concatenated.
+- Code-area conflicts (the only ones where pause-for-operator adds real safety) are still pause-and-prompt.
+- The operator was already going to type **resolve-union** for these — this just removes the round trip.
 
 ## Step 3 — G4 regression guard
 

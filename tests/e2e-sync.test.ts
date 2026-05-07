@@ -9,6 +9,9 @@ import { spawnSync } from 'node:child_process';
 
 const FRAMEWORK_ROOT = path.resolve(__dirname, '../');
 const SYNC_JS = path.join(FRAMEWORK_ROOT, 'sync.js');
+const CANONICAL_VERSION = fs
+  .readFileSync(path.join(FRAMEWORK_ROOT, '.claude', 'FRAMEWORK_VERSION'), 'utf8')
+  .trim();
 
 function uuid() { return crypto.randomUUID(); }
 
@@ -92,9 +95,9 @@ test('e2e-sync: clean-file update flow updates changed files', async () => {
       `sync should have updated at least some files, got:\n${syncResult.stdout}`
     );
 
-    // Phase 4: verify state.frameworkVersion is now 2.2.0
+    // Phase 4: verify state.frameworkVersion is now the canonical version
     const newState = await readState(tmpDir);
-    assert.equal(newState.frameworkVersion, '2.2.0', 'state should be updated to 2.2.0');
+    assert.equal(newState.frameworkVersion, CANONICAL_VERSION, `state should be updated to ${CANONICAL_VERSION}`);
 
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -116,7 +119,7 @@ test('e2e-sync: idempotency — second sync run produces zero file writes', asyn
     const adoptResult = runSync(tmpDir, ['--adopt']);
     assert.equal(adoptResult.status, 0, `--adopt failed: ${adoptResult.stderr}`);
 
-    // Run sync again — should be a no-op (already on 2.2.0)
+    // Run sync again — should be a no-op (already on the canonical version)
     const syncResult = runSync(tmpDir);
     assert.equal(syncResult.status, 0, `second sync failed: ${syncResult.stderr}`);
 
@@ -126,9 +129,9 @@ test('e2e-sync: idempotency — second sync run produces zero file writes', asyn
       `Expected "already on latest" or "0 updated" but got: ${syncResult.stdout}`
     );
 
-    // State should still be 2.2.0
+    // State should still be the canonical version
     const newState = await readState(tmpDir);
-    assert.equal(newState.frameworkVersion, '2.2.0', 'state should still be 2.2.0');
+    assert.equal(newState.frameworkVersion, CANONICAL_VERSION, `state should still be ${CANONICAL_VERSION}`);
 
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
