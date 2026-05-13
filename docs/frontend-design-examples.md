@@ -39,9 +39,9 @@ That's it. Three new screens (documents, bundle detail, bundle attachment contro
 
 All of these represent real backend signals that can and should be computed. They surface (if at all) on an admin-only observability page gated behind an explicit role, never on the primary user journey. Most will be deferred out of v1 entirely — **shipping them is optional; the feature works without them**.
 
-### The mockups in `prototypes/cached-context/`
+### The mockups in `_archive/prototypes/cached-context/`
 
-The five mockups in [`prototypes/cached-context/`](../prototypes/cached-context/) were generated before this doc existed. They violate rules 1, 2, 3, 4 — most of them represent "what the backend could surface if we exposed every column", not "what the user needs to complete the task".
+The five mockups in [`_archive/prototypes/cached-context/`](../_archive/prototypes/cached-context/) were generated before this doc existed. They violate rules 1, 2, 3, 4 — most of them represent "what the backend could surface if we exposed every column", not "what the user needs to complete the task".
 
 - **`mockup-budget-breach-block.html`** — valid. Renders the `HitlBudgetBlockPayload` shape the spec commits to (§4.5). Safety-critical screen that legitimately has to surface WHY a run is blocked. Keep.
 - **`mockup-pack-utilization.html`** — reduce to a single inline badge on the bundle list row. The tier-by-tier radial dashboard is the anti-pattern. (Historical filename; this mockup was deleted in the UX revision.)
