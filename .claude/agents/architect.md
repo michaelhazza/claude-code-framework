@@ -115,6 +115,7 @@ Split into chunks a developer can implement independently. Each chunk:
 - Has a clear scope (what it does and what it does not do)
 - Is independently testable
 - Is ordered to minimise in-progress dependencies
+- **Forms a deep module** — split by capability boundary, not by file or layer. A chunk that exposes a small interface and hides substantial implementation behind it is deep; a chunk that is "the route + service + schema for X" is a shallow split across layers and probably wrong. If you cannot name the public interface and what hides behind it (see Per-Chunk Detail § Module shape), the chunk boundary is wrong — re-split.
 
 Name chunks descriptively: "Add subtask wakeup service", not "Step 3".
 
@@ -122,6 +123,10 @@ Name chunks descriptively: "Add subtask wakeup service", not "Step 3".
 
 For each chunk:
 - **Files to create or modify** — exact paths from the project root
+- **Module shape** — state in two lines:
+  - *Public interface this chunk exposes:* the function signatures, route shapes, exported types, or service methods callers will touch — keep it small
+  - *What stays hidden behind it:* internal helpers, data structures, intermediate state, retry/idempotency machinery, transformation steps, error-mapping — anything callers must not depend on
+  If the hidden surface is smaller than the public surface, the chunk is shallow — re-split or absorb it into a neighbour. The point is to force capability-shaped chunks at plan time, where it is cheapest to fix.
 - **Contracts** — interfaces, function signatures, API shapes, schema columns
 - **Error handling** — what errors are possible; how they surface (service throw shape, HTTP status codes)
 - **Test considerations** — key scenarios and edge cases the pr-reviewer should check after implementation

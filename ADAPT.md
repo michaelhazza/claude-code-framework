@@ -25,7 +25,7 @@
 A drop-in agent fleet + governance docs + portable hooks for any Claude Code project. See `.claude/CHANGELOG.md` for the source release version and history.
 
 The bundle ships:
-- 19 agent definitions in `.claude/agents/` (with placeholders for project name, description, stack)
+- 22 agent definitions in `.claude/agents/` (with placeholders for project name, description, stack)
 - 4 portable hooks in `.claude/hooks/` + a `.claude/settings.json` registering them
 - ADRs at `docs/decisions/` (3 generic ones — 0001, 0002, 0005)
 - Context packs at `docs/context-packs/` (5 mode-scoped packs)
@@ -54,7 +54,7 @@ Have these ready before starting — Phase 2 substitutes them everywhere:
 | `{{STACK_DESCRIPTION}}` | `Node + Express + Drizzle ORM (PostgreSQL) + React` | Comma-separated. Stack-name level, not version-pinned. |
 | `{{COMPANY_NAME}}` | `Acme Inc` | Optional. If empty, lines containing it are deleted. |
 
-Plus the **profile selection**: MINIMAL (4 agents) / STANDARD (10) / FULL (20). See § 11.
+Plus the **profile selection**: MINIMAL (4 agents) / STANDARD (11) / FULL (22). See § 11.
 
 ---
 
@@ -86,7 +86,7 @@ After Phase 1, the target repo's lint/typecheck should still pass — the framew
 
 ## 6. Phase 1.5 — Profile selection + agent pruning
 
-Ask the operator: "Which profile? MINIMAL (4) / STANDARD (10) / FULL (19)."
+Ask the operator: "Which profile? MINIMAL (4) / STANDARD (11) / FULL (22)."
 
 Delete agent files NOT in the chosen profile from `.claude/agents/`. See § 11 for the per-profile list.
 
@@ -281,15 +281,15 @@ For future upgrades, see `.claude-framework/SYNC.md` — the guided upgrade walk
 
 Use when the project is small, the operator is solo, and the goal is "capture ideas + independent review of my own changes." No coordinator pipeline.
 
-### STANDARD (10 agents) — small team / structured solo
+### STANDARD (11 agents) — small team / structured solo
 
-MINIMAL 4 plus: `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator` (the three-coordinator pipeline), `spec-conformance`, `builder`, `hotfix`.
+MINIMAL 4 plus: `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator` (the three-coordinator pipeline), `spec-conformance`, `builder`, `hotfix`, `reality-checker`.
 
 Use when the project has multiple in-flight features and benefits from spec → plan → build phase separation. Default for most projects.
 
-### FULL (20 agents) — large project / multi-stream development
+### FULL (22 agents) — large project / multi-stream development
 
-STANDARD 10 plus: `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`.
+STANDARD 11 plus: `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`.
 
 Use when the project supports the overhead — `chatgpt-*` agents need ChatGPT-web access, `dual-reviewer` needs the Codex CLI, `audit-runner` needs a mature codebase to audit. Otherwise STANDARD covers it.
 

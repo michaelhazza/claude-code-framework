@@ -27,7 +27,7 @@ Before starting, read:
 6. `tasks/todo.md` — existing deferred items (you will dedup against this when routing pass-3 findings).
 7. `tasks/current-focus.md` — sprint pointer; tells you what's already in flight on other branches.
 
-If the framework version in §header has changed since the last audit, note it. If §2 ({{PROJECT_NAME}} context block) appears stale vs current `package.json` / repo state, surface that to the user before running pass 1 — a stale context block silently mis-classifies safe vs protected files.
+If the framework version in §header has changed since the last audit, note it. If §2 (AutomationOS context block) appears stale vs current `package.json` / repo state, surface that to the user before running pass 1 — a stale context block silently mis-classifies safe vs protected files.
 
 ## Inputs — how you are invoked
 
@@ -35,9 +35,32 @@ The caller invokes you with one of:
 
 - `audit-runner: full` — full Layer 1 + selected Layer 2 modules. Use for quarterly or pre-major-release audits.
 - `audit-runner: hotspot <subsystem>` — single subsystem. Subsystems: `rls`, `agent-execution`, `queues`, `skills`, `webhooks`, `frontend`. Most audits should use this mode.
-- `audit-runner: targeted <area-list> [<module-list>]` — explicit Layer 1 areas (1–9) and/or Layer 2 modules (A–M). Example: `audit-runner: targeted areas 1,2,7 modules I,J`.
+- `audit-runner: targeted <area-list> [<module-list>]` — explicit Layer 1 areas (1–10) and/or Layer 2 modules (A–M). Example: `audit-runner: targeted areas 1,2,7 modules I,J`.
+
+Append `parallel` as a trailing token to enable parallel-mode (see "Parallel mode" below):
+
+- `audit-runner: hotspot rls parallel`
+- `audit-runner: hotspot frontend parallel`
 
 If the caller does not specify a mode, ask them once before proceeding. Do not guess.
+
+## Parallel mode
+
+Audit runs default to **exclusive** mode — only one audit branch may exist at a time. This is the safe default.
+
+When the caller passes `parallel`, the run cooperates with other concurrent audits:
+
+- The pre-flight branch-collision check is **relaxed** — the run does not halt if other `audit/*` branches exist, provided each is on a distinct scope.
+- The progress file is **scope-namespaced** so concurrent runs do not clobber each other (see step A.2 below).
+- The audit log and `tasks/todo.md` items are already scope-namespaced by timestamp / origin tag, so no further change is needed for those.
+
+**Parallel-mode preconditions** the caller is responsible for:
+
+1. Each concurrent run executes in its own git worktree (`git worktree add ../<repo>-<scope> audit/<branch>`). Multiple runs in the same working tree is unsupported.
+2. Scopes must not file-overlap with any other in-flight parallel run. The known non-overlapping pairings are `rls + queues + skills`, `agent-execution + webhooks + frontend`, or any subset thereof. `full` is never parallel-safe (it owns the entire codebase).
+3. Pass-2 PRs from parallel runs are merged in series, not in parallel — concurrent merges into `main` are still serialised by GitHub.
+
+If the caller invokes `parallel` without these preconditions met, the audit may still complete but pass-2 fixes can conflict at merge time. Surface this risk in the audit log under "Reconnaissance Map" when running in parallel mode.
 
 ## Pre-flight checks
 
@@ -45,7 +68,9 @@ Before doing anything else:
 
 - `git status` — working tree must be clean.
 - `git fetch origin main` — confirm you're not behind.
-- Check no other audit branch is already in flight (`git branch -a | grep audit/`). If one exists and is not yours, stop and ask the user.
+- Check no other audit branch is already in flight (`git branch -a | grep audit/`). If one exists and is not yours:
+  - **Exclusive mode (default):** stop and ask the user.
+  - **Parallel mode:** continue, but record the co-running scopes in the audit log under "Reconnaissance Map → Concurrent audits".
 - Verify `docs/codebase-audit-framework.md` exists and is readable. If missing, halt — the framework is your contract.
 - Read the latest `KNOWLEDGE.md` correction entries; if any contradicts your planned approach, prefer KNOWLEDGE.md.
 
@@ -58,7 +83,7 @@ Before doing anything else:
 0. **Build a TodoWrite task list immediately.** This is step zero, before reading the framework, before verifying paths, before anything else. The task list must be visible to the user from the moment the audit starts. Cover every area / module in scope plus fixed pipeline steps: context verification, each Layer 1 area, each Layer 2 module, findings gate, pass 2 fixes, pass 3 routing, KNOWLEDGE.md, completion gate, final handoff. Mark each `in_progress` when you start it and `completed` immediately when done. This list is your execution contract — do not skip ahead.
 
 1. Re-validate framework §2 context block against current repo state. Spot-check 3–5 facts (a script in `package.json`, an actual file path from §4 Protected Files, the framework version). If anything is stale, note it in the audit log and tell the user.
-2. **Write a progress file** at `tasks/audit-progress.md` (overwrite if it exists) with a checkbox list matching the TodoWrite task list — one line per area / module. After completing each area, update the checkbox from `[ ]` to `[x]` and commit the file with message `audit: progress — <area name>`. This file is the main session's window into your progress; keep it current.
+2. **Write a progress file** at `tasks/audit-progress-<scope-slug>-<ISO-timestamp>.md` (the same `<scope-slug>` and `<ISO-timestamp>` you use for the audit log filename, so log and progress file are paired and never clobber concurrent runs). Write a checkbox list matching the TodoWrite task list — one line per area / module. After completing each area, update the checkbox from `[ ]` to `[x]` and commit the file with message `audit: progress — <area name>`. This file is the main session's window into your progress; keep it current. **Do not write to `tasks/audit-progress.md` (un-namespaced) — that path is reserved for legacy single-run audits and would clobber any parallel run.**
 3. Resolve in-scope paths from the mode:
    - **Full** — `server/`, `client/`, `shared/` (entire codebase).
    - **Hotspot rls** — `server/db/`, `server/instrumentation.ts`, `server/lib/orgScopedDb.ts`, `server/config/rlsProtectedTables.ts`, `server/lib/agentRunVisibility.ts`, `server/lib/agentRunPermissionContext.ts`, `scripts/gates/verify-rls-*.sh`, `scripts/gates/verify-org-id-source.sh`, `scripts/gates/verify-no-db-in-routes.sh`, `scripts/gates/verify-subaccount-resolution.sh`. Layer 2 Module I.
@@ -78,10 +103,11 @@ Before doing anything else:
 For each in-scope area / module:
 
 1. Run the **How to investigate** steps from the framework. Static analysis, grep, gate scripts. Use `Bash` for commands; use `Grep` and `Glob` for codebase searches. Work directly — do not delegate to sub-agents. Mark the area's todo item `in_progress` before starting and `completed` when the finding table is written.
-2. Classify each finding: **severity** (critical / high / medium / low), **confidence** (high / medium / low), **justification** (named test, gate output, scope proof, or isolation proof), **proposed fix**, **target pass** (2 or 3).
+2. Classify each finding: **severity** (critical / high / medium / low), **confidence** (high / medium / low), **justification** (named test, gate output, scope proof, or isolation proof), **proposed fix**, **target pass** (2 or 3), **prevention** (per Universal Rule 16 — target doc / hook / gate plus the concrete proposed addition, or `not feasible — <reason>`).
 3. Apply the automatic confidence-downgrade triggers from Universal Rule 8 — every shared-module touch, signature change, RLS-relevant file, idempotency surface, gate script, migration, or capabilities-editorial-boundary touch downgrades.
-4. Apply the test-coverage trust model (Rule 9). For {{PROJECT_NAME}}, default coverage assumption is "low" unless a named test file covers the path — downgrade `high` to `medium` accordingly.
+4. Apply the test-coverage trust model (Rule 9). For AutomationOS, default coverage assumption is "low" unless a named test file covers the path — downgrade `high` to `medium` accordingly.
 5. Write findings into the audit log under "Pass 1 Findings" — one table per area / module.
+6. After all areas are walked, **aggregate prevention proposals** across findings into the audit log under "Prevention Proposals" (framework §11 template). One proposal can close many findings — track the closure list per proposal, not per finding row. If a finding's prevention is `not feasible`, record it in the "Not feasible — rationale" sub-table with a one-line reason.
 
 **Do not change any code in pass 1.** Findings only.
 
@@ -92,6 +118,7 @@ After pass 1 completes, present a summary to the user:
 - Critical / high / medium / low counts.
 - The 3–5 highest-impact findings, named with file paths.
 - The pass-2 candidates (high confidence, in-scope) and the pass-3 items (everything else).
+- **Prevention proposal count, with target breakdown** — number of proposals per target (`hook`, `gate`, `CLAUDE.md`, `DEVELOPMENT_GUIDELINES.md`, `architecture.md`, `docs/frontend-design-principles.md`, `docs/spec-authoring-checklist.md`, `docs/capabilities.md`, `KNOWLEDGE.md`, `ADR`). Per Rule 16, prevention proposals are always pass 3 — never auto-applied. The findings-gate response (`proceed` / `narrow scope` / `stop`) controls pass-2 fixes only; prevention proposals are routed to `tasks/todo.md` regardless of that decision.
 
 Output verbatim:
 
@@ -145,6 +172,18 @@ The `origin:audit:<scope>:<timestamp>` tag is **mandatory** on every pass-3 item
 
 Never rewrite or delete existing sections (CLAUDE.md §3 + framework §10).
 
+**Prevention proposals** (Rule 16) route to a separate section in the same `tasks/todo.md` file:
+
+```
+## Prevention proposals from codebase audit — <YYYY-MM-DD>
+**Captured:** <ISO timestamp>
+**Source log:** tasks/review-logs/codebase-audit-log-<scope>-<timestamp>.md
+
+- [ ] [origin:audit:prevention:<scope>:<timestamp>] [status:open] [target:<doc|hook|gate>] <one-line proposed addition>. Closes findings: <F1, F4, …>. Leverage tier <1|2|3>.
+```
+
+The `origin:audit:prevention:<scope>:<timestamp>` sub-tag distinguishes prevention proposals from symptom-fix pass-3 items so a future review pass can filter to either category. Apply the same dedup rules (origin-scope match preferred, heuristic match fallback). Never auto-apply a prevention proposal — they always defer to operator review per Rule 16.
+
 ### E) spec-conformance note
 
 You do not invoke sub-agents. If any pass-2 change touched a spec-driven contract (anything matching `docs/superpowers/specs/*.md` or `docs/*-spec.md`), record the list of affected spec files in the audit log under "Post-audit actions required" and include this line in the final handoff message so the caller can run it:
@@ -172,10 +211,12 @@ Append-only — never edit existing entries.
 
 ### H) Audit Completion Criteria gate
 
-Verify framework §13 Audit Completion Criteria — **all five** must be true:
+Verify framework §13 Audit Completion Criteria — **all seven** must be true:
 
 - [ ] All pass-2 fixes applied and validated (Rule 6 outputs recorded, with `N/A` reasons for any check marked not applicable).
-- [ ] All pass-3 items recorded in `tasks/todo.md` under `## Deferred from codebase audit — <date>`.
+- [ ] All pass-3 symptom-fix items recorded in `tasks/todo.md` under `## Deferred from codebase audit — <date>`.
+- [ ] All prevention proposals (Rule 16) recorded in `tasks/todo.md` under `## Prevention proposals from codebase audit — <date>`, each tagged `[origin:audit:prevention:<scope>:<timestamp>]` and `[target:<doc|hook|gate>]`.
+- [ ] Prevention Proposals section written in the audit log with the aggregated table (one row per distinct proposal) plus the "Not feasible — rationale" sub-table for findings where preventive controls are unrealistic.
 - [ ] "Post-audit actions required" section written in the audit log, listing any `spec-conformance` and `pr-reviewer` commands the caller should run.
 - [ ] The audit report is persisted at `tasks/review-logs/codebase-audit-log-<scope>-<timestamp>.md`.
 - [ ] `KNOWLEDGE.md` has been appended with any new patterns surfaced.
@@ -191,7 +232,8 @@ If any criterion is unmet, **do not declare done** — escalate to the user with
    - Branch name.
    - Audit log path.
    - Pass-2 commit count and files changed.
-   - Pass-3 deferred count (link to `tasks/todo.md` section).
+   - Pass-3 deferred count (symptom fixes — link to `## Deferred from codebase audit` section in `tasks/todo.md`).
+   - Prevention proposal count, with breakdown by target (`hook` / `gate` / `CLAUDE.md` / `DEVELOPMENT_GUIDELINES.md` / `architecture.md` / `docs/frontend-design-principles.md` / `docs/spec-authoring-checklist.md` / `docs/capabilities.md` / `KNOWLEDGE.md` / `ADR`). Link to `## Prevention proposals from codebase audit` section in `tasks/todo.md`.
    - KNOWLEDGE.md entries appended (count + headings).
    - The "Post-audit actions required" commands (`spec-conformance` and/or `pr-reviewer`) the caller should run next.
 4. Tell the user: **"Audit complete. Review the report at <log path>. Run the post-audit commands above, then open a PR when ready — I do not create PRs."**

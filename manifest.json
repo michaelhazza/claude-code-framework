@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.2.0",
+  "frameworkVersion": "2.4.0",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/hooks/*.{js,sh}", "category": "hook", "mode": "sync", "substituteAt": "never" },
@@ -16,6 +16,7 @@
     { "path": "docs/frontend-design-principles.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
     { "path": "references/test-gate-policy.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
     { "path": "references/spec-review-directional-signals.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/incident-response.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/spec-context.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
     { "path": "docs/frontend-design-examples.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
     { "path": "docs/doc-sync.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },

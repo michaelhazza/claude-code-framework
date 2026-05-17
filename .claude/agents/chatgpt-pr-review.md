@@ -1,6 +1,6 @@
 ---
 name: chatgpt-pr-review
-description: Coordinates ChatGPT PR review sessions. Run in a dedicated new Claude Code session. Supports two modes: manual (user copies diff into ChatGPT UI and pastes response back — no API cost) and automated (calls OpenAI API via OPENAI_API_KEY). Reads the current branch diff, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / reject / defer) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (UX, workflow, visible copy/behaviour, product policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction and PR readiness confirmation.
+description: "Coordinates ChatGPT PR review sessions. Run in a dedicated new Claude Code session. Supports two modes: manual (user copies diff into ChatGPT UI and pastes response back — no API cost) and automated (calls OpenAI API via OPENAI_API_KEY). Reads the current branch diff, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / reject / defer) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (UX, workflow, visible copy/behaviour, product policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction and PR readiness confirmation."
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---
@@ -227,10 +227,19 @@ For each round:
    the CLI has already done that work.
 
    Edge cases:
-   - Empty findings array AND verdict `APPROVED` → log "Round N — no findings; ChatGPT verdict: APPROVED" and ask the user whether to finalise or run another round.
+   - Empty findings array AND verdict `APPROVED` → log "Round N — no findings; ChatGPT verdict: APPROVED" and proceed to the standard round summary (step 9). **Do NOT pose a question, AskUserQuestion prompt, or any other variant of "do you want another round / finalise" to the operator** — even a polite check-in. The default behaviour at every round end is identical regardless of verdict: emit the round-N+1 diff link and wait silently for the next paste. Finalisation triggers only on the operator's explicit "done" / "finished" / equivalent signal (per the WAIT contract at the bottom of this section). An inferred answer to a coordinator-posed question is NOT a valid finalisation trigger.
    - Verdict `NEEDS_DISCUSSION` → surface the `raw_response` to the user and ask how they want to proceed (no auto-actions on NEEDS_DISCUSSION).
 
 1a. **Duplicate detection (rounds 2+).** Before triage, check whether each finding is a substantive duplicate of a decided finding from a prior round in this session. Substantive duplicate = same `finding_type` AND same file/code area (or same global concern), no new evidence — even when rephrased with stronger language ("must-fix", "not optional", "blocking"). For duplicates: auto-apply the prior round's decision regardless of triage; log as `auto (<prior decision>) — duplicate of Round X / F<id>`. Do NOT proceed to step 2 (triage) and do NOT escalate to step 3b for this finding even when severity / defer / user-facing carveouts would normally trigger escalation. The carveouts protect the FIRST decision; once the user has actually made it, repetition adds zero judgment value. Source: KNOWLEDGE.md `[2026-05-01] Correction — chatgpt-pr-review duplicate findings auto-apply per prior decision`.
+
+1b. **Verify finding against live file (pre-triage diff-misread guard).** Before triaging any finding that claims "duplicate code", "regression", "two `navigate()` calls", "still missing X", or any other concrete claim about current file state, verify against the live file — not the diff. ChatGPT routinely confuses `-`/`+` diff lines with present state, and that confusion produced ~30% of findings in some lint-typecheck and workflows-v1 rounds. For each finding that names a specific file + symbol + count, run:
+
+```bash
+grep -nE "<pattern>" <file>           # current state
+git show HEAD:<file> | grep -cE "..." # post-commit state if needed
+```
+
+If the live file disproves the finding, mark it `reject — diff-misread (verified against <file> at <line>)` and skip step 3a auto-execute; do not consume a step 3b user slot. Log the verification command in the rationale so the audit trail shows the check, not just the verdict. Findings that don't make concrete file-level claims (architectural / framing / generic) skip this step.
 
 2. Triage each finding into one of two buckets:
 
@@ -434,9 +443,18 @@ For each round:
     <git diff origin/main...HEAD output>
 
   **[MANUAL — MANDATORY, NO EXCEPTIONS]** Generate the round N+1 code-only diff
-  immediately after the commit in step 8. Do not print the round summary until
-  the diff file exists on disk. Rounds 2+ skip the full diff — spec / plan / log
-  files were reviewed in round 1:
+  at the end of every round, **regardless of whether step 8 ran**. If step 8
+  ran (the round produced code changes and was committed), generate the diff
+  immediately after the commit. If step 8 was skipped (zero code changes — e.g.
+  a strategic / framing-only round, or all items rejected/deferred), generate
+  the diff anyway. The output may be byte-identical to the previous round's
+  file, but regenerating it (a) proves the loop is fresh, (b) reflects any
+  out-of-loop fix commits the operator landed between rounds (CI fixes, hotfixes,
+  upstream merges), and (c) gives the operator a single canonical link to copy
+  rather than tracking which prior round's diff is current.
+
+  Do not print the round summary until the diff file exists on disk. Rounds 2+
+  skip the full diff — spec / plan / log files were reviewed in round 1:
 
     ```bash
     git diff origin/main...HEAD -- . \
@@ -468,6 +486,35 @@ For each round:
 
   The diff link MUST appear in the same message as the round summary. A round
   summary without the diff link is incomplete — the user cannot proceed without it.
+
+  **Format rules — MANDATORY for every round, every diff reference:**
+
+  - Use markdown link syntax `[.chatgpt-diffs/<filename>](.chatgpt-diffs/<filename>)`
+    with a **repo-relative path** (begins with `.chatgpt-diffs/`).
+  - Render to VSCode as a clickable link. The user opens the file by clicking it.
+  - This is non-negotiable — see the "VSCode Extension Context / Code References
+    in Text" guidance in CLAUDE.md.
+
+  **DO NOT** (these formats break VSCode click-to-open and are forbidden):
+
+  - Absolute paths (`c:\Files\Projects\...\.chatgpt-diffs\pr264-round2-code-diff.diff`).
+  - Backslash separators on any platform.
+  - Backtick-wrapped paths without the markdown link wrapper
+    (`` `.chatgpt-diffs/pr264-round2-code-diff.diff` ``).
+  - Listing the file under a heading like "Absolute paths:" instead of inline
+    in the round-summary block.
+
+  **Worked example — round 2 summary, exactly this shape:**
+
+  ```
+  Round 2 diff ready for upload to ChatGPT:
+
+    - [.chatgpt-diffs/pr264-round2-code-diff.diff](.chatgpt-diffs/pr264-round2-code-diff.diff) — 8.2K, code-only (7 files)
+
+  Upload the file to ChatGPT (focus on remaining issues and any new ones
+  introduced by the latest changes), then paste the response here to continue.
+  Or say 'done' to finalise.
+  ```
 
 **After printing the round summary and round N+1 diff link: WAIT. Do not finalize.**
 Every round ends with the mode-appropriate line:

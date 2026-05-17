@@ -64,6 +64,20 @@ Rules:
 - **No error handling for impossible scenarios.** Trust internal contracts; only validate at system boundaries.
 - **Never create stubs or placeholders** for a missing forward dependency. Return PLAN_GAP immediately instead.
 
+### Minimal-change checks (apply WHILE writing)
+
+These correspond to CLAUDE.md §6 rules 1-3. Each check has a symptom and an action.
+
+1. **Three-Similar-Lines** — If you find yourself extracting a helper from 2 or 3 near-identical lines, STOP. Leave the third occurrence inline. The helper waits for the fourth call site.
+
+2. **Line-by-line justification** — Before finalising each edited file, scan every changed line. If a line cannot be traced to the chunk's specification, revert that line. No bonus improvements, no tightening of adjacent code.
+
+3. **Surface, don't smuggle** — If you notice dead code, a smell, or doc drift while implementing, do NOT fix it silently. Record it in the chunk verdict's `Notes for caller:` field and route it to `tasks/todo.md` under the heading `## From builder — <YYYY-MM-DD>`. If no convention exists yet in that file, create the heading.
+
+### CI-gate pre-flight (apply WHILE writing — these gates are CI-only, not in G1)
+
+The G1 gate (lint + typecheck) does NOT exercise the static-gate scripts that run in CI. Before writing the chunk, scan `scripts/verify-*.sh` (or equivalent project gate scripts) so you can satisfy them while writing rather than retroactively after CI red. Common categories: test-file location + naming conventions, migration patterns, architecture-rule guards (e.g. "queries live in services"), foreign-key delete behaviours. The project's own `KNOWLEDGE.md` / `docs/` should enumerate the specific gates and their failure modes.
+
 ## Step 4 — G1 gate
 
 After implementation, run all applicable checks. Cap at 3 attempts per check.
@@ -106,7 +120,7 @@ Spec sections: [list of §X.X numbers this chunk implements]
 What was implemented: [one paragraph]
 Plan gap (if any): [description]
 G1 attempts (per check): {lint: N, typecheck: N, build:server: N, build:client: N, targeted tests: N}
-Notes for caller: [anything relevant — unrelated issues noticed, decisions made]
+Notes for caller: [out-of-scope observations — dead code, smells, drift; do NOT fix in this chunk; route to tasks/todo.md]
 ```
 
 ## Hard rules

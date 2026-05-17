@@ -31,7 +31,7 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 
 | Path | Contents |
 |------|----------|
-| `.claude/agents/` | 20 agent definitions (with `{{...}}` placeholders) |
+| `.claude/agents/` | 22 agent definitions (with `{{...}}` placeholders) |
 | `.claude/hooks/` | 4 portable hooks: `long-doc-guard`, `correction-nudge`, `config-protection`, `code-graph-freshness-check` |
 | `.claude/settings.json` | Hook registration (PreToolUse, UserPromptSubmit, SessionStart) |
 | `.claude/FRAMEWORK_VERSION` | Semver — used to detect drift across repos |
@@ -43,6 +43,7 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `docs/frontend-design-principles.md` | 5 hard rules (stack-neutral) |
 | `docs/frontend-design-examples.md` | Origin-project worked examples (operator deletes or replaces) |
 | `docs/doc-sync.md` | Doc-sync sweep contract (registry of reference docs to keep current) |
+| `docs/incident-response.md` | SEV matrix, on-call expectations, timeline-log format, post-mortem template (paired with `incident-commander` agent) |
 | `references/test-gate-policy.md` | "Test gates are CI-only" rule, single source of truth |
 | `references/spec-review-directional-signals.md` | Classifier signals for `spec-reviewer` |
 | `references/verification-commands.md` | Stack-template lint/typecheck/build/test commands |
@@ -67,8 +68,8 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 Pick at adoption time:
 
 - **MINIMAL (4)** — `triage-agent`, `pr-reviewer`, `architect`, `spec-reviewer`. Solo dev, self-review baseline.
-- **STANDARD (10)** — MINIMAL + `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator`, `spec-conformance`, `builder`, `hotfix`. Default for most projects.
-- **FULL (20)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`. Large projects with capacity for the overhead.
+- **STANDARD (11)** — MINIMAL + `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator`, `spec-conformance`, `builder`, `hotfix`, `reality-checker`. Default for most projects.
+- **FULL (22)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`. Large projects with capacity for the overhead.
 
 ## Upgrading from a previous framework version
 

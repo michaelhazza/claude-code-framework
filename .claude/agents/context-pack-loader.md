@@ -1,6 +1,6 @@
 ---
 name: context-pack-loader
-description: Loads a mode-scoped context pack instead of the full agent-facing reference docs. Operator invokes via "load context pack: <mode>". Inline playbook — runs in the main session, not as a sub-agent.
+description: 'Loads a mode-scoped context pack instead of the full agent-facing reference docs. Operator invokes via "load context pack: <mode>". Inline playbook — runs in the main session, not as a sub-agent.'
 tools: Read, Glob, Grep
 model: inherit
 ---

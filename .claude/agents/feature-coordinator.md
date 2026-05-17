@@ -1,9 +1,22 @@
 ---
 name: feature-coordinator
-description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs chatgpt-plan-review (manual ChatGPT-web rounds), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk static checks (G1). After all chunks built, runs G2 integrated-state gate, then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
+description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs chatgpt-plan-review (manual ChatGPT-web rounds), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk static checks (G1). After all chunks built, runs G2 integrated-state gate, then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
+
+## Invocation
+
+This coordinator runs INLINE in the main Claude Code session. When the operator types `launch feature coordinator`, the main session reads this file and executes the steps below directly.
+
+**Do NOT dispatch via `Agent({subagent_type: "feature-coordinator", ...})`.** The runtime does not allow dispatched sub-agents to dispatch further sub-agents (`No such tool available: Task. Task is not available inside subagents.`), and this playbook requires sub-agent dispatch for `architect`, `builder`, `chatgpt-plan-review`, `spec-conformance`, `adversarial-reviewer`, `pr-reviewer`, and `dual-reviewer`. Nesting this coordinator as a sub-agent breaks the entire pipeline at Step 3 (architect invocation).
+
+Two valid entry paths:
+
+1. **Fresh session** (preferred): start a new Claude Code session and type `launch feature coordinator` as the first message. The main session adopts this playbook.
+2. **In-flight adoption** (fallback): if the operator types `launch feature coordinator` mid-session, the current main session reads this file and follows the playbook directly. Same outcome — the main session executes the steps.
+
+Either way, the steps below run in the main session. The `Agent` tool dispatches inside the playbook (Step 3 `architect`, Step 4 `chatgpt-plan-review`, Step 6 `builder`, Step 8 reviewers) issue from the main session and work normally because the main session has top-level access to `Agent`.
 
 ## Context Loading (Step 0)
 
@@ -85,7 +98,7 @@ After architect returns, review the plan for:
 
 **Plan-revision rounds capped at 3.** On the fourth revision request: write `phase_status: PHASE_2_PAUSED_PLAN` to `tasks/builds/{slug}/handoff.md`, escalate to the operator, and stop.
 
-Once the plan passes review, expand TodoWrite item 6 (Per-chunk loop) into one sub-item per chunk. Expand item 8 (Branch-level review pass) into sub-items: spec-conformance, adversarial-reviewer, pr-reviewer, fix-loop, dual-reviewer.
+Once the plan passes review, expand TodoWrite item 6 (Per-chunk loop) into one sub-item per chunk. Expand item 8 (Branch-level review pass) into sub-items: spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer.
 
 ## Step 4 — chatgpt-plan-review
 
@@ -229,6 +242,8 @@ Run all reviewers against the integrated branch state in this fixed order. Do no
 
 ### 8.1 — spec-conformance
 
+**Skip gate (policy-not-applicable):** if the task is not spec-driven (no spec at `tasks/builds/{slug}/spec.md`), skip with note in `progress.md`: `spec-conformance: skipped — task is not spec-driven (per GRADED policy)`. No `REVIEW_GAP` entry. Proceed directly to §8.2.
+
 Invoke `spec-conformance` in the parent session (NOT as a sub-agent) per its existing playbook. Provide the full branch diff and the spec path.
 
 Verdict handling:
@@ -246,18 +261,41 @@ git diff origin/main...HEAD --name-only | \
 ```
 
 - Non-empty output → invoke `adversarial-reviewer` as a sub-agent with the full diff. Log output to `tasks/review-logs/adversarial-review-log-{slug}-{timestamp}.md`. Verdict is non-blocking advisory — record it in `progress.md` and continue.
-- Empty output → skip with note in `progress.md`: `adversarial-reviewer: skipped — no auto-trigger surface match`
+- Empty output → skip with note in `progress.md`: `adversarial-reviewer: skipped — diff does not match §5.1.2 security surface (per GRADED policy)`
 
 ### 8.3 — pr-reviewer
 
 Invoke `pr-reviewer` as a sub-agent with the full branch diff (`git diff origin/main...HEAD`). Extract the `pr-review-log` fenced block verbatim and write it to `tasks/review-logs/pr-review-log-{slug}-{timestamp}.md`. Record the log path in `progress.md`.
 
 Verdict handling:
-- `APPROVED` → proceed to dual-reviewer (§8.5)
-- `CHANGES_REQUESTED` → enter fix-loop (§8.4)
+- `APPROVED` → proceed to reality-checker (§8.4)
+- `CHANGES_REQUESTED` → enter fix-loop (§8.5)
 - `NEEDS_DISCUSSION` → escalate per failure paths; do not enter fix-loop without operator direction
 
-### 8.4 — Fix-loop with G3
+### 8.4 — reality-checker (Significant/Major only)
+
+**Skip gate:** if the task class is Trivial or Standard, skip with note in `progress.md`: `reality-checker: skipped — task class Trivial/Standard (per GRADED policy)`. Do not invoke reality-checker for those classes.
+
+For Significant and Major tasks, invoke `reality-checker` as a sub-agent with:
+- The implementer's stated success criteria (from the plan or spec acceptance section).
+- The implementer's claimed evidence: paths to test logs, pasted log excerpts, paths to screenshot files, or deterministic-check descriptions.
+
+Extract the `reality-check-log` fenced block verbatim and write it to `tasks/review-logs/reality-check-log-{slug}-{timestamp}.md`. Record the log path in `progress.md`.
+
+Verdict handling:
+- `READY` → proceed to dual-reviewer (§8.6)
+- `NEEDS_WORK` → send the unverified criteria back to a fresh `builder` invocation to supply missing evidence or fix failing criteria. After the builder returns, **re-invoke `reality-checker`** on the updated evidence; do not proceed until the verdict becomes `READY`. Cap at 2 fix rounds. On the third: escalate per failure paths.
+- `NEEDS_DISCUSSION` → escalate per failure paths; do not enter fix loop without operator direction.
+
+**Re-review check (only when the reality-checker remediation builder pass applied code edits):** if the builder pass triggered by a `NEEDS_WORK` verdict modified files (i.e. the builder verdict's `files-changed` list is non-empty and goes beyond appending evidence to logs/screenshots), the post-remediation diff is no longer the diff that `pr-reviewer` approved in §8.3. Re-invoke `pr-reviewer` on the updated branch diff so the final state has reviewer coverage. Treat the re-review verdict per the existing §8.3 / §8.5 handling:
+
+- `APPROVED` → continue
+- `CHANGES_REQUESTED` → enter the §8.5 fix-loop on the new findings (the original 3-round cap applies to this re-review pass independently)
+- `NEEDS_DISCUSSION` → escalate per failure paths
+
+If the builder pass only appended evidence (no source-file edits), skip the re-review — pr-reviewer's earlier APPROVED still covers the final code state.
+
+### 8.5 — Fix-loop with G3
 
 For each Blocking finding from pr-reviewer:
 
@@ -266,7 +304,7 @@ For each Blocking finding from pr-reviewer:
 3. Re-invoke pr-reviewer on the updated diff.
 4. Cap at 3 fix-loop rounds. On the fourth: escalate with all unresolved findings per failure paths.
 
-### 8.5 — dual-reviewer
+### 8.6 — dual-reviewer
 
 Codex availability check:
 
@@ -278,19 +316,23 @@ fi
 ```
 
 - Codex available → invoke `dual-reviewer` with the build slug so its log lands at `tasks/review-logs/dual-review-log-{slug}-{timestamp}.md`, consistent with the other branch-level review logs. Existing 3-iteration cap applies. After any fixes, run G3 once more.
-- Codex unavailable → skip; record `REVIEW_GAP: Codex CLI unavailable` in `progress.md`. Do NOT block.
+- Codex unavailable → skip; write to `progress.md`:
+  ```
+  REVIEW_GAP: dual-reviewer | task-class: {task-class} | reason: Codex CLI unavailable or unauthenticated | operator-override: no | remediation: run dual-reviewer manually if Codex becomes available before merge
+  ```
+  Do NOT block.
 
 **Re-review check (only when dual-reviewer applied changes):** if dual-reviewer's verdict is `APPROVED` AND its log records any `[ACCEPT]` decisions that resulted in file edits (i.e. the "Changes Made" section of the dual-review log is non-empty), the post-dual-reviewer diff is no longer the diff that pr-reviewer approved. Re-invoke `pr-reviewer` on the updated branch diff so the final state has reviewer coverage. Treat the re-review verdict the same as §8.3:
 
 - `APPROVED` → continue
-- `CHANGES_REQUESTED` → enter the §8.4 fix-loop on the new findings (the original 3-round cap applies to this re-review pass independently)
+- `CHANGES_REQUESTED` → enter the §8.5 fix-loop on the new findings (the original 3-round cap applies to this re-review pass independently)
 - `NEEDS_DISCUSSION` → escalate per failure paths
 
 If dual-reviewer applied no changes (no `[ACCEPT]` decisions or no resulting edits), skip the re-review — pr-reviewer's earlier APPROVED already covers the final diff.
 
 If dual-reviewer was skipped (Codex unavailable), no re-review is needed — pr-reviewer's earlier APPROVED is the authoritative verdict.
 
-After §8.5 completes (or is skipped), run G3 once more to confirm integrated state is clean.
+After §8.6 completes (or is skipped), run G3 once more to confirm integrated state is clean.
 
 ## Step 9 — Doc-sync gate
 
@@ -343,10 +385,12 @@ Once all items pass, append the Phase 2 section to the existing `tasks/builds/{s
 **G1 attempts (per chunk):** [chunk-name: attempts]
 **G2 attempts:** N
 **spec-conformance verdict:** {verdict} ({log path})
-**adversarial-reviewer verdict:** {verdict or "skipped (no auto-trigger surface match)"} ({log path or n/a})
+**adversarial-reviewer verdict:** {verdict or "skipped — diff does not match §5.1.2 security surface (per GRADED policy)"} ({log path or n/a})
 **pr-reviewer verdict:** {verdict} ({log path})
+**reality-checker verdict:** {verdict or "skipped (task class Trivial/Standard)"} ({log path or n/a})
 **Fix-loop iterations:** N
-**dual-reviewer verdict:** {verdict} | REVIEW_GAP: Codex CLI unavailable ({log path or n/a})
+**dual-reviewer verdict:** {verdict} | {REVIEW_GAP line verbatim, or "n/a"} ({log path or n/a})
+**REVIEW_GAP entries:** {all REVIEW_GAP lines from progress.md, one per line, or "none"}
 **Doc-sync gate:** [verdict per doc]
 **Open issues for finalisation:** [list of non-blocking findings deferred to ChatGPT review]
 ```
@@ -366,9 +410,13 @@ Update the prose body below the mission-control block to match. Status enum tran
 
 ## Step 12 — End-of-phase prompt
 
-If the handoff contains `REVIEW_GAP: Codex CLI unavailable` in `dual-reviewer verdict:`, prepend this warning before the end-of-phase message:
+If the handoff `REVIEW_GAP entries:` field is non-empty (i.e. contains one or more `REVIEW_GAP:` lines), prepend this warning before the end-of-phase message, listing each gap:
 
-> **Dual-reviewer was skipped — reduced review coverage for this build.** The Codex pass was unavailable. `chatgpt-pr-review` in Phase 3 will be the primary second-opinion pass; consider running `dual-reviewer` manually if Codex becomes available before merge.
+> **Review coverage gaps detected for this build.** The following required reviewers were skipped:
+>
+> {each REVIEW_GAP line from the handoff, one per bullet}
+>
+> `chatgpt-pr-review` in Phase 3 will be the primary second-opinion pass for any skipped dual-reviewer or chatgpt-pr-review. For other gaps, review the remediation field and act before merge.
 
 Then print verbatim:
 
@@ -435,7 +483,7 @@ Escalate with the full list of unresolved Blocking findings and the reviewer's r
 
 ### 7. dual-reviewer Codex unavailable
 
-Skip with note `REVIEW_GAP: Codex CLI unavailable` in `progress.md`. Do NOT block. Continue to Step 9. The REVIEW_GAP note propagates to the handoff and the end-of-phase prompt.
+Skip; write the full-format `REVIEW_GAP` entry to `progress.md` (see §8.6 for exact format). Do NOT block. Continue to Step 9. The `REVIEW_GAP` entry propagates to the handoff `REVIEW_GAP entries:` field and the end-of-phase prompt.
 
 ### 8. Doc-sync gate — missing verdict
 

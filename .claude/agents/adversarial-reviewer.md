@@ -68,6 +68,32 @@ Run all six categories against every diff. Each category may produce zero or mor
 
 Add new categories as findings accumulate — do not be limited to the seed list above when a class of attack obviously applies (e.g. supply-chain in package.json, secrets in env-manifest).
 
+### STRIDE sweep
+
+Run a STRIDE pass on every diff. Each of the six categories MUST produce at least one finding (using `confirmed-hole` / `likely-hole` / `worth-confirming` labels) OR an explicit `no applicable risk in this diff` line. Silent skipping is not allowed.
+
+- **Spoofing** — can an attacker impersonate a user, tenant, or service? Look for missing auth on new routes, forged headers trusted without verification, unauthenticated webhook intake, and identity claims sourced from request body instead of session.
+- **Tampering** — can data be modified without authorisation? Look for missing RLS predicates, unguarded UPDATE/DELETE paths, direct `db` access outside a scoped transaction, and write routes missing permission checks.
+- **Repudiation** — can an actor deny performing an action? This is the underweighted category: "no audit-trail" and "no idempotency record" findings live here, NOT under Tampering. Flag any new state-mutation path that writes no event log or audit row, any job that processes a side effect without recording an idempotency key, and any agent action that produces no `agent_execution_events` record.
+- **Information disclosure** — can data leak to an unauthorised party? Look for unscoped reads, log lines that include tenant identifiers or secrets, error responses that expose internal state, and shared caches without per-tenant keys.
+- **Denial of service** — can an attacker exhaust a resource? Look for unbounded loops, missing rate limits / quotas, unbounded queue payloads, and recursive invocation paths without a depth guard.
+- **Elevation of privilege** — can an actor gain permissions beyond their role? Look for missing `requireSystemAdmin` / permission-group checks, routes that accept a role claim from the request body, and tenant-tier bypasses (`withAdminConnection` used where `getOrgScopedDb` is required).
+
+### Trust-boundary callout
+
+For every boundary the diff crosses, state the enforcement mechanism the change relies on. If a boundary is crossed without a named enforcement mechanism, that itself is a `likely-hole`.
+
+Common boundaries to check:
+- `subaccount -> organisation` — enforcement: RLS policy name + `resolveSubaccount` call
+- `external webhook -> server` — enforcement: HMAC verification (file + function)
+- `LLM provider -> our prompt` — enforcement: prompt-injection guards, output schema validation
+- `client -> route` — enforcement: auth middleware + named permission check
+- `user -> system_admin` — enforcement: `requireSystemAdmin` middleware
+- `background job -> tenant data` — enforcement: `withOrgTx` + `getOrgScopedDb` (never bare `db`)
+- `third-party OAuth callback -> session` — enforcement: state-param CSRF token + HMAC
+
+List ONLY the boundaries the diff actually touches. For each, write: boundary name → enforcement mechanism (file:line or named policy/middleware). If the diff introduces a new boundary crossing that has no enforcement mechanism, label it `likely-hole` and include it in the finding count.
+
 ## Finding labels
 
 Each finding labelled exactly one of:

@@ -24,6 +24,7 @@ Use it when drafting any **Significant** or **Major** spec (per the task classif
 9. Testing posture sanity check
 10. Execution-safety contracts (new writes and state machines)
 11. Spec frontmatter (status header convention)
+12. Lifecycle Declaration and ABCd Estimate blocks (Standard+ only)
 
 Appendix — Pre-review checklist summary
 
@@ -163,6 +164,10 @@ Every new tenant-scoped table (anything with `organisation_id` or `subaccount_id
 3. **Route-level or middleware guard** if the table is accessed via HTTP. Name the guard in the spec (`authenticate`, `requirePermission(key)`, `resolveSubaccount`, or a new guard with a named location).
 4. **Principal-scoped context** if the table is read from an agent execution path. See `architecture.md §1116 "P3B — Principal-scoped RLS"`.
 
+### Canonical RLS-posture sentence
+
+State the posture explicitly in the spec, using this exact phrasing: **"RLS enforces the organisation boundary; subaccount filtering is service-layer."** If the table actually uses dual-GUC (RLS checks both `app.organisation_id` and `app.subaccount_id`), say so and link to architecture.md's "Dual-GUC pattern". Prose that claims tables are "scoped to (org, subaccount)" without a `app.subaccount_id` GUC reference is a blocking spec review finding — reviewers cannot tell whether RLS or the service layer is doing the work.
+
 ### Opt-out rule
 
 If a new table is intentionally *not* tenant-scoped (e.g. system-wide reference data), write one line explaining why. The reviewer's rubric correctly flags "missing RLS on org-scoped table" and won't be satisfied by implicit reasoning.
@@ -261,6 +266,18 @@ After completing Sections 1–7, do one final read-through focused on contradict
 - Does every "single source of truth" claim survive? Grep for the claimed source — is it actually written to by every path the spec describes? Is it filtered out anywhere?
 - Do non-functional claims (cache efficiency, latency budgets, cost budgets) match the execution model in Section 5?
 - Does every phrase using "must", "guarantees", "idempotent", "source of truth" have a backing mechanism named? Load-bearing claims without a mechanism are the most expensive finding class to fix in review.
+
+### Numeric-count reconciliation pass
+
+Before handoff, grep the draft for inventory counts and reconcile every occurrence against the file-inventory table. Counts of "N tables / N migrations / N jobs / N files / N columns" routinely drift across sections — §14.4 says "four tables", §19.3 lists three, §19.4 says "five migrations" but one is a script.
+
+Run:
+
+```bash
+grep -Ei "\b(one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+)\b[[:space:]]+(table|tables|migration|migrations|job|jobs|file|files|column|columns|endpoint|endpoints|service|services|route|routes|section|sections|phase|phases|chunk|chunks)\b" <spec.md>
+```
+
+Every hit must reconcile to the same number in the file inventory. Mismatched counts are the dominant spec review finding in sandbox-isolation and consolidation reviews.
 
 ### Reviewer signal this prevents
 
@@ -399,6 +416,51 @@ Existing specs without this frontmatter are NOT required to be updated retroacti
 
 ---
 
+## Section 12 — Lifecycle Declaration and ABCd Estimate blocks (Standard+ only)
+
+Every Standard+ spec must include two governance blocks introduced by the development-lifecycle-governance-upgrade build (`tasks/builds/development-lifecycle-governance-upgrade/spec.md §7.2` and `§7.3`). These blocks are required at spec authoring time (Step 6 of `spec-coordinator`) and are verified by `spec-conformance` via this checklist.
+
+### 12.1 Lifecycle Declaration block (required per spec §7.2)
+
+**What it is:** a five-field Markdown table placed at the top of the spec, after frontmatter, that captures the capability cluster, ownership, launch lifecycle state, risk surface, and review cadence for the capability being shipped.
+
+**When required:** every Standard, Significant, or Major spec. Not required for Trivial builds or ADR-shaped specs with `Build slug: n/a`.
+
+**Required fields (all five must be present and non-blank):**
+
+| Field | Rule |
+|---|---|
+| Capability cluster | One or more values from the cluster header in `docs/capabilities.md`, comma-separated when multiple |
+| Capability owner | Handle, or a compliant placeholder per the owner-placeholder rule (§7.4.3 of the governance spec) |
+| Lifecycle state on launch | `Inception` or `Growth` only — no other value is valid at first registration |
+| Risk surface | Copied verbatim from `intent.md § Risk Surface`; either the literal string `None.` or a comma-separated list of §7.1.1 vocabulary terms |
+| Review cadence | Free text, e.g. `quarterly`, `biannually`, `on-incident-only` |
+
+**Launch-state restriction:** only `Inception` (no production traffic yet) or `Growth` (live but actively iterating) are valid at first registration. Any other state is a blocking spec review finding.
+
+### 12.2 ABCd Estimate block (required per spec §7.3)
+
+**What it is:** a four-row Markdown table placed inside the spec body that sizes the capability across four lifecycle cost dimensions using a coarse S / M / L bucket.
+
+**When required:** every Standard, Significant, or Major spec (same scope as the Lifecycle Declaration block).
+
+**Required dimensions (all four must be present):**
+
+| Dimension | Meaning |
+|---|---|
+| Acquire | Cost to acquire or license an equivalent capability externally |
+| Build | Engineering effort to build this capability from scratch |
+| Carry | Ongoing maintenance and operations cost |
+| decommission | Cost to turn off and fully remove the capability |
+
+**Sizing constraint:** the `Sizing` column must be exactly one of `S`, `M`, or `L`. Numeric estimates are prohibited (false-precision class). No half-buckets, no ranges, no dollar figures.
+
+### Reviewer signal this prevents
+
+"Spec missing Lifecycle Declaration" / "ABCd block absent or uses numeric estimates" — caught by `spec-conformance` reading this checklist's Appendix. Adding these two blocks at authoring time (Step 6 of `spec-coordinator`) is cheaper than a blocking spec-conformance gap at Phase 2 review.
+
+---
+
 ## Appendix — Pre-review checklist summary
 
 Before invoking `spec-reviewer` on a draft spec, answer yes to all of the following:
@@ -409,16 +471,20 @@ Before invoking `spec-reviewer` on a draft spec, answer yes to all of the follow
 - [ ] Every data shape crossing a boundary has a Contracts entry with an example
 - [ ] Every contract that writes to multiple representations declares the source-of-truth precedence
 - [ ] Every new tenant-scoped table has RLS policy + manifest entry + route guard + principal-scoped context (or a documented reason for opting out)
+- [ ] RLS posture stated using the canonical sentence ("RLS enforces the organisation boundary; subaccount filtering is service-layer"), or dual-GUC explicitly declared with the exact GUCs (`app.organisation_id`, `app.subaccount_id`), policy expectation, and transaction helper (`setOrgAndSubaccountGUC`) named
 - [ ] Execution model (sync/async, inline/queued, cached/dynamic) is picked explicitly and the prose + inventory + goals all agree
 - [ ] Phase dependency graph has no backward references, no orphaned deferrals, no phase-boundary contradictions
 - [ ] `## Deferred Items` section exists (even if "None.")
 - [ ] Self-consistency pass complete: Goals ↔ Implementation match; every load-bearing claim has a named mechanism
+- [ ] Numeric-count reconciliation grep run; every count of tables / migrations / jobs / files matches the file inventory
 - [ ] Testing plan consistent with `docs/spec-context.md`
 - [ ] **[Section 10]** Every externally-triggered write has an idempotency posture, retry classification, and concurrency guard declared
 - [ ] **[Section 10]** Every cross-flow chain has a declared terminal event + post-terminal prohibition
 - [ ] **[Section 10]** Every DB unique constraint has a named HTTP mapping (no bubbled 500s from `23505`)
 - [ ] **[Section 10]** If a state machine is introduced or modified: valid transitions, forbidden transitions, and status-set closure are declared
 - [ ] **[Section 11]** Spec opens with `Status:` / `Spec date:` / `Last updated:` / `Author:` / `Build slug:` frontmatter
+- [ ] **[Section 12]** Lifecycle Declaration present per spec §7.2 (5 required fields; launch state = `Inception` or `Growth` only)
+- [ ] **[Section 12]** ABCd Estimate present with S/M/L sizing only per spec §7.3 (4 dimensions; no numeric values)
 
 If every box is checked, the spec is ready for `spec-reviewer`. If any box is unchecked and you're intentionally leaving it so (e.g. deferring the contract to implementation), mark the deviation inline in the spec's framing section — don't leave it implicit.
 
