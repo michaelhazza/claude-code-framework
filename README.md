@@ -77,17 +77,27 @@ For ongoing upgrades, see `SYNC.md`. When the framework releases a new version, 
 
 Don't re-run `ADAPT.md` — it expects fresh placeholders, and your repo already has substituted values. Instead, use the sync engine: update the `.claude-framework/` submodule to the new framework version, then follow SYNC.md.
 
-## Source
+## Publishing this bundle as a standalone framework repo (Phase B)
 
-This bundle is generated from the source repo's `setup/portable/` directory by `scripts/build-portable-framework.ts`. To pull a refreshed bundle from the source repo:
+The longer-term distribution model lifts this `setup/portable/` directory into its own GitHub repo, so target repos can consume it as a `git submodule` and pull future updates with one command. See `tasks/builds/framework-standalone-repo/spec.md` for the full contract.
 
+To execute the lift (from any clone of the source repo):
+
+```bash
+# 1. Create an empty GitHub repo first (one-click in the GitHub UI).
+#    Recommended name: claude-code-framework. Private to start (per spec § 11.2).
+
+# 2. Run the lift script with the new repo's URL:
+bash scripts/lift-framework-to-standalone-repo.sh git@github.com:<owner>/claude-code-framework.git
 ```
-npx tsx scripts/build-portable-framework.ts
-# or, if the source repo registers it as an npm script:
-# npm run build:portable-framework
-```
 
-That produces `dist/portable-claude-framework-v<VERSION>.zip` — copy into your target repo and follow the Quick start above.
+The script does a `git subtree split` of `setup/portable/`, pushes that history to the new repo's `main` branch as a single commit, and tags it at the current `FRAMEWORK_VERSION`. Idempotent and re-runnable.
+
+After the lift, follow the Phase C steps the script prints (add as submodule to the source repo, preflight diff against the deployed tree, self-adopt, remove the in-repo bundle).
+
+## Migrating from a partial copy-paste
+
+If you have a target repo where someone copy-pasted SOME framework files in earlier without ever running `ADAPT.md` (no `.framework-state.json`), see `MIGRATION-FROM-COPY-PASTE.md` for the safe catch-up path.
 
 ## Support
 
