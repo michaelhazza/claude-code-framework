@@ -316,28 +316,27 @@ Only runs if `ui_touch == true` AND operator replied "yes" in Step 3.
 
 **Reuse-check first.** If `tasks/builds/{slug}/mockup-log.md` already exists AND contains the machine-readable `status: complete` YAML marker (written by `mockup-coordinator` Step 8) — meaning the operator already ran the mockup loop before invoking spec-coordinator — skip Round 1. Detection: grep for `^status: complete$` inside a fenced YAML block in the log; do NOT key off the prose `## Final state` heading, since heading text is convention-only and brittle to formatting drift. Confirm with the operator: "Existing mockups detected at `<path>` (final round {N}). Proceed with these, or open another iteration round?" If they want a new round, drop into the dispatch loop below.
 
-**Dispatch pattern.** Each round dispatches `mockup-designer` AND `mockup-reviewer` as a pair. Never present a designer-only round to the operator — always run the reviewer first. The pattern mirrors `mockup-coordinator` (see `.claude/agents/mockup-coordinator.md` for the canonical playbook; copying the loop logic here so spec-coordinator is self-contained):
+**Dispatch pattern.** A "round" is one `mockup-designer` dispatch followed by one `mockup-reviewer` dispatch. Every round runs both — never present a designer-only round to the operator. The pattern mirrors `mockup-coordinator` (see `.claude/agents/mockup-coordinator.md` for the canonical playbook; copying the loop logic here so spec-coordinator is self-contained).
 
-**Round 1:**
-1. Dispatch `mockup-designer` with the brief, build slug, screen list, and an instruction to enumerate per-screen filename grounding in `mockup-log.md`. mockup-designer:
-   - Reads `docs/frontend-design-principles.md` and the brief
-   - Runs Step 0a codebase grounding (mandatory)
-   - Decides on format — single-file (`prototypes/{slug}.html`) vs multi-screen directory (`prototypes/{slug}/index.html` + numbered pages + `_shared.css`)
-   - Produces a draft and returns a summary plus the file path(s)
-2. Dispatch `mockup-reviewer` with the brief path, the build slug, and the prototype paths. mockup-reviewer audits for ungrounded surfaces (phantom pages, invented nav) and operator overload (jargon, exposed internals, complexity-budget breaches). Returns a `mockup-review-log` block with a Verdict.
+**Round structure.** Each round takes a single input: *feedback for the designer*. On Round 1 the feedback is "initial draft per the brief, with the per-screen filename grounding instruction". On later rounds the feedback is either the prior reviewer's NEEDS_REWORK log (reviewer-driven re-round) or the operator's reply from presentation (operator-driven re-round). Either way, one round = one designer dispatch + one reviewer dispatch + one verdict.
+
+Steps within a round:
+
+1. Dispatch `mockup-designer` with the brief, build slug, screen list, and the current round's feedback. mockup-designer reads `docs/frontend-design-principles.md`, runs Step 0a codebase grounding (mandatory), decides on format (Round 1 only — single-file `prototypes/{slug}.html` vs multi-screen directory `prototypes/{slug}/index.html` + numbered pages + `_shared.css`), produces a draft, returns paths.
+2. Dispatch `mockup-reviewer` with the brief path, build slug, and prototype paths. Returns a `mockup-review-log` block with verdict CLEAN / NEEDS_REWORK / NEEDS_DISCUSSION.
 3. Persist the review log verbatim to `tasks/builds/{slug}/mockup-review-log-round-{N}-{ISO-timestamp}.md`.
 4. Branch on verdict:
-   - **CLEAN** — proceed to operator presentation (below).
-   - **NEEDS_REWORK** — feed the review log back to `mockup-designer` for another round (include the full review log in the dispatch prompt with an instruction to address every 🔴 Blocking finding). Then re-run `mockup-reviewer`. Repeat. Soft cap: 3 same-finding rounds → escalate to NEEDS_DISCUSSION.
-   - **NEEDS_DISCUSSION** — summarise the reviewer's question in CEO-level language to the operator, get direction, resume.
+   - **NEEDS_REWORK** — start the next round with the review log as the designer's feedback (include the full log with an instruction to address every 🔴 Blocking finding). Soft cap: 3 same-finding rounds → escalate to NEEDS_DISCUSSION.
+   - **NEEDS_DISCUSSION** — summarise the reviewer's question in CEO-level language to the operator, get direction, then start the next round with the operator's direction as feedback.
+   - **CLEAN** — proceed to operator presentation.
 
 **Operator presentation (only after CLEAN):**
 - Print the mockup path(s) as markdown links. The operator can open the file in a browser to click through.
 - Prompt: "Mockups ready at `<path>`. Reviewer cleared grounding and simplicity ({rounds} review round{s}). Reply with feedback for the next round, or **complete** when you're done iterating."
 - If reply is `complete` (or "done", "ship the mockup", "approved") — exit the loop.
-- Otherwise — feedback round: dispatch `mockup-designer` with the operator's feedback, then `mockup-reviewer`, then loop until CLEAN, then present again.
+- Otherwise — start the next round per the round structure above with the operator's reply as the designer's feedback. The next round runs the full designer + reviewer pair; whether the operator sees the result depends on that round's verdict, same as any other round.
 
-**No iteration cap on operator feedback.** The operator decides when the mockup is done. Each round's input/output is appended to `tasks/builds/{slug}/mockup-log.md` (designer) and a fresh `mockup-review-log-round-N-*.md` (reviewer) so the audit trail survives.
+**No iteration cap.** Every round (whether triggered by reviewer NEEDS_REWORK or operator feedback) runs through the full designer + reviewer pair before reaching the operator. Each round's input/output is appended to `tasks/builds/{slug}/mockup-log.md` (designer) and a fresh `mockup-review-log-round-N-*.md` (reviewer) so the audit trail survives.
 
 When the loop exits, record the final mockup paths in `tasks/builds/{slug}/handoff.md` under a `mockups:` field. These paths become the design source of truth for spec authoring.
 

@@ -74,13 +74,15 @@ Dispatch `mockup-reviewer` as a sub-agent via the `Agent` tool. Brief it with:
 
 mockup-reviewer returns a fenced `mockup-review-log` block with findings and a Verdict line. Persist the block verbatim to `tasks/builds/{slug}/mockup-review-log-round-{N}-{ISO-timestamp}.md` immediately — the audit trail is part of the framework's value.
 
-## Step 5 — Loop until CLEAN or NEEDS_DISCUSSION
+## Step 5 — Round loop until CLEAN
 
-Based on the verdict:
+A "round" = one mockup-designer dispatch followed by one mockup-reviewer dispatch. Every round runs both. Each round takes a single input: *feedback for the designer*. On Round 1 the feedback is "initial draft per the brief, with the per-screen filename grounding instruction" (already set up in Steps 3-4). On later rounds the feedback is either the prior reviewer's NEEDS_REWORK log (reviewer-driven re-round) or the operator's reply from Step 7 (operator-driven re-round). Same round structure either way.
+
+Within each round, branch on the reviewer's verdict (returned from Step 4 of the prior round, or after the first invocation if you're on Round 1):
 
 - **CLEAN** — proceed to Step 6 (present to operator).
-- **NEEDS_REWORK** — feed the review log back to mockup-designer for another round. Concretely: the next mockup-designer dispatch's prompt includes the full review log and an instruction to address every 🔴 Blocking finding. Then re-run mockup-reviewer. Repeat.
-- **NEEDS_DISCUSSION** — pause the loop. Summarise the reviewer's question to the operator in CEO-level language (one or two sentences), ask for direction, and resume the loop based on the answer.
+- **NEEDS_REWORK** — start the next round with the review log as the designer's feedback. The next mockup-designer dispatch's prompt includes the full review log and an instruction to address every 🔴 Blocking finding.
+- **NEEDS_DISCUSSION** — pause the loop. Summarise the reviewer's question to the operator in CEO-level language (one or two sentences), get direction, then start the next round with the operator's direction as feedback.
 
 **Iteration cap:** soft. If the same Blocking finding survives three rounds, escalate to NEEDS_DISCUSSION and surface to the operator. Looping a fourth time on the same finding is a sign the reviewer's interpretation and the designer's interpretation diverge — the operator must arbitrate.
 
@@ -88,20 +90,20 @@ Based on the verdict:
 
 ## Step 6 — Present to operator
 
-Only after reviewer returns CLEAN:
+Only after a round returns CLEAN:
 
 > Mockups ready at `<path(s)>`. Reviewer cleared the grounding and simplicity checks ({rounds} review round{s}). Open in a browser to click through. Reply with feedback for the next round, or **complete** when you're done iterating.
 
 Print the file paths as markdown links so the operator can click through directly.
 
-## Step 7 — Operator feedback loop
+## Step 7 — Operator response
 
 When the operator replies:
 
 - `complete` / `done` / `ship the mockup` / `approved` / `looks good` → exit the loop, jump to Step 8.
-- Any other text → treat as feedback. Send the feedback to mockup-designer for another round. After mockup-designer finishes, re-run mockup-reviewer (Step 4). If reviewer returns CLEAN, present to operator again (Step 6). If NEEDS_REWORK, loop internally first.
+- Any other text → treat as feedback for the next round. Return to Step 5 with the operator's reply as the designer's feedback for the next round. The next round runs the full designer + reviewer pair; whether the operator sees the result depends on that round's verdict, same as any other round.
 
-**Important:** every round (whether operator-initiated or reviewer-initiated) runs through the full designer + reviewer pair before reaching the operator. Never present a round to the operator that the reviewer has not cleared.
+**No bypass for "fast" feedback.** Every round (whether triggered by reviewer NEEDS_REWORK or operator feedback) runs through the full designer + reviewer pair before reaching the operator. There is no fast-path that skips the reviewer.
 
 **No iteration cap on operator feedback.** The operator decides when the mockup is done. Each round appends to `tasks/builds/{slug}/mockup-log.md` and writes a fresh review log so the audit trail survives.
 
