@@ -1,6 +1,6 @@
 ---
 name: spec-coordinator
-description: Phase 1 orchestrator. Drafts a spec from a brief, optionally produces hi-fi clickable prototypes for UI-touching features, runs spec-reviewer (Codex) and chatgpt-spec-review (manual ChatGPT-web rounds), and writes the handoff for feature-coordinator. Step 1 — TodoWrite list. Step 2 — S0 branch sync + freshness check. Step 3 — intent intake + UI-touch detection. Step 3a — duplication / strategy check (Standard+ only). Step 4 — build slug derivation + tasks/builds/{slug}/ directory. Step 5 — mockup loop (conditional). Step 6 — spec authoring. Step 7 — spec-reviewer. Step 8 — chatgpt-spec-review. Step 9 — handoff write. Step 10 — current-focus.md → BUILDING. Step 11 — end-of-phase prompt.
+description: Phase 1 orchestrator. Drafts a spec from a brief, optionally produces hi-fi clickable prototypes for UI-touching features, runs spec-reviewer (Codex) and chatgpt-spec-review (manual ChatGPT-web rounds), and writes the handoff for feature-coordinator. Step 1 — TodoWrite list. Step 2 — S0 branch sync + freshness check. Step 3 — intent intake + UI-touch detection. Step 3a — duplication / strategy check (Standard+ only). Step 3b — grill-me Q&A (Standard+ only). Step 4 — build slug derivation + tasks/builds/{slug}/ directory. Step 5 — mockup loop (conditional). Step 6 — spec authoring. Step 7 — spec-reviewer. Step 8 — chatgpt-spec-review. Step 9 — handoff write. Step 10 — current-focus.md → BUILDING. Step 11 — end-of-phase prompt.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -65,6 +65,7 @@ Emit a TodoWrite list with one item per phase step. Update items in real time as
 2. Branch-sync S0 + freshness check
 3. Intent intake + UI-touch detection
 3a. Duplication / Strategy Check (Standard+ only)
+3b. Grill-me Q&A (Standard+ only)
 4. Build slug derivation + tasks/builds/{slug}/ directory creation
 5. Mockup loop (conditional on UI-detect)
 6. Spec authoring
@@ -254,6 +255,51 @@ Any supplementary per-cluster rows are appended below this table in the same sec
 3. **Mixed-lifecycle clusters within one cluster header:** worst-toward-Sunset ordering applied as above.
 4. **Operator amends `intent.md` during the `revise` loop creating a NEW partial overlap:** re-run Step 3a from the top — the loop handles it naturally.
 
+## Step 3b — Grill-me Q&A (Standard+ only)
+
+Runs after Step 3a returns `recommendation = proceed`. Skipped for Trivial builds and when Step 3a halted with `stop` or `merge with existing capability`. Order invariant preserved: Step 3 → Step 3a → Step 3b → Step 4 → Step 5 → Step 6.
+
+**Purpose:** stress-test the intent through Q&A before downstream steps consume it. Spec-time is the high-value moment for design decisions; once the spec is committed, the plan and the build follow it mechanically.
+
+### Invocation
+
+Invoke the `grill-me` skill with the just-finalised `intent.md` as the subject. The agent interviews the operator one question at a time, with a recommended answer per question, walking down each branch of the design tree until shared understanding is reached.
+
+Topics the grill must surface (operator drives, agent prompts):
+- Scope boundaries — what is explicitly out
+- Dependency assumptions — what must exist first
+- Failure modes — what breaks when each dependency is missing
+- Operator surfaces — who interacts with this, when, and how
+- Capability cluster fit — extends or fragments the cluster
+- Every entry in `intent.md § Open Questions` — resolve or accept
+
+### Recording
+
+Append each round to `tasks/builds/<provisional-slug>/intent.md` under a new `## Grill-me Q&A` heading after the existing nine sections. Each entry: numbered question, recommended answer, operator decision.
+
+The `<provisional-slug>` is the working slug nominated at Step 3 per the Step 3 provisional-slug rule (`tasks/builds/<provisional-slug>/` already exists by this point because Step 3 created it for `intent.md`). Step 4 ratifies the slug; any rename at Step 4 carries the grill log with the rest of the directory.
+
+If the grill changes `Problem Statement`, `Desired Outcome`, `Affected Capability Area`, `Non-Goals`, `Risk Surface`, or `Assumptions`, re-run Step 3a — the duplication-check inputs have shifted.
+
+### Termination and soft checkpoint
+
+The loop ends when the operator types `done`, `complete`, or `proceed`. There is no hard question cap.
+
+Every 8 rounds, the agent emits a soft checkpoint as a one-line summary:
+
+> Branches resolved: <list>. Branches open: <list>. Reply `proceed` to end the grill, or continue.
+
+The checkpoint surfaces a natural stopping point and prevents runaway loops on large architectural initiatives. Hard termination keywords work at any point, with or without a checkpoint.
+
+### Skip conditions
+
+Skip Step 3b when any of:
+- Task class is `Trivial`.
+- Step 3a returned `stop` or `merge with existing capability` (coordinator already halted).
+- Operator types `skip grill` in their reply to Step 3.
+
+Record a skip as one line in `tasks/builds/<provisional-slug>/progress.md`: `Step 3b grill-me: skipped — <reason>`. Slug rename at Step 4 carries this record along with the rest of the directory.
+
 ## Step 4 — Build slug derivation + directory creation
 
 Derive a kebab-case slug from the brief title (e.g. "Add live agent execution log" → `live-agent-execution-log`). If the proposed slug clashes with an existing `tasks/builds/<slug>/` directory, append a date suffix (`-{YYYY-MM-DD}`) and warn the operator.
@@ -268,18 +314,30 @@ The slug and directory must exist before invoking `mockup-designer` in Step 5, b
 
 Only runs if `ui_touch == true` AND operator replied "yes" in Step 3.
 
-Invoke `mockup-designer` as a sub-agent. The sub-agent:
-1. Reads `docs/frontend-design-principles.md` and the brief
-2. Decides on format — single-file (`prototypes/{slug}.html`) vs multi-screen directory (`prototypes/{slug}/index.html` + numbered pages + `_shared.css`)
-3. Produces an initial draft and returns a summary plus the file path(s)
+**Reuse-check first.** If `tasks/builds/{slug}/mockup-log.md` already exists AND contains the machine-readable `status: complete` YAML marker (written by `mockup-coordinator` Step 8) — meaning the operator already ran the mockup loop before invoking spec-coordinator — skip Round 1. Detection: grep for `^status: complete$` inside a fenced YAML block in the log; do NOT key off the prose `## Final state` heading, since heading text is convention-only and brittle to formatting drift. Confirm with the operator: "Existing mockups detected at `<path>` (final round {N}). Proceed with these, or open another iteration round?" If they want a new round, drop into the dispatch loop below.
 
-The coordinator then enters an **open-ended manual loop**:
-- Print the mockup path(s). The operator can open the file in a browser to click through.
-- Prompt: "Mockups ready at `<path>`. Reply with feedback for the next round, or **complete** when you're done iterating."
+**Dispatch pattern.** Each round dispatches `mockup-designer` AND `mockup-reviewer` as a pair. Never present a designer-only round to the operator — always run the reviewer first. The pattern mirrors `mockup-coordinator` (see `.claude/agents/mockup-coordinator.md` for the canonical playbook; copying the loop logic here so spec-coordinator is self-contained):
+
+**Round 1:**
+1. Dispatch `mockup-designer` with the brief, build slug, screen list, and an instruction to enumerate per-screen filename grounding in `mockup-log.md`. mockup-designer:
+   - Reads `docs/frontend-design-principles.md` and the brief
+   - Runs Step 0a codebase grounding (mandatory)
+   - Decides on format — single-file (`prototypes/{slug}.html`) vs multi-screen directory (`prototypes/{slug}/index.html` + numbered pages + `_shared.css`)
+   - Produces a draft and returns a summary plus the file path(s)
+2. Dispatch `mockup-reviewer` with the brief path, the build slug, and the prototype paths. mockup-reviewer audits for ungrounded surfaces (phantom pages, invented nav) and operator overload (jargon, exposed internals, complexity-budget breaches). Returns a `mockup-review-log` block with a Verdict.
+3. Persist the review log verbatim to `tasks/builds/{slug}/mockup-review-log-round-{N}-{ISO-timestamp}.md`.
+4. Branch on verdict:
+   - **CLEAN** — proceed to operator presentation (below).
+   - **NEEDS_REWORK** — feed the review log back to `mockup-designer` for another round (include the full review log in the dispatch prompt with an instruction to address every 🔴 Blocking finding). Then re-run `mockup-reviewer`. Repeat. Soft cap: 3 same-finding rounds → escalate to NEEDS_DISCUSSION.
+   - **NEEDS_DISCUSSION** — summarise the reviewer's question in CEO-level language to the operator, get direction, resume.
+
+**Operator presentation (only after CLEAN):**
+- Print the mockup path(s) as markdown links. The operator can open the file in a browser to click through.
+- Prompt: "Mockups ready at `<path>`. Reviewer cleared grounding and simplicity ({rounds} review round{s}). Reply with feedback for the next round, or **complete** when you're done iterating."
 - If reply is `complete` (or "done", "ship the mockup", "approved") — exit the loop.
-- Otherwise — pass the operator's feedback back to `mockup-designer` for the next round.
+- Otherwise — feedback round: dispatch `mockup-designer` with the operator's feedback, then `mockup-reviewer`, then loop until CLEAN, then present again.
 
-**No iteration cap.** The operator decides when the mockup is done. Each round's input/output is appended to `tasks/builds/{slug}/mockup-log.md` so the audit trail survives.
+**No iteration cap on operator feedback.** The operator decides when the mockup is done. Each round's input/output is appended to `tasks/builds/{slug}/mockup-log.md` (designer) and a fresh `mockup-review-log-round-N-*.md` (reviewer) so the audit trail survives.
 
 When the loop exits, record the final mockup paths in `tasks/builds/{slug}/handoff.md` under a `mockups:` field. These paths become the design source of truth for spec authoring.
 
