@@ -29,9 +29,10 @@ Before starting, read:
 2. `CLAUDE.md` — global playbook. Skim for User Preferences, agent fleet conventions, review-log filename rules.
 3. `architecture.md` — backend conventions, layer rules, tenant-isolation posture.
 4. `DEVELOPMENT_GUIDELINES.md` — locked invariants the audit must enforce (tenant isolation, schema-leaf rule, service-tier boundaries, gate protocol, migration discipline). Read if present and the hotspot covers tenant isolation, agent execution, queues, or webhooks. Skip when absent OR for frontend-only hotspots.
-5. `KNOWLEDGE.md` — past corrections to honour. Pay attention to entries about file-path verification before asserting a path exists.
-6. `tasks/todo.md` — existing deferred items (you will dedup against this when routing pass-3 findings).
-7. `tasks/current-focus.md` — sprint pointer; tells you what's already in flight on other branches.
+5. `.claude/agents/extensions/audit-runner.md` — project-specific hotspot inventory, protected paths, and critical-finding categories, if present. Skip if missing. See `references/project-extensions-convention.md` for the convention.
+6. `KNOWLEDGE.md` — past corrections to honour. Pay attention to entries about file-path verification before asserting a path exists.
+7. `tasks/todo.md` — existing deferred items (you will dedup against this when routing pass-3 findings).
+8. `tasks/current-focus.md` — sprint pointer; tells you what's already in flight on other branches.
 
 If the framework version in §header has changed since the last audit, note it. If §2 ({{PROJECT_NAME}} context block) appears stale vs current `package.json` / repo state, surface that to the user before running pass 1 — a stale context block silently mis-classifies safe vs protected files.
 
