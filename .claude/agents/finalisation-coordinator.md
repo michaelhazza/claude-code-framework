@@ -210,6 +210,8 @@ npm run lint
 npm run typecheck
 ```
 
+Append any project-specific baseline-coverage or drift gates after this line. Reference each script by path (e.g. `bash scripts/<your-gate>.sh`) and add a one-paragraph operator-handling note for failure modes.
+
 If either fails: route the full diagnostics to a fresh `builder` invocation for fix-up. Capped at **3 attempts**. On the fourth, escalate to the operator with the full diagnostic output and stop.
 
 This is the regression guard — it catches drift introduced by the S2 merge, or anything that slipped past Phase 2.

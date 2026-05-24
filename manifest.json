@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.5.0",
+  "frameworkVersion": "2.6.0",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/hooks/*.{js,sh}", "category": "hook", "mode": "sync", "substituteAt": "never" },

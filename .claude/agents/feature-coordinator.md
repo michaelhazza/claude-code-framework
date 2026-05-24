@@ -230,11 +230,13 @@ After G2 passes, present this checkpoint to the operator verbatim:
 
 > **G2 complete — all chunks built.**
 >
+> **MANDATORY STOP: switch to Opus before continuing.** The branch-level review pass (spec-conformance → adversarial-reviewer → pr-reviewer → reality-checker → dual-reviewer) requires the most capable model. Switch your session to Opus now, then reply.
+>
 > Before proceeding to branch-level review: has anything discovered during this build invalidated the spec? (E.g. a constraint that changes described behavior, a plan gap requiring a different implementation, an external API change.)
 >
-> Reply **continue** to proceed to the review pass. Or describe the issue — coordinator writes `phase_status: PHASE_2_SPEC_DRIFT_DETECTED` to handoff.md and pauses; the operator decides whether to re-run `spec-coordinator` for a targeted re-spec, or proceed with a documented deviation recorded in handoff.md under `spec_deviations:`.
+> Reply **continue** to proceed to the review pass (Opus only). Or describe the issue — coordinator writes `phase_status: PHASE_2_SPEC_DRIFT_DETECTED` to handoff.md and pauses; the operator decides whether to re-run `spec-coordinator` for a targeted re-spec, or proceed with a documented deviation recorded in handoff.md under `spec_deviations:`.
 
-Wait for operator reply. Do not proceed until `continue` is received or the deviation is recorded.
+Wait for operator reply. Do not proceed until `continue` is received or the deviation is recorded. **Do not start Step 8 until the operator has confirmed they are on Opus.**
 
 ## Step 8 — Branch-level review pass
 

@@ -32,6 +32,28 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.6.0 — 2026-05-24
+
+**Highlights:** Phase A decoupling — Synthetos / Automation OS specifics removed from agent and reference content; portable skills (grill-me, zoom-out) now ship with the framework; new portable hook spec-creation-grill-nudge nudges Standard+ spec authors to invoke grill-me; Post-G2 Opus-switch checkpoint propagated to feature-coordinator; generic project-baseline-gate slot wired into finalisation-coordinator G4.
+
+**Added:**
+- `.claude/skills/grill-me/SKILL.md` and `.claude/skills/zoom-out/SKILL.md` — two portable skills ported from mattpocock/skills (MIT). Referenced by spec-coordinator (grill-me) and as a session-start prompt (zoom-out) in CLAUDE.md.
+- `.claude/hooks/spec-creation-grill-nudge.js` (+ companion test) — UserPromptSubmit hook that nudges Claude to invoke grill-me when a prompt looks like a spec-creation request. Always exits 0; never blocks.
+- `feature-coordinator.md` Post-G2 checkpoint — mandatory Opus-switch instruction before branch-level review pass.
+
+**Changed:**
+- `audit-runner.md` — two literal `AutomationOS` placeholders replaced with `{{PROJECT_NAME}}`. v2.2 claimed this fix; it had regressed.
+- `docs/spec-context.md` — YAML body genericised; `accepted_primitives` and `convention_rejections` are now template placeholders. Synthetos-loaded content moved to automation-v1-local override.
+- `docs/spec-authoring-checklist.md` — Synthetos-specific paths, anchors, function names, migration anecdotes, and named past-specs genericised. Synthetos-flavoured content moved to automation-v1-local override.
+- `finalisation-coordinator.md` G4 step — extended with a generic project-baseline-gate slot (not the project-specific `verify-baseline-coverage.sh` path).
+- `ADAPT.md` and `README.md` — agent count 22 → 24; FULL profile now lists mockup-coordinator and mockup-reviewer; smoke-check counts corrected to 4 / 11 / 24.
+- `manifest.json` — frameworkVersion bumped 2.5.0 → 2.6.0; two literal skill entries added; settings.json now registers the spec-creation-grill-nudge hook.
+
+**Adoption notes (for downstream repos consuming this framework):**
+- Consuming repos that re-sync from v2.5.0 → v2.6.0 receive the genericised `docs/spec-context.md` and `docs/spec-authoring-checklist.md`. If a consuming repo had hand-customised either file, sync.js writes a `.framework-new` sibling and the operator merges manually. If a consuming repo had ALSO copied the old Synthetos-flavoured content as their own (rare — that content was not generic), they SHOULD move it to a repo-local override before applying the sync.
+- The two new skills (grill-me, zoom-out) sync into `.claude/skills/`. New directory; sync.js will create it.
+- The new hook (spec-creation-grill-nudge) appends to the `UserPromptSubmit` array via settings-merge. Existing UserPromptSubmit entries are preserved.
+
 ## 2.5.0 — 2026-05-18
 
 **Highlights:** Mockup pipeline gets a self-correcting loop. New `mockup-reviewer` agent independently audits every `mockup-designer` round for ungrounded surfaces (phantom pages, invented nav, fictional component extensions) and operator overload (jargon, exposed internals, complexity-budget breaches). New `mockup-coordinator` inline playbook owns the pre-spec mockup loop — any operator phrase like "create mockups for X" now triggers a self-correcting designer ↔ reviewer loop before the prototype reaches the operator. `spec-coordinator`'s Step 5 reuses the same dispatch pattern.
