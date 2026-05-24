@@ -27,7 +27,7 @@ Before starting, read:
 6. `tasks/todo.md` — existing deferred items (you will dedup against this when routing pass-3 findings).
 7. `tasks/current-focus.md` — sprint pointer; tells you what's already in flight on other branches.
 
-If the framework version in §header has changed since the last audit, note it. If §2 (AutomationOS context block) appears stale vs current `package.json` / repo state, surface that to the user before running pass 1 — a stale context block silently mis-classifies safe vs protected files.
+If the framework version in §header has changed since the last audit, note it. If §2 ({{PROJECT_NAME}} context block) appears stale vs current `package.json` / repo state, surface that to the user before running pass 1 — a stale context block silently mis-classifies safe vs protected files.
 
 ## Inputs — how you are invoked
 
@@ -105,7 +105,7 @@ For each in-scope area / module:
 1. Run the **How to investigate** steps from the framework. Static analysis, grep, gate scripts. Use `Bash` for commands; use `Grep` and `Glob` for codebase searches. Work directly — do not delegate to sub-agents. Mark the area's todo item `in_progress` before starting and `completed` when the finding table is written.
 2. Classify each finding: **severity** (critical / high / medium / low), **confidence** (high / medium / low), **justification** (named test, gate output, scope proof, or isolation proof), **proposed fix**, **target pass** (2 or 3), **prevention** (per Universal Rule 16 — target doc / hook / gate plus the concrete proposed addition, or `not feasible — <reason>`).
 3. Apply the automatic confidence-downgrade triggers from Universal Rule 8 — every shared-module touch, signature change, RLS-relevant file, idempotency surface, gate script, migration, or capabilities-editorial-boundary touch downgrades.
-4. Apply the test-coverage trust model (Rule 9). For AutomationOS, default coverage assumption is "low" unless a named test file covers the path — downgrade `high` to `medium` accordingly.
+4. Apply the test-coverage trust model (Rule 9). For {{PROJECT_NAME}}, default coverage assumption is "low" unless a named test file covers the path — downgrade `high` to `medium` accordingly.
 5. Write findings into the audit log under "Pass 1 Findings" — one table per area / module.
 6. After all areas are walked, **aggregate prevention proposals** across findings into the audit log under "Prevention Proposals" (framework §11 template). One proposal can close many findings — track the closure list per proposal, not per finding row. If a finding's prevention is `not feasible`, record it in the "Not feasible — rationale" sub-table with a one-line reason.
 
