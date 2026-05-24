@@ -74,12 +74,12 @@ The "invent new" path is the expensive one. Choosing it without justification is
 
 | Proposing… | Grep | Then check |
 |---|---|---|
-| A new table | `server/db/schema/**/*.ts` for similar columns or naming | `rlsProtectedTables.ts` to see how neighbouring tables are scoped |
-| A new route | `server/routes/**/*.ts` for similar list/get/update shapes | existing permission guards on neighbouring routes |
-| A new service | `server/services/**/*.ts` for similar responsibilities | whether an existing `*ServicePure.ts` already exports the logic |
-| A new job | `server/jobs/**/*.ts` + `server/jobs/index.ts` | whether an existing job can take a new payload variant |
-| A new skill | `server/skills/**/*.md` + `server/config/actionRegistry.ts` | whether the skill is a thin variant of an existing one |
-| A new prompt partition or cache tier | the prompt assembly in `agentExecutionServicePure.ts` | which partition the new content genuinely belongs in |
+| A new table | `your project's schema layer` for similar columns or naming | `your project's tenant-isolation manifest (e.g. an \`rlsProtectedTables.ts\` or equivalent)` to see how neighbouring tables are scoped |
+| A new route | `your project's route handlers` for similar list/get/update shapes | existing permission guards on neighbouring routes |
+| A new service | `your project's services` for similar responsibilities | whether an existing `*ServicePure.ts` already exports the logic |
+| A new job | `your project's job workers` | whether an existing job can take a new payload variant |
+| A new skill | `server/skills/**/*.md` + `your project's action registry` | whether the skill is a thin variant of an existing one |
+| A new prompt partition or cache tier | the prompt assembly in `your project's prompt-assembly service` | which partition the new content genuinely belongs in |
 | A new feature flag | `docs/spec-context.md` (`feature_flags: only_for_behaviour_modes`) | whether this is a *behaviour mode* (shadow vs active, dev vs prod) or a rollout gate (the latter is directional and almost always wrong here) |
 
 ### Reference
@@ -159,10 +159,10 @@ Every new tenant-scoped table (anything with `organisation_id` or `subaccount_id
 
 ### The four requirements
 
-1. **RLS policy** in the same migration that creates the table. See `architecture.md §1155 "Row-Level Security — Three-Layer Fail-Closed Data Isolation"` for the three-layer model and the exact policy shape.
-2. **Entry in `server/config/rlsProtectedTables.ts`** — this is the manifest that `verify-rls-coverage.sh` enforces. Missing entry = CI gate failure.
+1. **RLS policy** in the same migration that creates the table. See `your project's architecture documentation on tenant isolation (record the section number in \`docs/spec-context.md\`)` for the three-layer model and the exact policy shape.
+2. **Entry in `your project's tenant-isolation manifest (e.g. an \`rlsProtectedTables.ts\` or equivalent)`** — this is the manifest that `your project's tenant-isolation gates (CI scripts that enforce manifest coverage)` enforces. Missing entry = CI gate failure.
 3. **Route-level or middleware guard** if the table is accessed via HTTP. Name the guard in the spec (`authenticate`, `requirePermission(key)`, `resolveSubaccount`, or a new guard with a named location).
-4. **Principal-scoped context** if the table is read from an agent execution path. See `architecture.md §1116 "P3B — Principal-scoped RLS"`.
+4. **Principal-scoped context** if the table is read from an agent execution path. See `your project's architecture documentation on principal-scoped reads`.
 
 ### Canonical RLS-posture sentence
 
@@ -184,9 +184,9 @@ If your spec introduces behaviour that crosses a transactional or latency bounda
 
 ### The three choices
 
-- **Inline / synchronous** — caller blocks on the operation. Use when the result must be available before the caller returns. Example: prompt assembly during an agent run. Do NOT add a pg-boss job row for inline operations.
-- **Queued / asynchronous (pg-boss)** — durable, survives restarts, retryable. Use when the operation is decoupled from the caller. Do NOT describe this as "the service does X" in prose — a job processor does X, and the spec should say so.
-- **Cached / prompt-partition** — for LLM prompt sections that stay constant for a full request lifecycle. If you claim "stablePrefix", the partition table and the assembly code must both agree. A prompt partition in `dynamicSuffix` with a stated goal of 40–60% cache efficiency is a self-contradicting spec.
+- **Inline / synchronous** — caller blocks on the operation. Use when the result must be available before the caller returns. Example: prompt assembly during an agent run. Do NOT add a `your project's queue technology (e.g. pg-boss, BullMQ, Sidekiq, Celery)` job row for inline operations.
+- **Queued / asynchronous (`your project's queue technology (e.g. pg-boss, BullMQ, Sidekiq, Celery)`)** — durable, survives restarts, retryable. Use when the operation is decoupled from the caller. Do NOT describe this as "the service does X" in prose — a job processor does X, and the spec should say so.
+- **Cached / prompt-partition** — for LLM prompt sections that stay constant for a full request lifecycle. If you claim "stable prefix", the partition table and the assembly code must both agree. A prompt partition in `dynamic suffix` with a stated goal of 40–60% cache efficiency is a self-contradicting spec.
 
 ### Consistency pass
 
@@ -198,7 +198,7 @@ After writing the execution-model decision, check:
 
 ### Reviewer signal this prevents
 
-"Bulk dispatch marked inline but job row exists" / "Briefing in dynamicSuffix vs 40-60% cache efficiency" / "Sync postCall vs async job row" — caught on agent-intelligence, improvements-roadmap.
+"Bulk dispatch marked inline but job row exists" / "Briefing in dynamic suffix vs 40-60% cache efficiency" / "Sync postCall vs async job row" — caught on agent-intelligence, improvements-roadmap.
 
 ---
 
@@ -471,7 +471,7 @@ Before invoking `spec-reviewer` on a draft spec, answer yes to all of the follow
 - [ ] Every data shape crossing a boundary has a Contracts entry with an example
 - [ ] Every contract that writes to multiple representations declares the source-of-truth precedence
 - [ ] Every new tenant-scoped table has RLS policy + manifest entry + route guard + principal-scoped context (or a documented reason for opting out)
-- [ ] RLS posture stated using the canonical sentence ("RLS enforces the organisation boundary; subaccount filtering is service-layer"), or dual-GUC explicitly declared with the exact GUCs (`app.organisation_id`, `app.subaccount_id`), policy expectation, and transaction helper (`setOrgAndSubaccountGUC`) named
+- [ ] RLS posture stated using the canonical sentence ("RLS enforces the organisation boundary; subaccount filtering is service-layer"), or dual-GUC explicitly declared with the exact GUCs (`app.organisation_id`, `app.subaccount_id`), policy expectation, and transaction helper (`your project's GUC-setting transaction helper`) named
 - [ ] Execution model (sync/async, inline/queued, cached/dynamic) is picked explicitly and the prose + inventory + goals all agree
 - [ ] Phase dependency graph has no backward references, no orphaned deferrals, no phase-boundary contradictions
 - [ ] `## Deferred Items` section exists (even if "None.")
