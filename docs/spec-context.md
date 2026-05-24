@@ -21,70 +21,36 @@ stale_blocks_at_days: 120
 Current as of 2026-04-16. Update the date whenever any of the statements below change AND when the framing is verified to still apply (even if no statement changed). The staleness check above turns "I'll re-check this someday" into "the agent stops me at 4 months."
 
 ```yaml
-# Deployment context
-pre_production: yes
-live_users: no
-live_agencies: no
-testing_phase_started: no
-production_incidents_expected: no
+# Deployment context — fill in for your project
+pre_production: <yes|no>
+live_users: <yes|no>
+live_agencies: <yes|no>
+testing_phase_started: <yes|no>
+production_incidents_expected: <yes|no>
 
 # Stage of the app
-stage: rapid_evolution
-feature_stability: low
-breaking_changes_expected: yes
+stage: <rapid_evolution|stable|hardening>
+feature_stability: <low|medium|high>
+breaking_changes_expected: <yes|no>
 
 # Testing posture
-testing_posture: static_gates_primary
-runtime_tests: pure_function_only
-frontend_tests: none_for_now
-api_contract_tests: none_for_now
-e2e_tests_of_own_app: none_for_now
-performance_baselines: defer_until_production
-composition_tests: defer_until_stabilisation
+testing_posture: <static_gates_primary|hybrid|runtime_primary>
+runtime_tests: <none|pure_function_only|api_contract|e2e>
+frontend_tests: <none|unit|component|e2e>
 
 # Rollout model
-rollout_model: commit_and_revert
-feature_flags: only_for_behaviour_modes
-staged_rollout: never_for_this_codebase_yet
-migration_safety_tests: defer_until_live_data_exists
+rollout_model: <commit_and_revert|feature_flags|staged_rollout>
+feature_flags: <none|only_for_behaviour_modes|behaviour_and_rollout>
 
 # Architecture defaults
 prefer_existing_primitives_over_new_ones: yes
 accepted_primitives:
-  - policyEngineService
-  - actionService.proposeAction
-  - withBackoff (server/lib/withBackoff.ts)
-  - TripWire (server/lib/tripwire.ts)
-  - runCostBreaker (server/lib/runCostBreaker.ts)
-  - playbookEngineService
-  - failure() + FailureReason enum (shared/iee/failure.ts)
-  - createWorker() (server/lib/createWorker.ts)
-  - assertScope() (server/lib/scopeAssertion.ts) — per P1.1
-  - mutateActiveToolsPreservingUniversal() (server/services/agentExecutionServicePure.ts) — per P4.1
-  - withOrgTx / getOrgScopedDb / withAdminConnection (server/middleware/orgScoping.ts, server/instrumentation.ts) — three-layer fail-closed isolation entry points
-  - RLS_PROTECTED_TABLES manifest (server/config/rlsProtectedTables.ts) — single source of truth for tenant-isolated tables; new tenant tables MUST be added in the same migration that creates them
-  - verify-rls-coverage.sh + verify-rls-contract-compliance.sh (scripts/gates/) — CI gates that enforce RLS manifest coverage and direct-DB-access prohibition
-  - rls.context-propagation.test.ts (server/services/__tests__/) — integration test harness for Layer B RLS default-deny posture
-  - scheduleCalendarServicePure (server/services/scheduleCalendarServicePure.ts) — cron-parser / rrule / heartbeat-offset projection math; SOURCE_PRIORITY + computeNextHeartbeatAt
-  - agent_runs.is_test_run + testRunIdempotency + testRunRateLimit (server/lib/) — test-run dual-bucket idempotency and rate limiting
-  - shared/runStatus.ts — TERMINAL_RUN_STATUSES / IN_FLIGHT_RUN_STATUSES / AWAITING_RUN_STATUSES sets, single source of truth for run-status semantics
-  - agentExecutionEventService + agentExecutionEventServicePure (server/services/) — live per-run execution event emission with atomic sequence allocation, critical-tier retry, cap-signal atomic claim; discriminated-union validator + AGENT_EXECUTION_EVENT_CRITICALITY registry at shared/types/agentExecutionLog.ts (Phase 1 of tasks/live-agent-execution-log-spec.md)
-  - agentRunPromptService (server/services/agentRunPromptService.ts) — persists fully-assembled run prompts + layer attributions; per-run `agent_run_prompts` rows keyed on `(run_id, assembly_number)` with surrogate UUID
-  - agentRunPayloadWriter (server/services/agentRunPayloadWriter.ts) — redaction → tool-policy → greatest-first truncation pipeline for full LLM payload persistence with traceable `redacted_fields` + `modifications` columns
-  - redaction (server/lib/redaction.ts) — default pattern bundle (bearer / openai / anthropic / github / slack / aws / google) + cycle-safe JSON walker; used by payload writer and extensible by consumers
-  - agentRunVisibility + agentRunEditPermissionMask(Pure) (server/lib/) — single source of truth for the three-tier canView / canViewPayload / per-entity mask rules; mask is computed at read time only and never persisted (closes the privilege-drift class)
-  - RLS_PROTECTED_TABLES entries: agent_execution_events, agent_run_prompts, agent_run_llm_payloads (migration 0192)
+  # Add your project's preferred extension points here, one per line:
+  # - <primitive_name> (<path/to/file>) — <one-line description>
 
-# Conventions the spec-reviewer should reject findings against
+# Conventions the spec-reviewer should reject suggestions against
 convention_rejections:
-  - "do not add vitest / jest / playwright for own app (until Phase 2 trigger)"
-  - "do not add supertest for API contract tests (until Phase 2 trigger)"
-  - "do not add frontend unit tests (until Phase 2 trigger)"
-  - "do not add feature flags for new migrations"
-  - "do not add cross-tenant drift detection, speculative execution, or multi-agent reconciliation"
-  - "do not add predictive cost modelling or tool success scoring loops"
-  - "do not introduce new service layers when existing primitives fit"
-  - "do not replace the tsx + static-gate test convention"
+  # - "<convention to reject>"
 ```
 
 ---
