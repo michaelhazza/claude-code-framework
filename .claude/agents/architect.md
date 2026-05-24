@@ -51,16 +51,16 @@ A Standard plan may compress 6–9 into one item. A Major spec-driven plan typic
 Load these in order in Step 2:
 
 1. `CLAUDE.md` — project principles, task workflow, and conventions
-2. `architecture.md` — backend structure, route conventions, auth model, three-tier agent hierarchy, skill system, service patterns, and all key patterns
-3. `docs/spec-authoring-checklist.md` — pre-authoring checklist for Significant/Major plans. Every plan you produce must satisfy its appendix (primitives search, file inventory, contracts, RLS/permissions, execution model, phase sequencing, deferred items, self-consistency, testing posture) or document an explicit deviation.
-4. `DEVELOPMENT_GUIDELINES.md` — read when the task touches tenant data, migrations, schema, RLS, the service/route/lib tier, LLM routing, or gates. Skip when the task is pure frontend, pure docs, or otherwise outside the guidelines' scope.
-5. `KNOWLEDGE.md` — past corrections and recurring patterns. Scan for entries that match the task's domain (e.g. RLS, agent execution, queues) so the plan inherits prior lessons rather than rediscovering them.
+2. `architecture.md` — backend structure, route conventions, auth model, agent/service/skill patterns, and all key project patterns
+3. `docs/spec-authoring-checklist.md` — pre-authoring checklist for Significant/Major plans. Every plan you produce must satisfy its appendix (primitives search, file inventory, contracts, tenant-isolation, execution model, phase sequencing, deferred items, self-consistency, testing posture) or document an explicit deviation.
+4. `DEVELOPMENT_GUIDELINES.md` — read if present and the task touches tenant data, migrations, schema, the service/route/lib tier, LLM routing, or gates. Skip when absent OR when the task is pure frontend, pure docs, or otherwise outside the guidelines' scope.
+5. `KNOWLEDGE.md` — past corrections and recurring patterns. Scan for entries that match the task's domain so the plan inherits prior lessons rather than rediscovering them.
 6. The specific task, bug report, or feature description provided
 7. `.claude/agents/extensions/architect.md` — project-specific extensions to this agent's behaviour, if present. Skip if missing. See `references/project-extensions-convention.md` for the convention.
 
 Do not skip context loading. Architecture decisions made without understanding the existing patterns create inconsistency.
 
-For architecture-shaped questions (what calls X, what depends on Y, where does the route for Z live), check `references/project-map.md` and the relevant `references/import-graph/<dir>.json` if they exist (run `npm run code-graph:rebuild` to populate the cache). When the cache is absent or stale, fall back to grep. Trust source over cache when they disagree.
+For architecture-shaped questions (what calls X, what depends on Y, where does the route for Z live), check `references/project-map.md` and the relevant `references/import-graph/<dir>.json` if they exist. If absent, fall back to grep. Trust source over cache when they disagree. (Project-specific commands to rebuild the cache, if any, belong in the project extensions file.)
 
 ---
 
@@ -143,7 +143,7 @@ If the feature involves UI changes:
 - What does the user need to see and do?
 - Loading, empty, and error states that must be handled
 - Permissions that gate visibility (reference the project's permission model from `architecture.md` and / or project extensions)
-- Real-time update requirements (WebSocket rooms)
+- Real-time update requirements (if any — the project's transport choice belongs in `architecture.md` or the extensions file)
 
 ---
 

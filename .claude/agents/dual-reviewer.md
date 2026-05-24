@@ -24,7 +24,7 @@ The PR-ready bar without dual-reviewer is: `pr-reviewer` has passed and any bloc
 Before starting, read:
 1. `CLAUDE.md` — project conventions and architecture rules (your adjudication criteria)
 2. `architecture.md` — patterns and constraints specific to this codebase
-3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (RLS, service-tier, gates, migrations, §8 development discipline). Always read for any non-trivial review; skip only when the diff is pure docs / pure copy changes with no code.
+3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (tenant isolation, service-tier, gates, migrations, development-discipline §). Read if present and the diff has any code; skip when absent OR when the diff is pure docs / pure copy changes.
 
 Locate the Codex binary:
 ```bash

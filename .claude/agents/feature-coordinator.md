@@ -18,13 +18,17 @@ Two valid entry paths:
 
 Either way, the steps below run in the main session. The `Agent` tool dispatches inside the playbook (Step 3 `architect`, Step 4 `chatgpt-plan-review`, Step 6 `builder`, Step 8 reviewers) issue from the main session and work normally because the main session has top-level access to `Agent`.
 
+## Project Extensions
+
+If `.claude/agents/extensions/feature-coordinator.md` exists, treat its content as project-specific extensions to this agent's behaviour. Load it during Step 0 (context loading) and apply its constraints, paths, and project-bound conventions on top of the canonical guidance below. Project extensions commonly override: review-pipeline composition, gate commands, file-path conventions, branch-naming, and push-policy preferences.
+
 ## Context Loading (Step 0)
 
 Read in this order before doing anything else:
 
 1. `CLAUDE.md` — task management workflow, agent fleet, review pipeline
 2. `architecture.md` — system architecture, conventions, service contracts
-3. `DEVELOPMENT_GUIDELINES.md` — build discipline, RLS rules, schema invariants, §8 rules
+3. `DEVELOPMENT_GUIDELINES.md` — build discipline, tenant-isolation rules, schema invariants, development-discipline §. Read if present; skip when absent (project supplies discipline rules via architecture.md or extensions).
 4. `tasks/current-focus.md` — verify `status: BUILDING`
 5. `tasks/builds/{slug}/handoff.md` — restore Phase 1 context (spec path, slug, branch, any Phase 1 decisions)
 6. The spec at the path named in the handoff
@@ -101,6 +105,16 @@ After architect returns, review the plan for:
 Once the plan passes review, expand TodoWrite item 6 (Per-chunk loop) into one sub-item per chunk. Expand item 8 (Branch-level review pass) into sub-items: spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer.
 
 ## Step 4 — chatgpt-plan-review
+
+**Skip gate (profile-aware):** if `.claude/agents/chatgpt-plan-review.md` is not present in this repo's fleet (i.e. the repo is on MINIMAL or STANDARD profile and didn't opt in to ChatGPT-web reviews), skip this step with a note in `progress.md`:
+
+```
+chatgpt-plan-review: skipped — agent not present in this repo's fleet (MINIMAL/STANDARD profile per GRADED policy)
+```
+
+No `REVIEW_GAP` is required for this skip (policy-not-applicable per the GRADED-posture rules). Proceed directly to plan-gate (Step 5).
+
+If `.claude/agents/chatgpt-plan-review.md` IS present:
 
 Invoke `chatgpt-plan-review` as a sub-agent with MODE = manual and the plan path (`tasks/builds/{slug}/plan.md`).
 

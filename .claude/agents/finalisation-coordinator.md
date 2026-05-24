@@ -28,7 +28,7 @@ Read in order:
 
 1. `CLAUDE.md`
 2. `architecture.md`
-3. `DEVELOPMENT_GUIDELINES.md`
+3. `DEVELOPMENT_GUIDELINES.md` (if present; skip when absent)
 4. `docs/doc-sync.md` — canonical reference doc list
 5. `tasks/current-focus.md` — verify `status: REVIEWING`; refuse if not REVIEWING
 6. `tasks/builds/{slug}/handoff.md` — restore Phase 2 context (derive `{slug}` from the `build_slug` field in step 5)

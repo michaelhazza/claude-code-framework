@@ -32,6 +32,39 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.6.1 — 2026-05-24
+
+**Highlights:** Stage 2 framework polish — consolidates findings from Foundry / CryptoTrackr / Freedom Planner sibling adoptions. De-contaminates canonical agent templates of origin-project literals (the framework now describes patterns; project-specific paths and identifiers live in each repo's `.claude/agents/extensions/<agent>.md` overlay). Lifts CryptoTrackr's audit-runner invariants (M1, M2, I1-I3, F1-F5, E1-E5) into canonical. Fixes two `sync.js` bugs that blocked clean adoption elsewhere. Makes `feature-coordinator` profile-aware so STANDARD-profile repos don't choke on missing FULL-only reviewer dispatches.
+
+**Added:**
+- `references/project-extensions-convention.md` — documents the `.claude/agents/extensions/<agent>.md` overlay convention end-to-end. Canonical agents now reference it explicitly.
+- `## Project Extensions` directive section in `architect.md`, `pr-reviewer.md`, `audit-runner.md`, `feature-coordinator.md` — instructs the agent to load `.claude/agents/extensions/<agent>.md` if present at context-load time.
+- `## Branch Naming and Slug Normalization (M1)` section in `audit-runner.md`.
+- `## Invariants` section in `audit-runner.md` lifting CryptoTrackr's I1 (read-only-by-default pass-1), I3 (no-parallel-area pass-2), F2/E3/E5 (pass-2 hard allow-list ≤30 LOC / ≤3 files / no schema / no migration / no encryption / no dep changes), E4 (no-speculative-fix), E2 (finding-state invariant), F5 (schema/migration always pass-3), F1/I4/E1 (commit-and-rollback discipline) — all project-agnostic.
+- M2 invariant in `audit-runner.md` Pre-flight (behind-main check: `git rev-list --left-right --count origin/main...HEAD`).
+- Profile-aware skip block in `feature-coordinator.md` Step 4 — `chatgpt-plan-review` is skipped (no `REVIEW_GAP` required) when the agent file is not present in the repo's fleet (MINIMAL/STANDARD profile per GRADED policy).
+
+**Changed:**
+- `architect.md` — "Architecture Constraints" wrong-project section (L145-159 of v2.6.0) removed and replaced with a pointer to the project's `architecture.md` + project extensions file. `DEVELOPMENT_GUIDELINES.md` context-load made conditional ("read if present"). "Three-tier agent hierarchy" / "two-tier permission model" / "WebSocket rooms" / `references/project-map.md` build commands all softened to project-agnostic prose.
+- `pr-reviewer.md` — "Specific Things to Check" wrong-project subsections (L60-99 of v2.6.0) removed and replaced with project-agnostic category headers that point to the project extensions file. `DEVELOPMENT_GUIDELINES.md` context-load made conditional. Convention-violation and shallow-modules bullets softened (no more `resolveSubaccount` / `asyncHandler` references).
+- `audit-runner.md` — hardcoded subsystem inventory (origin-project hotspots: `rls`, `agent-execution`, `queues`, `skills`, `webhooks`) and per-hotspot path resolution removed. Hotspots are now project-supplied via the extensions file. Universal Rules section no longer references the unshipped `docs/codebase-audit-framework.md`.
+- `feature-coordinator.md` — `DEVELOPMENT_GUIDELINES.md` context-load made conditional. Step 4 (chatgpt-plan-review) now profile-aware.
+- `builder.md`, `dual-reviewer.md`, `chatgpt-pr-review.md`, `chatgpt-spec-review.md`, `adversarial-reviewer.md`, `finalisation-coordinator.md` — `DEVELOPMENT_GUIDELINES.md` context-load made conditional across the agent fleet ("read if present; skip when absent"). Architecture/RLS references softened to project-agnostic wording where the underlying concept (tenant isolation, service-tier, etc.) is universal.
+- `manifest.json` — `docs/frontend-design-principles.md` and `references/spec-review-directional-signals.md` `substituteAt` flipped from `"never"` to `"adoption"`. Both files contain `{{PROJECT_NAME}}` / `{{COMPANY_NAME}}` placeholders that were shipping unfilled — surfaced by Foundry's adoption. Consuming repos that already adopted v2.6.0 will see those two files reclassify as needing re-substitution on next `sync.js --apply`.
+
+**Fixed:**
+- `sync.js` `frameworkHookIdentity()` no longer crashes with `Cannot read properties of undefined (reading 'trim')` when settings.json contains a hook entry without a `command` string (e.g. agent-type hooks with `prompt` instead of `command`). Such hooks are now correctly classified as project-owned (not framework-owned). Surfaced by Foundry's `--adopt` where a pre-existing PR-quality-gate hook had `type: "agent"`. Workaround in Foundry v2.6.0 adoption: manual settings.json merge — no longer required at v2.6.1.
+- `sync.js` `classifyForAdopt()` now honours `state.syncIgnore`, matching the regular `classifyFile()` path. Surfaced by Foundry where `--adopt` re-added FULL-only agents that had been explicitly pruned during STANDARD profile selection. Workaround in v2.6.0: post-adopt delete + re-add to syncIgnore — no longer required.
+
+**Adoption notes (for repos consuming this framework upgrade):**
+
+- Consuming repos that adopted v2.6.0 and committed canonical-with-overlay agent files: re-running `node .claude-framework/sync.js` after the v2.6.1 update will reclassify `architect.md`, `pr-reviewer.md`, and `audit-runner.md` as needing update (because canonical now matches what their overlay-using copies already had). `.framework-new` siblings produced during the v2.6.0 adoption can now be deleted; their content is already absorbed into canonical v2.6.1.
+- Sibling repos that adopted v2.6.0 with `customisedLocally: true` on the contaminated agents (and stripped the wrong-project content locally) should diff their local against the new canonical v2.6.1 — most local strips are now redundant.
+- Two reference docs that previously shipped unfilled placeholders (`docs/frontend-design-principles.md`, `references/spec-review-directional-signals.md`) will re-substitute on next apply. Any local edits to those files survive (they're mode `sync`, not `adopt-only`); operators see a `.framework-new` sibling if local diverges from the canonical.
+- Foundry's documented v2.6.0 workarounds (manual settings.json merge, manual delete of FULL-only agents post-adopt) are no longer needed at v2.6.1.
+
+---
+
 ## 2.6.0 — 2026-05-24
 
 **Highlights:** Phase A decoupling — Synthetos / Automation OS specifics removed from agent and reference content; portable skills (grill-me, zoom-out) now ship with the framework; new portable hook spec-creation-grill-nudge nudges Standard+ spec authors to invoke grill-me; Post-G2 Opus-switch checkpoint propagated to feature-coordinator; generic project-baseline-gate slot wired into finalisation-coordinator G4.

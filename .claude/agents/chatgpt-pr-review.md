@@ -32,7 +32,7 @@ To toggle mid-session: say **"set human in loop off"** or **"set human in loop o
 ## Before doing anything else, read:
 1. `CLAUDE.md` — project conventions, architecture rules, decision criteria
 2. `architecture.md` — all patterns and constraints you will use to adjudicate ChatGPT suggestions
-3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (RLS, service-tier, gates, migrations, §8 development discipline) used to evaluate whether a ChatGPT suggestion contradicts existing locked policy. Always read for any non-trivial review; skip only when the diff is pure docs / pure copy changes with no code.
+3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (tenant isolation, service-tier, gates, migrations, development-discipline §) used to evaluate whether a ChatGPT suggestion contradicts existing locked policy. Read if present and the diff has any code; skip when absent OR when the diff is pure docs / pure copy changes.
 
 ---
 

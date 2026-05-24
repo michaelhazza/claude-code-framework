@@ -51,8 +51,8 @@ The branch diff — **the caller provides the changed-file set**, same posture a
 
 Before reviewing, read in order:
 1. `CLAUDE.md` — project principles and conventions.
-2. `architecture.md` — three-tier agent model, RLS, route conventions, permission system.
-3. `DEVELOPMENT_GUIDELINES.md` — read when changes touch `migrations/`, `server/db/schema/`, `server/services/`, `server/routes/`, `server/lib/`, RLS policies, or LLM-routing code. Skip when changes are pure frontend or pure docs.
+2. `architecture.md` — the project's agent/auth model, tenant-isolation model, route conventions, and permission system.
+3. `DEVELOPMENT_GUIDELINES.md` — read if present and the changes touch migrations, schema, services, routes, shared libs, tenant-isolation policies, or LLM-routing code. Skip when absent OR when changes are pure frontend / pure docs.
 4. The specific files changed (provided by the caller).
 
 ## Threat model checklist

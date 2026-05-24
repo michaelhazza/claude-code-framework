@@ -48,7 +48,7 @@ To toggle mid-session: say **"set human in loop off"** or **"set human in loop o
 ## Before doing anything else, read:
 1. `CLAUDE.md` — project conventions and the "Before you write a spec" section
 2. `docs/spec-context.md` — framing ground truth for all specs in this project
-3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (RLS, service-tier, gates, migrations, §8 development discipline) used to evaluate whether a ChatGPT spec suggestion contradicts existing locked policy. Always read; skip only for trivial typo / formatting specs.
+3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (tenant isolation, service-tier, gates, migrations, development-discipline §) used to evaluate whether a ChatGPT spec suggestion contradicts existing locked policy. Read if present; skip when absent OR for trivial typo / formatting specs.
 
 ---
 

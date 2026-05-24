@@ -797,12 +797,14 @@ function isFrameworkOwnedCommand(command) {
 
 /**
  * Extract the identity token for a framework-owned command: the .claude/hooks/<name> path token.
- * Returns null if the command is not framework-owned.
+ * Returns null if the command is not framework-owned, OR if the hook entry has no `command` string
+ * (e.g. agent-type hooks with `prompt` instead of `command` — those are NEVER framework-owned).
  * Mirrors the same two-position check as isFrameworkOwnedCommand.
- * @param {string} command
+ * @param {string|undefined|null} command
  * @returns {string|null}
  */
 function frameworkHookIdentity(command) {
+  if (typeof command !== 'string' || command.trim() === '') return null;
   const hookPattern = /^(\$\{CLAUDE_PROJECT_DIR\}\/)?\.claude\/hooks\/[^\s]+$/;
   const tokens = command.trim().split(/\s+/);
   if (hookPattern.test(tokens[0])) return tokens[0];
@@ -1022,6 +1024,12 @@ async function mergeSettings(ctx, entry, relativePath) {
  */
 function classifyForAdopt(ctx, entry, relativePath) {
   if (entry.mode === 'settings-merge') return { kind: 'settings-merge' };
+  // syncIgnore check: honour the same skip-list the regular sync path honours.
+  // Without this, --adopt re-adds files the operator has explicitly pruned (e.g. FULL-only
+  // agents removed during a STANDARD profile prune).
+  if (ctx.state && ctx.state.syncIgnore && ctx.state.syncIgnore.includes(relativePath)) {
+    return { kind: 'skipped', reason: 'syncIgnore' };
+  }
   if (!ctx.state) {
     // First-run: treat every file as new-file-no-state
     const targetPath = path.join(ctx.targetRoot, relativePath);

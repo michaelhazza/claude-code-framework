@@ -16,7 +16,7 @@ If `.claude/agents/extensions/pr-reviewer.md` exists, treat its content as proje
 Before reviewing, read:
 1. `CLAUDE.md` — project principles and conventions
 2. `architecture.md` — all patterns, conventions, and constraints that must be enforced
-3. `DEVELOPMENT_GUIDELINES.md` — read when the changed files include `migrations/`, `server/db/schema/`, `server/services/`, `server/routes/`, `server/lib/`, RLS policies, or LLM-routing code. Skip when the changes are pure frontend, pure docs, or otherwise outside the guidelines' scope.
+3. `DEVELOPMENT_GUIDELINES.md` — read if present and the changed files include migrations, schema, services, routes, shared libs, tenant-isolation policies, or LLM-routing code. Skip when absent OR when the changes are pure frontend, pure docs, or otherwise outside the guidelines' scope.
 4. `.claude/agents/extensions/pr-reviewer.md` — project-specific checks, if present. Skip if missing. See `references/project-extensions-convention.md` for the convention.
 5. The specific files changed (provided by the caller)
 
@@ -40,7 +40,7 @@ Organise findings into three tiers. Be specific — point to file paths and line
 - Missing test coverage for new behaviour — describe the missing test in Given/When/Then format so the main session has a clear spec to implement. The implementer authors and runs ONLY the new test file locally (`npx tsx <path-to-test>` or the project's targeted-test idiom); the broader suite runs in CI on the PR — never ask the implementer to run `npm test` or any test-gate command.
 - Opportunities where a simpler approach exists — with concrete suggestion
 - Performance issues that will matter at scale — with evidence, not speculation
-- **Shallow modules** — for any new module, service, class, or non-trivial helper introduced by these changes, ask: is the public interface more complex than the implementation behind it? Smell signals: a wrapper that forwards arguments verbatim to a single underlying call; a service whose every method maps 1:1 to a table row; an exported type surface (options bag, return shape, error union) larger than the body it guards; a "manager" or "helper" file whose only job is re-exporting. When the smell is present, name it and propose either inlining at the call site or absorbing the surface into a neighbouring deep module. Do NOT flag established thin layers that exist for a documented reason (route → service → db tier separation, asyncHandler wrappers, the resolveSubaccount guard) — those are conventions, not shallow modules.
+- **Shallow modules** — for any new module, service, class, or non-trivial helper introduced by these changes, ask: is the public interface more complex than the implementation behind it? Smell signals: a wrapper that forwards arguments verbatim to a single underlying call; a service whose every method maps 1:1 to a table row; an exported type surface (options bag, return shape, error union) larger than the body it guards; a "manager" or "helper" file whose only job is re-exporting. When the smell is present, name it and propose either inlining at the call site or absorbing the surface into a neighbouring deep module. Do NOT flag established thin layers that exist for a documented reason (route → service → data-access tier separation, request-scoping middleware, tenant-context guards) — those are conventions, not shallow modules. (Project-specific examples of "conventions, not shallow modules" belong in the extensions file.)
 
 ### 💭 Consider — taste / future-proofing / nice-to-have
 

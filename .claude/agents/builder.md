@@ -12,7 +12,7 @@ You implement a single named chunk from an implementation plan. You are a leaf s
 Read in order:
 1. `CLAUDE.md`
 2. `architecture.md`
-3. `DEVELOPMENT_GUIDELINES.md` — read ONLY when the chunk touches `migrations/`, `server/db/schema/`, `server/services/`, `server/routes/`, `server/lib/`, RLS policies, or LLM-routing code. Skip for pure-frontend or pure-docs chunks.
+3. `DEVELOPMENT_GUIDELINES.md` — read if present and the chunk touches migrations, schema, services, routes, shared libs, tenant-isolation policies, or LLM-routing code. Skip when absent OR for pure-frontend / pure-docs chunks.
 4. The plan file at the path provided by the caller
 5. The specific chunk section in the plan
 6. Any files the chunk references that already exist in the repo (Read before Edit)
