@@ -36,7 +36,7 @@ Before authoring any spec that draws from deferred items in `tasks/todo.md` (or 
 
 ### Why this matters
 
-Surrounding work routinely closes deferred items between mini-spec authoring and spec drafting. On the pre-launch hardening sprint, a mini-spec claimed 60 open RLS gaps; verification found 2 — migration 0227 had already closed the other 58. Without the verification step the spec would have re-litigated 58 already-fixed items, consuming review cycles and producing invalid scope.
+Surrounding work routinely closes deferred items between mini-spec authoring and spec drafting. A mini-spec claimed 60 open gaps; verification found 2 — surrounding work had already closed the other 58. Without the verification step the spec would have re-litigated 58 already-fixed items, consuming review cycles and producing invalid scope.
 
 ### The verification pass
 
@@ -74,7 +74,7 @@ The "invent new" path is the expensive one. Choosing it without justification is
 
 | Proposing… | Grep | Then check |
 |---|---|---|
-| A new table | `your project's schema layer` for similar columns or naming | `your project's tenant-isolation manifest (e.g. an \`rlsProtectedTables.ts\` or equivalent)` to see how neighbouring tables are scoped |
+| A new table | `your project's schema layer` for similar columns or naming | `your project's tenant-isolation manifest` to see how neighbouring tables are scoped |
 | A new route | `your project's route handlers` for similar list/get/update shapes | existing permission guards on neighbouring routes |
 | A new service | `your project's services` for similar responsibilities | whether an existing `*ServicePure.ts` already exports the logic |
 | A new job | `your project's job workers` | whether an existing job can take a new payload variant |
@@ -89,7 +89,9 @@ The "invent new" path is the expensive one. Choosing it without justification is
 
 ### Reviewer signal this prevents
 
-"You invented a new X, but the codebase already has a similar X — should you reuse it or are these genuinely different?" — caught on ClientPulse-GHL, session-1-foundation, skill-analyzer-v2, and others.
+"You invented a new X, but the codebase already has a similar X — should you reuse it or are these genuinely different?" — a recurring directional finding across multiple specs.
+
+> Origin-project examples: ClientPulse-GHL, session-1-foundation, skill-analyzer-v2.
 
 ---
 
@@ -115,7 +117,9 @@ If any prose reference is missing from the inventory, the reviewer will raise a 
 
 ### Reviewer signal this prevents
 
-"File X is referenced in §5 but not in the Files-to-change table" — caught on agent-intelligence, canonical-data-platform, improvements-roadmap, memory-and-briefings, onboarding-playbooks (migration numbers especially).
+"File X is referenced in §5 but not in the Files-to-change table" — caught across multiple specs (migration numbers especially).
+
+> Origin-project examples: agent-intelligence, canonical-data-platform, improvements-roadmap, memory-and-briefings, onboarding-playbooks.
 
 ---
 
@@ -147,9 +151,11 @@ Add this as a named subsection in the spec's Contracts block, not as a prose asi
 
 ### Reviewer signal this prevents
 
-"X is processed by Y but the payload shape is never defined" — caught on geo-seo, skill-analyzer-v2, improvements-roadmap, robust-scraping, memory-and-briefings.
+"X is processed by Y but the payload shape is never defined" — a recurring finding across multiple specs.
 
-"Multiple representations of the same fact, no declared winner" — caught during the pre-launch hardening cross-spec consistency sweep (Phase 5/6 alignment on execution record vs artefact precedence).
+"Multiple representations of the same fact, no declared winner" — caught during cross-spec consistency sweeps (e.g. Phase 5/6 alignment on execution record vs artefact precedence).
+
+> Origin-project examples: geo-seo, skill-analyzer-v2, improvements-roadmap, robust-scraping, memory-and-briefings.
 
 ---
 
@@ -160,7 +166,7 @@ Every new tenant-scoped table (anything with `organisation_id` or `subaccount_id
 ### The four requirements
 
 1. **RLS policy** in the same migration that creates the table. See `your project's architecture documentation on tenant isolation (record the section number in \`docs/spec-context.md\`)` for the three-layer model and the exact policy shape.
-2. **Entry in `your project's tenant-isolation manifest (e.g. an \`rlsProtectedTables.ts\` or equivalent)`** — this is the manifest that `your project's tenant-isolation gates (CI scripts that enforce manifest coverage)` enforces. Missing entry = CI gate failure.
+2. **Entry in `your project's tenant-isolation manifest`** — this is the manifest that `your project's tenant-isolation gates (CI scripts that enforce manifest coverage)` enforces. Missing entry = CI gate failure.
 3. **Route-level or middleware guard** if the table is accessed via HTTP. Name the guard in the spec (`authenticate`, `requirePermission(key)`, `resolveSubaccount`, or a new guard with a named location).
 4. **Principal-scoped context** if the table is read from an agent execution path. See `your project's architecture documentation on principal-scoped reads`.
 
@@ -174,7 +180,9 @@ If a new table is intentionally *not* tenant-scoped (e.g. system-wide reference 
 
 ### Reviewer signal this prevents
 
-"RLS claimed needed but migration doesn't include policies" / "Endpoint unguarded" / "Access control stated in Goals but not enforced in routes or migrations" — caught on ClientPulse, config-agent-guidelines (multiple rounds), canonical-data-platform, memory-and-briefings.
+"RLS claimed needed but migration doesn't include policies" / "Endpoint unguarded" / "Access control stated in Goals but not enforced in routes or migrations" — a recurring blocking finding across multiple specs.
+
+> Origin-project examples: ClientPulse, config-agent-guidelines, canonical-data-platform, memory-and-briefings.
 
 ---
 
@@ -198,7 +206,9 @@ After writing the execution-model decision, check:
 
 ### Reviewer signal this prevents
 
-"Bulk dispatch marked inline but job row exists" / "Briefing in dynamic suffix vs 40-60% cache efficiency" / "Sync postCall vs async job row" — caught on agent-intelligence, improvements-roadmap.
+"Bulk dispatch marked inline but job row exists" / "Briefing in dynamic suffix vs 40-60% cache efficiency" / "Sync postCall vs async job row" — caught across multiple specs.
+
+> Origin-project examples: agent-intelligence, improvements-roadmap.
 
 ---
 
@@ -226,7 +236,9 @@ Then for every "referenced by code" column, confirm it's in an equal-or-earlier 
 
 ### Reviewer signal this prevents
 
-"Phase N depends on column X but X ships in Phase N+k" — caught on agent-intelligence, canonical-data-platform, improvements-roadmap, memory-and-briefings.
+"Phase N depends on column X but X ships in Phase N+k" — caught across multiple multi-phase specs.
+
+> Origin-project examples: agent-intelligence, canonical-data-platform, improvements-roadmap, memory-and-briefings.
 
 ---
 
@@ -251,7 +263,9 @@ Empty is fine — if nothing is deferred, write "None." rather than omitting the
 
 ### Reviewer signal this prevents
 
-"S14 described as standalone in §5.10 but marked deferred in Q6" / "Deferred items scattered through prose and inferred rather than listed" — caught on memory-and-briefings, geo-seo.
+"S14 described as standalone in §5.10 but marked deferred in Q6" / "Deferred items scattered through prose and inferred rather than listed" — caught across multiple specs.
+
+> Origin-project examples: memory-and-briefings, geo-seo.
 
 ---
 
@@ -281,7 +295,9 @@ Every hit must reconcile to the same number in the file inventory. Mismatched co
 
 ### Reviewer signal this prevents
 
-"Goals say X but Implementation does Y" / "Load-bearing claim without enforcement" — caught on agent-intelligence, ClientPulse (multiple), geo-seo, improvements-roadmap.
+"Goals say X but Implementation does Y" / "Load-bearing claim without enforcement" — caught across multiple specs, often more than once per spec.
+
+> Origin-project examples: agent-intelligence, ClientPulse, geo-seo, improvements-roadmap.
 
 ---
 
@@ -306,7 +322,9 @@ If your spec's test plan proposes anything in the `none_for_now` or `defer_until
 
 ### Reviewer signal this prevents
 
-"Spec proposes E2E/frontend/API-contract tests against framing" — caught on onboarding-playbooks (D1, D2), routines-response.
+"Spec proposes E2E/frontend/API-contract tests against framing" — caught across multiple specs.
+
+> Origin-project examples: onboarding-playbooks, routines-response.
 
 ---
 
