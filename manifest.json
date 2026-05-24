@@ -30,6 +30,7 @@
     "KNOWLEDGE.md",
     "architecture.md",
     "DEVELOPMENT_GUIDELINES.md",
-    "tasks/**"
+    "tasks/**",
+    ".claude/hooks/package.json"
   ]
 }
