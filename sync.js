@@ -14,7 +14,7 @@ const { spawnSync } = require('child_process');
 /**
  * @typedef {'never'|'adoption'} ManifestSubstituteAt
  * @typedef {'sync'|'adopt-only'|'settings-merge'} ManifestMode
- * @typedef {'agent'|'hook'|'settings'|'version'|'changelog'|'adr'|'context-pack'|'reference'|'template'} ManifestCategory
+ * @typedef {'agent'|'hook'|'skill'|'settings'|'version'|'changelog'|'adr'|'context-pack'|'reference'|'template'} ManifestCategory
  * @typedef {{ path: string, category: ManifestCategory, mode: ManifestMode, substituteAt: ManifestSubstituteAt }} ManifestEntry
  * @typedef {{ path: string, removedIn: string, action: 'warn-only' }} RemovedFile
  * @typedef {{ frameworkVersion: string, managedFiles: ManifestEntry[], removedFiles: RemovedFile[], doNotTouch: string[] }} Manifest

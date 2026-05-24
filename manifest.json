@@ -3,6 +3,8 @@
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/hooks/*.{js,sh}", "category": "hook", "mode": "sync", "substituteAt": "never" },
+    { "path": ".claude/skills/grill-me/SKILL.md", "category": "skill", "mode": "sync", "substituteAt": "never" },
+    { "path": ".claude/skills/zoom-out/SKILL.md", "category": "skill", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/settings.json", "category": "settings", "mode": "settings-merge", "substituteAt": "never" },
     { "path": ".claude/FRAMEWORK_VERSION", "category": "version", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/CHANGELOG.md", "category": "changelog", "mode": "sync", "substituteAt": "never" },

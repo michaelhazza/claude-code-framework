@@ -70,6 +70,7 @@ Copy bundle contents into the target repo at the matching paths:
 
 ```
 setup/portable/.claude/         → <repo-root>/.claude/
+setup/portable/.claude/skills/  → <repo-root>/.claude/skills/
 setup/portable/docs/            → <repo-root>/docs/
 setup/portable/references/      → <repo-root>/references/
 setup/portable/tasks/           → <repo-root>/tasks/      (only if tasks/ does not exist)
