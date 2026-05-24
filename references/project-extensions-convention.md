@@ -1,6 +1,6 @@
 # Project Extensions Convention
 
-Status: Proposed in v2.6.1. Stable contract for project-specific overlays on canonical agent prompts.
+Status: Introduced in v2.6.1 as the stable convention for project-specific overlays on canonical agent prompts.
 
 ## Why
 
