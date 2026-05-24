@@ -25,7 +25,7 @@
 A drop-in agent fleet + governance docs + portable hooks for any Claude Code project. See `.claude/CHANGELOG.md` for the source release version and history.
 
 The bundle ships:
-- 22 agent definitions in `.claude/agents/` (with placeholders for project name, description, stack)
+- 24 agent definitions in `.claude/agents/` (with placeholders for project name, description, stack)
 - 4 portable hooks in `.claude/hooks/` + a `.claude/settings.json` registering them
 - ADRs at `docs/decisions/` (3 generic ones — 0001, 0002, 0005)
 - Context packs at `docs/context-packs/` (5 mode-scoped packs)
@@ -54,7 +54,7 @@ Have these ready before starting — Phase 2 substitutes them everywhere:
 | `{{STACK_DESCRIPTION}}` | `Node + Express + Drizzle ORM (PostgreSQL) + React` | Comma-separated. Stack-name level, not version-pinned. |
 | `{{COMPANY_NAME}}` | `Acme Inc` | Optional. If empty, lines containing it are deleted. |
 
-Plus the **profile selection**: MINIMAL (4 agents) / STANDARD (11) / FULL (22). See § 11.
+Plus the **profile selection**: MINIMAL (4 agents) / STANDARD (11) / FULL (24). See § 11.
 
 ---
 
@@ -86,7 +86,7 @@ After Phase 1, the target repo's lint/typecheck should still pass — the framew
 
 ## 6. Phase 1.5 — Profile selection + agent pruning
 
-Ask the operator: "Which profile? MINIMAL (4) / STANDARD (11) / FULL (22)."
+Ask the operator: "Which profile? MINIMAL (4) / STANDARD (11) / FULL (24)."
 
 Delete agent files NOT in the chosen profile from `.claude/agents/`. See § 11 for the per-profile list.
 
@@ -150,7 +150,7 @@ It checks every agent file references files that exist, every context-pack ancho
 
 If `validate-setup` is NOT in the profile, run a manual smoke check:
 
-1. `ls .claude/agents/` — count matches profile (4 / 10 / 20).
+1. `ls .claude/agents/` — count matches profile (4 / 11 / 24).
 2. `ls .claude/hooks/` — 4 files present.
 3. `cat .claude/FRAMEWORK_VERSION` — matches the bundle's version.
 4. `grep -rE '\{\{PROJECT_NAME\}\}|\{\{STACK_DESCRIPTION\}\}' .claude/ docs/ references/` — zero hits.
@@ -287,9 +287,9 @@ MINIMAL 4 plus: `spec-coordinator`, `feature-coordinator`, `finalisation-coordin
 
 Use when the project has multiple in-flight features and benefits from spec → plan → build phase separation. Default for most projects.
 
-### FULL (22 agents) — large project / multi-stream development
+### FULL (24 agents) — large project / multi-stream development
 
-STANDARD 11 plus: `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`.
+STANDARD 11 plus: `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`, `mockup-coordinator`, `mockup-reviewer`.
 
 Use when the project supports the overhead — `chatgpt-*` agents need ChatGPT-web access, `dual-reviewer` needs the Codex CLI, `audit-runner` needs a mature codebase to audit. Otherwise STANDARD covers it.
 

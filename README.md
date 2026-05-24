@@ -31,7 +31,7 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 
 | Path | Contents |
 |------|----------|
-| `.claude/agents/` | 22 agent definitions (with `{{...}}` placeholders) |
+| `.claude/agents/` | 24 agent definitions (with `{{...}}` placeholders) |
 | `.claude/hooks/` | 4 portable hooks: `long-doc-guard`, `correction-nudge`, `config-protection`, `code-graph-freshness-check` |
 | `.claude/settings.json` | Hook registration (PreToolUse, UserPromptSubmit, SessionStart) |
 | `.claude/FRAMEWORK_VERSION` | Semver — used to detect drift across repos |
@@ -69,7 +69,7 @@ Pick at adoption time:
 
 - **MINIMAL (4)** — `triage-agent`, `pr-reviewer`, `architect`, `spec-reviewer`. Solo dev, self-review baseline.
 - **STANDARD (11)** — MINIMAL + `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator`, `spec-conformance`, `builder`, `hotfix`, `reality-checker`. Default for most projects.
-- **FULL (22)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`. Large projects with capacity for the overhead.
+- **FULL (24)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`, `mockup-coordinator`, `mockup-reviewer`. Large projects with capacity for the overhead.
 
 ## Upgrading from a previous framework version
 
