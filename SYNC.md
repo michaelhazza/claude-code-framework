@@ -100,6 +100,15 @@ Show the resulting report. After completion, continue to Phase 5.
 
 ## Phase 5 — Walk pending merges
 
+**Gitignore prerequisite.** Before working through `.framework-new` files for the first time in a repo, ensure `*.framework-new` is in the repo's `.gitignore`. These files are per-clone working state — they're sync.js's "here's what the new canonical looks like, decide if you want to absorb it" advisory for one developer's sync run. If they get tracked in git, one developer's mid-sync state propagates to every clone and creates a misleading appearance of a shared "pending decisions backlog" that other clones think they need to resolve. The framework does NOT auto-write this rule (it would not be safe to modify a consuming repo's root `.gitignore` from sync.js). Add it manually once per repo:
+
+```
+# Framework sync working artefacts — per-clone, per-sync-run; never team-shared
+*.framework-new
+```
+
+Then proceed with the walk.
+
 Run `find . -name "*.framework-new"` (or equivalent for the OS) to list any `.framework-new` sibling files. These are framework-updated versions of files that sync detected as locally customised — sync wrote the new framework content beside the target rather than overwriting it.
 
 For each `.framework-new` file:

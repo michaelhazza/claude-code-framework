@@ -32,6 +32,15 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.6.4 — 2026-05-27
+
+**Highlights:** Docs-only patch documenting a gotcha discovered during the v2.6.3 adoption rollout. The `.framework-new` files sync.js writes when a customised file has a newer canonical version are per-clone working artefacts — if accidentally committed to git, they propagate one developer's mid-sync state to every clone and look like a shared "pending decisions backlog" needing collaborative resolution. They are NOT a team-shared backlog. SYNC.md Phase 5 now opens with a gitignore prerequisite so future adopters add `*.framework-new` to their root `.gitignore` once, up front.
+
+**Changed:**
+- `SYNC.md` — Phase 5 opens with a gitignore prerequisite explaining why `*.framework-new` must be gitignored per repo, and showing the exact line to add. The framework itself does NOT auto-write this rule (it would not be safe for sync.js to modify a consuming repo's root `.gitignore`).
+
+---
+
 ## 2.6.3 — 2026-05-27
 
 **Highlights:** Two operator-facing additions. First, the framework now ships a `commands/` convention for transportable Claude Code slash commands, with `/claudeupdate` as the inaugural command — a one-touch updater that bumps the `claude-code-framework` submodule pointer across every consuming repo on disk (auto-discovered) and pushes per-repo, only when each repo is on `main` and clean. Second, `finalisation-coordinator` now emits a CEO-level summary at end-of-phase (Step 13.1) — plain-English dot points of what shipped, benefits, further action required, and new backlog items — before the existing technical block (Step 13.2). The summary refreshes the operator when running multiple parallel build sessions.
