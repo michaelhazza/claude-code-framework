@@ -32,6 +32,21 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.6.3 — 2026-05-27
+
+**Highlights:** Two operator-facing additions. First, the framework now ships a `commands/` convention for transportable Claude Code slash commands, with `/claudeupdate` as the inaugural command — a one-touch updater that bumps the `claude-code-framework` submodule pointer across every consuming repo on disk (auto-discovered) and pushes per-repo, only when each repo is on `main` and clean. Second, `finalisation-coordinator` now emits a CEO-level summary at end-of-phase (Step 13.1) — plain-English dot points of what shipped, benefits, further action required, and new backlog items — before the existing technical block (Step 13.2). The summary refreshes the operator when running multiple parallel build sessions.
+
+**Added:**
+- `.claude/commands/` directory convention. Sync deploys this category like `agents/`, `hooks/`, `skills/`.
+- `.claude/commands/claudeupdate.md` — the `/claudeupdate` slash command. Discovers every directory under `<scan-root>/*` that mounts `claude-code-framework` as a submodule, bumps the pointer, commits, pushes, and reports a per-repo outcome table. `<scan-root>` defaults to the parent of the current working repo; can be overridden via `$ARGUMENTS`.
+- `command` category added to `ManifestCategory` in `sync.js`.
+- `manifest.json` entry: `{ "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" }`.
+
+**Changed:**
+- `.claude/agents/finalisation-coordinator.md` — Step 13 split into 13.1 (CEO summary, prints first) and 13.2 (existing technical end-of-phase block, prints second). 13.1 mandates plain-English composition: no chunk IDs, no agent names, no internal jargon; reads from handoff.md + intent.md + the squash diff of `tasks/todo.md` for ground-truth sources; lists "Further action required" as a binary yes/no, not a hedge.
+
+---
+
 ## 2.6.2 — 2026-05-26
 
 **Highlights:** Two clarifications to `finalisation-coordinator` — (a) Step 11 spells out how to invoke `gh pr checks --watch` in Claude Code (background `Bash` + harness notification) and forbids `ScheduleWakeup` polling on top of an active watch; (b) Step 12 forbids any operator-pause `AskUserQuestion` between CI green and auto-merge. The single operator gate remains the `ready-to-merge` label at Step 10.3.

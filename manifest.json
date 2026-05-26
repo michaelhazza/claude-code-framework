@@ -1,7 +1,8 @@
 {
-  "frameworkVersion": "2.6.1",
+  "frameworkVersion": "2.6.3",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
+    { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/hooks/*.{js,sh}", "category": "hook", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/skills/grill-me/SKILL.md", "category": "skill", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/skills/zoom-out/SKILL.md", "category": "skill", "mode": "sync", "substituteAt": "never" },

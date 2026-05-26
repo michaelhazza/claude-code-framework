@@ -734,6 +734,44 @@ Only one warning block is printed per session regardless of how many gaps it con
 
 On finalisation, emit / refresh the `REVIEW_GAP` entries from the handoff as a top-level artefact record in `tasks/current-focus.md` under `## Paused build / artefact record` (or the existing artefact prose section), so future sessions can see which coverage gaps were carried to merge.
 
+### 13.1 — CEO-level summary (print FIRST, before the technical block)
+
+**Purpose:** the operator may be running multiple sessions in parallel and lose track of what shipped in any given window. This block exists to refresh them at a glance — plain English, no agent-jargon, no chunk IDs, no phase numbers, no internal references. Read it cold and know exactly what happened.
+
+**Sources to read before composing the summary:**
+- `tasks/builds/{slug}/handoff.md` — § Phase 2 (what was built) + § Phase 3 (what finalisation added).
+- `tasks/builds/{slug}/intent.md` (or `tasks/builds/{slug}/spec.md` § Goal/Motivation if no `intent.md` exists) — why this was built / user-facing benefit.
+- `tasks/builds/{slug}/progress.md` — § Deferred / § Open Questions / any "post-merge action" notes.
+- `git show {SQUASH_SHA} -- tasks/todo.md` — exact diff of what was added to the backlog by this build (do NOT paraphrase from memory; the diff is authoritative).
+
+**Format — print verbatim:**
+
+```
+## ✅ Merged: PR #{N} — {slug}
+
+**What we built**
+- {3-5 dot points, plain English, drawn from handoff.md § Phase 2}
+
+**Benefits**
+- {2-4 dot points, plain English, drawn from intent.md / spec.md Goal section}
+
+**Further action required**
+- {explicit deferred items, OR the literal line "None — this build is fully shipped"}
+
+**Added to backlog (tasks/todo.md)**
+- {one dot point per new todo entry added during this build, title-only — OR the literal line "Nothing new deferred"}
+```
+
+**Composition rules:**
+- 4-8 dot points TOTAL across the four sections. If you have more than 8, cut to the highest-impact ones — the operator can read the build artefacts if they want full detail.
+- **No internal jargon.** Forbidden words: "Phase 1/2/3", "G1/G2/G4 gate", "spec-conformance", "pr-reviewer", "REVIEW_GAP", "chunk", "handoff", "builder", any agent name. Translate any of those to plain English (e.g. "code review" not "pr-reviewer", "main branch" not "trunk", "shipped" not "merged-and-deployed").
+- **No file paths.** The operator does not need to see `server/services/foo.ts` in a CEO summary. Describe what changed in terms of user-facing behaviour, not files.
+- **"Further action required" is YES or NO, not a hedge.** If nothing's pending, say so explicitly — do not list "monitor for issues" or similar non-actions.
+- **"Added to backlog" lists only NEW items from this build's diff, not the entire backlog.** If the squash diff for `tasks/todo.md` is empty (nothing added), print "Nothing new deferred" — never invent items.
+- **Benefits are user-facing, not technical.** "Operators can now retry a failed run in one click" — yes. "Refactored retry logic into a reusable hook" — no.
+
+### 13.2 — Technical end-of-phase block (print SECOND, for engineer reference)
+
 Print verbatim:
 
 > **Phase 3 (FINALISATION) complete — MERGED.**
