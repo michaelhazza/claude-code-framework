@@ -472,13 +472,39 @@ If the label add fails (label doesn't exist, permissions, network): surface the 
 
 **This step is mandatory and runs to completion before Step 12.** Do not stop here, do not pose a question, do not ask the operator to monitor CI manually — the contract is that finalisation-coordinator drives CI to green automatically.
 
-**Polling protocol.** Use `ScheduleWakeup` with 90-second delay between polls (per CLAUDE.md async polling cadence — CI on this repo typically completes in 1-2 minutes; 90s keeps within prompt-cache window without burning context).
+**Watch protocol (primary — MANDATORY unless `gh pr checks --watch` is genuinely unavailable).** Use `gh pr checks {N} --watch` — a single blocking command that streams check status to stdout and exits when all checks reach a terminal state (SUCCESS / FAILURE / CANCELLED / SKIPPED / NEUTRAL). Exits 0 if all required checks SUCCESS; non-zero if any required check FAILURE.
+
+**How to invoke in Claude Code:** dispatch via `Bash` with `run_in_background: true`. The harness emits a `task-notification` automatically when the watch exits — the coordinator simply waits for that notification. **Do NOT layer `ScheduleWakeup` on top of an active `--watch`.** A wakeup poll while a background `--watch` is running is double-polling: it burns prompt-cache windows for state the harness already promises to surface. The watch's terminal exit IS the signal.
+
+```bash
+# Correct invocation — fire and wait for harness notification:
+gh pr checks {N} --watch --interval 30
+# Exit 0 → all checks SUCCESS, proceed to mergeState verification below
+# Exit non-zero → at least one check FAILURE, enter fix sub-loop
+```
+
+After the watch returns (signalled by the task-notification with exit code), verify mergeState is CLEAN before proceeding to Step 12:
+
+```bash
+gh pr view {N} --json mergeStateStatus -q '.mergeStateStatus'
+```
+
+If mergeState is CLEAN → Step 12. If BEHIND → run S2 sync (Step 2 contract) then re-watch. If BLOCKED / DIRTY → diagnose and escalate.
+
+**Why watch over poll.** `gh pr checks --watch` blocks until the terminal state is reached, so we don't burn prompt-cache windows on periodic wake-ups, don't risk missing the green moment between polls, and don't pay for repeated context reads. The 30-second `--interval` is the streaming refresh cadence of the watch itself; it's cheap because no model invocation happens between refreshes.
+
+**`ScheduleWakeup` is permitted ONLY in two cases:**
+
+1. **Between fix iterations.** After a fix push, the new CI run takes a few seconds to register on GitHub. Use `ScheduleWakeup(60-90s)` before re-entering `--watch` to avoid racing the registration. Single use per iteration; not a polling loop.
+2. **`gh pr checks --watch` genuinely unavailable.** Older `gh` CLI versions (< 2.32), network-restricted dev environments. Fall back to `ScheduleWakeup(90s)` polling the `gh pr view` JSON below. State the fallback reason in `progress.md` so the operator can confirm.
+
+Any other `ScheduleWakeup` usage during Step 11 is a process violation — the watch IS the wait. Operator-locked 2026-05-27 after PR #430 finalisation where the coordinator stacked a `ScheduleWakeup` on top of an active background `--watch`: the wakeup fired before the watch completed and produced a redundant context reload.
 
 ```bash
 gh pr view {N} --json mergeStateStatus,statusCheckRollup -q '{mergeState: .mergeStateStatus, checks: [.statusCheckRollup[] | {name, status, conclusion}]}'
 ```
 
-**State machine — interpret each poll:**
+**State machine — for poll-based fallback only:**
 
 | State | Definition | Action |
 |---|---|---|
@@ -601,6 +627,8 @@ Set TodoWrite item to `pending` and stop. Do not attempt iteration 6 unless the 
 ## Step 12 — Auto-merge (post-CI-green)
 
 **Trigger:** Step 11 reached the `green` state. Mergeability is `CLEAN`, all required checks SUCCESS.
+
+**No operator pause here.** Once the Trigger conditions are met, Steps 12.1–12.4 run automatically. Do NOT pose an `AskUserQuestion` ("auto-merge now?", "all checks green — proceed?") and do NOT pose any other confirmation prompt. The single operator-controlled decision point in this coordinator is the `ready-to-merge` label at Step 10.3 (per the optional `feedback_ready_to_merge_label.md` operator-memory pattern — the label is opt-in in repos that adopt that memory). Once that label is applied and CI is green, the rest of the merge sequence is automatic: prep-commit current-focus → squash-merge --admin → patch main with squash sha. Operator-locked 2026-05-26 after a real finalisation pass surfaced an unnecessary pre-merge confirmation prompt.
 
 ### 12.1 — Update current-focus.md on the feature branch (post-merge state)
 

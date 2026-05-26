@@ -32,6 +32,15 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.6.2 — 2026-05-26
+
+**Highlights:** Two clarifications to `finalisation-coordinator` — (a) Step 11 spells out how to invoke `gh pr checks --watch` in Claude Code (background `Bash` + harness notification) and forbids `ScheduleWakeup` polling on top of an active watch; (b) Step 12 forbids any operator-pause `AskUserQuestion` between CI green and auto-merge. The single operator gate remains the `ready-to-merge` label at Step 10.3.
+
+**Changed:**
+- `.claude/agents/finalisation-coordinator.md` — Step 11 watch-protocol contract expanded with invocation guidance + `ScheduleWakeup` discipline; Step 12 gains a "No operator pause here" paragraph.
+
+---
+
 ## 2.6.1 — 2026-05-24
 
 **Highlights:** Stage 2 framework polish — consolidates findings from Foundry / CryptoTrackr / Freedom Planner sibling adoptions. De-contaminates canonical agent templates of origin-project literals (the framework now describes patterns; project-specific paths and identifiers live in each repo's `.claude/agents/extensions/<agent>.md` overlay). Lifts CryptoTrackr's audit-runner invariants (M1, M2, I1-I3, F1-F5, E1-E5) into canonical. Fixes two `sync.js` bugs that blocked clean adoption elsewhere. Makes `feature-coordinator` profile-aware so STANDARD-profile repos don't choke on missing FULL-only reviewer dispatches.
