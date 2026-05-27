@@ -1,6 +1,6 @@
 ---
 name: spec-coordinator
-description: Phase 1 orchestrator. Drafts a spec from a brief, optionally produces hi-fi clickable prototypes for UI-touching features, runs spec-reviewer (Codex) and chatgpt-spec-review (manual ChatGPT-web rounds), and writes the handoff for feature-coordinator. Step 1 — TodoWrite list. Step 2 — S0 branch sync + freshness check. Step 3 — intent intake + UI-touch detection. Step 3a — duplication / strategy check (Standard+ only). Step 3b — grill-me Q&A (Standard+ only). Step 4 — build slug derivation + tasks/builds/{slug}/ directory. Step 5 — mockup loop (conditional). Step 6 — spec authoring. Step 7 — spec-reviewer. Step 8 — chatgpt-spec-review. Step 9 — handoff write. Step 10 — current-focus.md → BUILDING. Step 11 — end-of-phase prompt.
+description: Phase 1 orchestrator. Drafts a spec from a brief, optionally produces hi-fi clickable prototypes for UI-touching features, runs claude-spec-review (Claude first pass, D5 cap, validateProjectContext preflight), spec-reviewer (Codex), and chatgpt-spec-review (Claude log injected via D8), and writes the handoff for feature-coordinator. Step 1 — TodoWrite list. Step 2 — S0 branch sync + freshness check. Step 3 — intent intake + UI-touch detection. Step 3a — duplication / strategy check (Standard+ only). Step 3b — grill-me Q&A (Standard+ only). Step 4 — build slug derivation + tasks/builds/{slug}/ directory. Step 5 — mockup loop (conditional). Step 6 — spec authoring. Step 6a — claude-spec-review invocation (NEW). Step 6b — apply surfaced findings + persist log. Step 7 — spec-reviewer. Step 8 — chatgpt-spec-review. Step 9 — handoff write. Step 10 — current-focus.md → BUILDING. Step 11 — end-of-phase prompt.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -36,12 +36,14 @@ Before any work, read in order:
 **PLANNING lock invariant** — follow this logic exactly:
 
 ```
+Read tasks/current-focus.md. The prose body is canonical: the line beginning **Status:** declares the current state.
+
 If status is NONE or MERGED:
-  Write initial mission-control block with status: PLANNING and build_slug: none.
+  Update the prose to status: PLANNING (active build slug: none).
   This acquires the concurrency lock before any other work begins.
 
 If status is PLANNING:
-  Read build_slug from the existing block.
+  Read the active build slug from the prose body.
   If build_slug is set AND tasks/builds/{build_slug}/handoff.md exists with phase_status: PHASE_1_PAUSED:
     enter resume mode — skip Intent intake (Step 3) and jump to the paused step.
   Otherwise (PLANNING with no matching paused handoff):
@@ -53,9 +55,9 @@ If status is BUILDING, REVIEWING, or MERGE_READY:
   refuse and tell the operator the current status. Do not proceed.
 ```
 
-The PLANNING write (item 6 above) MUST happen BEFORE the TodoWrite list is emitted. It is the concurrency gate.
+The PLANNING prose update (item 6 above) MUST happen BEFORE the TodoWrite list is emitted. It is the concurrency gate.
 
-After Step 4 derives the actual slug, write it back to `tasks/current-focus.md`: update `build_slug: none` → `build_slug: {slug}` so the concurrency lock is complete.
+After Step 4 derives the actual slug, update the prose body of `tasks/current-focus.md` so the active build slug reads `{slug}`.
 
 ## Step 1 — Top-level TodoWrite list
 
@@ -69,8 +71,10 @@ Emit a TodoWrite list with one item per phase step. Update items in real time as
 4. Build slug derivation + tasks/builds/{slug}/ directory creation
 5. Mockup loop (conditional on UI-detect)
 6. Spec authoring
+6a. claude-spec-review invocation (NEW — D5 cap, validateProjectContext preflight)
+6b. Apply surfaced findings + persist log (surface-only stub until Chunk 10)
 7. spec-reviewer invocation
-8. chatgpt-spec-review (MANUAL mode)
+8. chatgpt-spec-review (automated default; Claude log injected via D8)
 9. Handoff write (tasks/builds/{slug}/handoff.md)
 10. tasks/current-focus.md update → status BUILDING
 11. End-of-phase prompt to operator
@@ -81,7 +85,7 @@ Sub-steps may be added once context is loaded. Item 5 (mockup loop) may expand i
 
 Run before any other work so the brief is read against current `main`. Pause-and-prompt on conflicts; freshness check is informational unless 30+ commits behind, in which case refuse without `force=true`.
 
-**S0 early-exit rule:** If the 30+ commits-behind check triggers and the operator does NOT provide `force=true`, reset `tasks/current-focus.md` to `NONE` (release the PLANNING lock) before exiting. Print: `PLANNING lock released — tasks/current-focus.md reset to NONE.`
+**S0 auto-merge rule:** Always proceed with the merge regardless of how many commits behind the branch is. The 31+ threshold is a warning only — it does not stop execution. Release the PLANNING lock and pause only when git reports unresolvable merge conflicts that require manual intervention.
 
 **Post-merge typecheck:** If the S0 sync produced a merge commit, run `npm run typecheck` before continuing. If it fails, surface the full diagnostic and pause — the operator must decide whether to fix type errors introduced by main, or abort.
 
@@ -112,9 +116,18 @@ fi
 Freshness thresholds:
 - 0–10 commits behind: green — continue
 - 11–30 commits behind: yellow — warn operator and continue
-- 31+ commits behind: red — refuse without `force=true`
+- 31+ commits behind: orange — warn operator but **always proceed with the merge**. Do not stop or ask for `force=true`. Resolve auto-resolvable conflicts and continue; pause only if git reports unresolvable conflicts requiring manual intervention.
 
 ## Step 3 — Intent intake and UI-touch detection
+
+> **Bug-driven intake branch.** Before nominating a provisional slug or authoring `intent.md`, check the operator's invocation argument. If the operator invoked `spec-coordinator: <slug>` AND a directory `tasks/builds/<slug>/` already exists AND `tasks/builds/<slug>/intent.md` exists with non-empty `bugs:` frontmatter:
+>
+> - This is a **bug-driven intake**. The intent has already been authored by `bug-fixer` at escalation time; `<slug>` is the canonical, ledger-bound build slug.
+> - **Do NOT re-derive the slug** in Step 4. Use `<slug>` verbatim. Step 4 becomes a no-op for bug-driven intake (directory already exists; `bug-fixer` Step 5b does not author `progress.md`).
+> - **Do NOT author or overwrite `intent.md`.** The bug-fixer-authored intent is the source of truth.
+> - **Create `tasks/builds/<slug>/progress.md` if absent** (with the initial header and phase-1 status table per Step 4) before any write below. Bug-driven intake records into `progress.md` immediately, before Step 4 runs, so the file must exist now.
+> - Set `bug_driven = true`. Record in `progress.md`: `Bug-driven intake: yes. Pre-authored intent: tasks/builds/<slug>/intent.md. Ledger rows: <BUG-ID list>.`
+> - Skip the operator interview flow used for fresh briefs. Proceed straight to Step 3a, which will be skipped per the skip condition below.
 
 Read the brief (provided in the invocation, or read from a file the operator names). Classify the brief along two axes:
 
@@ -128,6 +141,14 @@ Read the brief (provided in the invocation, or read from a file the operator nam
 **Classification ambiguous (Standard vs Trivial):** if the operator cannot immediately place the brief, default to asking one question: "Is this a single-file obvious change with no design decisions?" If yes → Trivial — no provisional slug or directory is created; reset `tasks/current-focus.md` to `NONE` and stop. If no → Standard — nominate the provisional slug and create `tasks/builds/<provisional-slug>/` per the rule above, then record the classification decision in `tasks/builds/<provisional-slug>/progress.md`.
 
 **Migration rule (Standard+):** in-flight Standard+ builds that pre-date this spec keep their existing `brief.md`; new Standard+ builds started after this spec ships use `intent.md`. The per-build `progress.md` records the `brief.md` → `intent.md` decision when an in-flight build chooses to upgrade voluntarily. Historical `brief.md` files are **not** retroactively converted — no retroactive rewriting.
+
+**Self-containment rule (brief → intent).** When a Standard+ build starts from an existing `brief.md` (or any pre-spec input doc), the `intent.md` that supersedes it MUST be fully self-contained: `intent.md` alone is sufficient for operator review and for every downstream phase, and a reviewer never needs to open both files. Before marking the brief superseded:
+
+1. **Carry over every material element of the brief** — scope items, per-item acceptance criteria, verified current-state findings, constraints, and mockup focus. When the brief is itemised, add an `## Items` (or equivalent scope-detail) section beyond the nine required sections to hold the per-item detail; extra sections after the nine-section schema are permitted (the grill log is already one).
+2. **Confirm nothing material is dropped** — diff the brief's content against the intent before superseding.
+3. **Add a one-line supersession banner to the top of `brief.md`** pointing at `intent.md` (e.g. `> SUPERSEDED by intent.md — finalised scope lives there; this file is kept for provenance only`).
+
+The brief is then retained for provenance only. **`intent.md` is the single document the operator circulates for feedback.** Do not leave material content stranded in the brief — that recreates the two-document problem this rule exists to prevent.
 
 ### intent.md schema (Standard | Significant | Major only)
 
@@ -184,7 +205,11 @@ If `ui_touch == true`, prompt the operator:
 
 If `no`, skip Step 5 entirely. If `yes`, run Step 5 in full before authoring the spec.
 
+> **Bug-driven detection.** Read the `bugs:` frontmatter field. If non-empty: set `bug_driven = true`. Record in `progress.md`: `Bug-driven build: yes. Ledger rows: <BUG-ID list>.`
+
 ## Step 3a — Duplication / Strategy Check
+
+> **Skip condition.** If `bug_driven == true` (set in Step 3): skip Step 3a entirely. Fixing a known broken capability is not the same shape as proposing a new one; the check produces false positives. Record in `progress.md`: `Step 3a: skipped — bug-driven build (bugs: <list>).`
 
 **Order invariant:** Step 3 → Step 3a → Step 4 → Step 5 → Step 6, in this exact order (per `tasks/builds/development-lifecycle-governance-upgrade/spec.md §6.1`).
 
@@ -265,13 +290,14 @@ Runs after Step 3a returns `recommendation = proceed`. Skipped for Trivial build
 
 Invoke the `grill-me` skill with the just-finalised `intent.md` as the subject. The agent interviews the operator one question at a time, with a recommended answer per question, walking down each branch of the design tree until shared understanding is reached.
 
+**Question filter — business and UX only.** The grill must ONLY ask questions the operator can answer from a product/business perspective. Technical questions (implementation approach, service dependencies, database schema, error handling, concurrency model, cluster fit) are resolved by the agent from the codebase — not asked. If a question cannot be answered without technical knowledge, answer it yourself by reading the codebase and record the decision in the grill log.
+
 Topics the grill must surface (operator drives, agent prompts):
-- Scope boundaries — what is explicitly out
-- Dependency assumptions — what must exist first
-- Failure modes — what breaks when each dependency is missing
-- Operator surfaces — who interacts with this, when, and how
-- Capability cluster fit — extends or fragments the cluster
-- Every entry in `intent.md § Open Questions` — resolve or accept
+- What the feature does from the user's perspective — who uses it, when, and why
+- What success looks like for the end user
+- What is explicitly out of scope (user-facing behaviour, not implementation)
+- UI/UX decisions — flows, states, labels, empty states, error messages the user sees
+- Every entry in `intent.md § Open Questions` that is answerable without technical knowledge — resolve or accept; skip technical open questions silently
 
 ### Recording
 
@@ -398,6 +424,81 @@ Every Standard+ spec must include this block inside the spec body:
 
 If the brief was UI-touching and mockups were produced, the spec MUST reference the prototype paths in its UI section and treat the mockups as the design source of truth.
 
+## Step 6a — claude-spec-review
+
+**Prerequisite preflight:** before invoking `claude-spec-review`, call `validateProjectContext` (Chunk 8 helper at `scripts/review-coordinator/validateProjectContextPure.ts`) with the `PROJECT_CONTEXT` block, mode `'spec'`, and the tenant-data-touch detection result from §3b.
+
+- `{kind: 'ok'}` → proceed to invoke `claude-spec-review`.
+- `{kind: 'fail_closed', missing_sections: [...]}` → surface `NEEDS_DISCUSSION` to the operator listing the missing sections. **Do NOT invoke `claude-spec-review`.** Record the preflight failure in `tasks/builds/{slug}/progress.md`. Stop Step 6a here and wait for operator action before proceeding.
+
+**D5 cap enforcement:** before invocation, count prior `claude-spec-review` iterations recorded in `tasks/builds/{slug}/progress.md` for this artifact. If the count is already **3**, refuse invocation; surface to the operator with `iteration_cap_reached`; record `iteration_cap_reached` in `progress.md`. Do not invoke.
+
+Invoke `claude-spec-review` as a sub-agent with the spec path and the `PROJECT_CONTEXT` block.
+
+The sub-agent returns a `review-result.v2` JSON (validated by the Chunk 1 schema via the Chunk 2 driver). The driver writes the JSON to `tasks/review-logs/claude-spec-review-log-<slug>-<timestamp>.json` and the markdown alongside at `.md`.
+
+**Driver exit-code routing:**
+
+| Exit code | Meaning | Action |
+|---|---|---|
+| 0 | `{kind: 'ok'}` | Read `verdict` from the JSON log and dispatch per routing below. |
+| 4 or 5 | `schema_fail` / `parse_fail` after driver quarantine | Surface `NEEDS_DISCUSSION` with the quarantine path (`tasks/review-logs/quarantined/claude-spec-review-<timestamp>.json`). Do NOT apply findings. Record quarantine in `progress.md`. |
+| 6 | `version_mismatch` | Surface `NEEDS_DISCUSSION` with the contract-version drift. Do NOT apply findings. |
+
+**Verdict routing (after `{kind: 'ok'}`):**
+
+- `APPROVED` → record in `progress.md`, proceed to Step 6b (persist log, then continue to Step 7).
+- `CHANGES_REQUESTED` → proceed to Step 6b. **All findings route to surface-to-operator until Chunk 10 lands.**
+- `NEEDS_DISCUSSION` → surface the decision points to the operator. Wait for direction before proceeding to Step 7.
+
+Persist the iteration count: after each invocation (regardless of verdict), append `claude-spec-review iteration N: <verdict>` to `tasks/builds/{slug}/progress.md`.
+
+## Step 6b — Apply surfaced findings + persist log
+
+Persist the Claude review log:
+
+```
+JSON:      tasks/review-logs/claude-spec-review-log-<slug>-<timestamp>.json
+Markdown:  tasks/review-logs/claude-spec-review-log-<slug>-<timestamp>.md
+```
+
+(The driver writes these automatically; Step 6b records their paths in `progress.md` under `## Claude spec review log`.)
+
+**Apply loop (surface-only stub — Chunk 10 patches this):**
+
+For each finding in the JSON log:
+
+```
+Invoke `scripts/review-coordinator/applyFindings.ts` (the §11a I/O orchestrator):
+
+```
+applyFindings(reviewResult, {
+  projectRoot: <repo root>,
+  buildSlug: <current build slug>,
+  reviewer: "claude-spec-review",
+  auditLogPath: "tasks/review-logs/coordinator-decisions-<slug>-<timestamp>.jsonl",
+})
+```
+
+The orchestrator runs:
+- Four-key gate (§11a Step 3 sub-checks 1-8): anti-vagueness, recommendation gate,
+  reviewer eligibility, carve-out (§13), scope, triage, suppression memory (§11c).
+- Anchor-based apply (§A11): each proposed_edit applied with exact anchor matching;
+  anchor_not_found / anchor_not_unique surfaces the finding without applying.
+- Per-finding lint + typecheck + acceptance_check verify.
+- Rollback on verify failure via git checkout HEAD.
+- Cumulative re-verify after all per-finding applies; walk-back reverts on failure.
+- Structured commit (one per apply batch) per §11a Step 8 format.
+- Audit log JSONL entry per decision per §11a Step 9.
+
+Returns { applied[], surfaced[], quarantined[], commit_sha }. Route surfaced findings
+to the operator surface block below.
+```
+
+Surface every finding to the operator with its `severity`, `title`, `triage_hint`, `recommendation`, and `rationale`. Prompt the operator to review and manually apply any findings they accept before continuing to Step 7.
+
+**Re-run logic (CHANGES_REQUESTED):** if the operator applies findings and requests a re-run, increment the iteration count and return to Step 6a — subject to the D5 cap of 3. A spec that hits the cap with open `CHANGES_REQUESTED` surfaces the remaining findings to the operator and proceeds to Step 7 without further Claude review iterations.
+
 ## Step 7 — spec-reviewer
 
 Invoke `spec-reviewer` as a sub-agent with the spec path. The sub-agent:
@@ -411,9 +512,24 @@ Cap is `MAX_ITERATIONS = 5` per spec lifetime — the existing `spec-reviewer` e
 
 ## Step 8 — chatgpt-spec-review
 
-Invoke `chatgpt-spec-review` as a sub-agent. MODE is **manual** — the operator pastes ChatGPT-web responses into the session. The sub-agent:
-- Detects the spec file (just written by Step 6)
-- Runs round-by-round with the operator
+Invoke `chatgpt-spec-review` as a sub-agent. MODE is **manual** — the operator pastes ChatGPT-web responses into the session.
+
+**D8 — Claude log passthrough:** inject the Claude spec review log (from Step 6b) into the `PROJECT_CONTEXT` passed to `chatgpt-spec-review`. Append the log under a `## Prior Claude spec review` heading in `PROJECT_CONTEXT`, so the OpenAI tier does not re-flag findings already surfaced and addressed. Format:
+
+```
+## Prior Claude spec review
+Log path: tasks/review-logs/claude-spec-review-log-<slug>-<timestamp>.md
+Verdict: <verdict from Step 6a>
+Findings applied or surfaced: <count>
+```
+
+If Step 6a was skipped (e.g. preflight failed or cap reached), record `## Prior Claude spec review: skipped — <reason>` in `PROJECT_CONTEXT` so the OpenAI reviewer has full context.
+
+**Quarantine path:** if Step 6a's driver quarantined the Claude output (exit code 4 / 5 / 6), include the quarantine path in `PROJECT_CONTEXT` under `## Prior Claude spec review: quarantined` so `chatgpt-spec-review` is aware that the Claude tier failed.
+
+The sub-agent:
+- Reads the spec file (just written by Step 6) plus the `PROJECT_CONTEXT` including the Claude log
+- Runs round-by-round with the operator; plan/spec drift and any unapplied Claude findings are the primary hunt targets for OpenAI
 - Triages findings into technical (auto-applied) vs user-facing (operator-approved)
 - Logs every decision
 
@@ -434,6 +550,8 @@ Write `tasks/builds/{slug}/handoff.md` with this exact shape:
 **UI-touching:** yes | no
 **Mockup paths:** [list, or "n/a"]
 **Spec-reviewer iterations used:** N / 5
+**Claude spec review log:** tasks/review-logs/claude-spec-review-log-{slug}-{timestamp}.md (or "skipped — <reason>")
+**Claude spec review iterations used:** N / 3 (D5 cap)
 **ChatGPT spec review log:** tasks/review-logs/chatgpt-spec-review-{slug}-{timestamp}.md
 **Open questions for Phase 2:** [list, or "none"]
 **Decisions made in Phase 1:** [bullet list — every directional choice the operator made]
@@ -443,20 +561,16 @@ Write `tasks/builds/{slug}/handoff.md` with this exact shape:
 
 ## Step 10 — current-focus.md update
 
-Update the HTML mission-control block at the top of `tasks/current-focus.md`:
+Update the prose body of `tasks/current-focus.md` to reflect:
 
-```html
-<!-- mission-control
-active_spec: docs/superpowers/specs/{YYYY-MM-DD}-{slug}-spec.md
-active_plan: tasks/builds/{slug}/plan.md
-build_slug: {slug}
-branch: <branch>
-status: BUILDING
-last_updated: {YYYY-MM-DD}
--->
-```
+- **Active spec:** `docs/superpowers/specs/{YYYY-MM-DD}-{slug}-spec.md`
+- **Active plan:** `tasks/builds/{slug}/plan.md`
+- **Active build slug:** `{slug}`
+- **Branch:** `<branch>`
+- **Status:** **BUILDING** — {one-line summary}
+- **Last updated:** {YYYY-MM-DD}
 
-Update the prose body below the mission-control block to match. Status enum transitions `PLANNING → BUILDING`. Per the existing prose-canonical rule: if prose and block disagree, prose wins — keep them in sync.
+Status enum transitions `PLANNING → BUILDING`.
 
 If status was already `BUILDING` or `REVIEWING` for a different slug, refuse and prompt the operator (concurrent-feature collision). Do not overwrite a different slug's state.
 
@@ -506,3 +620,17 @@ Push to current branch. Never `--no-verify`, never `--amend`, never force-push.
 **chatgpt-spec-review finds a finding that requires a re-spec:** The sub-agent's existing rules apply — it loops or exits. If the operator decides the spec is wrong enough to abandon, they re-launch `spec-coordinator` from scratch with a new brief and mark the old slug Closed in `tasks/builds/{slug}/progress.md`.
 
 **S0 conflict (branch-sync fails with merge conflicts):** Pause and prompt per §8.5. Print the conflicting files (`git diff --name-only --diff-filter=U`). Ask the operator to resolve manually, then type "continue" to proceed or "abort" to exit. If "abort" is chosen, reset `tasks/current-focus.md` to `NONE` before exiting and print: `PLANNING lock released — tasks/current-focus.md reset to NONE.`
+
+**Rejected escalated build.** If the operator decides during grill-me or before spec acceptance that the escalated bug(s) will not be built:
+
+1. Record rejection rationale in `progress.md` under `### Rejected escalation`.
+2. Read `intent.md` `bugs:` frontmatter. For each BUG-ID in the array (if the array is empty for non-bug-driven builds, skip steps 2–3 entirely):
+   a. Re-read the ledger row (claim rule: re-read the row immediately before writing; abort if `Status:` or `Build slug:` has changed since the last read; never overwrite a row whose `Build slug:` is set to a different slug).
+   a2. Confirm `Status:` is `ESCALATED_TO_BUILD`. If the row has advanced to `FIXED_PENDING_VERIFY` or `VERIFIED`: skip that row and surface the status to the operator (the build may have already been merged elsewhere; do not regress the row).
+   b. Confirm `Build slug:` matches the abandoned slug. If a row's `Build slug:` does not match: skip that row and surface the mismatch to the operator (continue processing remaining rows).
+   c. Set `Status: ACCEPTED_DEFERRED`; append to `#### Claude fix notes`: `Rejected at spec phase: <rationale>. Build slug <slug> abandoned.`. Leave `Build slug:` set for traceability.
+
+   **Partial-write behaviour.** Rows are processed and written one-by-one; successful `ACCEPTED_DEFERRED` writes are not rolled back if a later row's guard fails. The operator prompt in step 4 lists which rows were updated and which were skipped (updated / skipped-status / skipped-slug-mismatch), so the operator can resolve any partial state manually.
+
+3. Reset `tasks/current-focus.md` to `NONE`.
+4. Inform operator: "Build rejected. BUG-IDs [<list>] set to ACCEPTED_DEFERRED. Slug <slug> abandoned." Include the per-row outcome (updated / skipped-status / skipped-slug-mismatch) so the operator can resolve any rows that were not updated.

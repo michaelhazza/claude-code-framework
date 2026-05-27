@@ -35,6 +35,8 @@ user can audit after the fact.
 - `manual` (default) — you copy the spec into the ChatGPT UI and paste the response back. No API key required.
 - `automated` — the agent calls the OpenAI API via `scripts/chatgpt-review.ts`. Requires `OPENAI_API_KEY`.
 
+**PROMPT_VERSION** — controls which prompt version the CLI sends to OpenAI (default: 2). To use v1 prompts, set `CHATGPT_REVIEW_PROMPT_VERSION=1` before invoking the CLI. This is a fallback for regression testing only.
+
 **HUMAN_IN_LOOP: yes** — default for automated sessions only. Has no effect in manual mode (the user is already in the loop by definition).
 
 When `yes` (automated only): after each API call, print the full `raw_response` and wait for the user to type **"yes"** before triage. Lets the user compare API output against the ChatGPT UI for split-testing.
@@ -48,7 +50,7 @@ To toggle mid-session: say **"set human in loop off"** or **"set human in loop o
 ## Before doing anything else, read:
 1. `CLAUDE.md` — project conventions and the "Before you write a spec" section
 2. `docs/spec-context.md` — framing ground truth for all specs in this project
-3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (tenant isolation, service-tier, gates, migrations, development-discipline §) used to evaluate whether a ChatGPT spec suggestion contradicts existing locked policy. Read if present; skip when absent OR for trivial typo / formatting specs.
+3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (RLS, service-tier, gates, migrations, §8 development discipline) used to evaluate whether a ChatGPT spec suggestion contradicts existing locked policy. Always read; skip only for trivial typo / formatting specs.
 
 ---
 
@@ -124,21 +126,31 @@ Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1
    npx tsx scripts/chatgpt-review.ts --mode spec --file <spec-file-path>
    ```
 
-   Capture the stdout JSON — it conforms to the `ChatGPTReviewResult` contract at `docs/superpowers/specs/2026-04-28-dev-mission-control-spec.md § C1`. The fields you will use:
+   Capture the stdout JSON — it conforms to the `ChatGPTReviewResult` contract. The fields you will use:
    - `findings[]` — pre-extracted, normalised, enum-locked. Use this directly for the per-round triage table.
+     - `risk_domain` — `tenant_isolation | auth | pii | sql_injection | privilege_escalation | none`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` other than `none` must go through the security-escalated path before auto-apply.
+     - `auto_apply_eligible` — when `true`, the finding carries `proposed_edits[]` and the coordinator may apply it automatically. When `false`, surface for human review.
+     - `recommendation` — the reviewer's suggested action: apply / reject / defer.
+     - `triage_hint` — `technical | user-facing | technical-escalated | security-escalated`. Use as the first triage signal; override only with explicit evidence.
    - `verdict` — one of `APPROVED | CHANGES_REQUESTED | NEEDS_DISCUSSION`. Will be written into the log Session Info block at finalisation.
    - `raw_response` — verbatim model output. Preserve in the round's "ChatGPT Feedback (raw)" log section.
 
    If the CLI exits non-zero, print its stderr and stop.
+   Exit codes: 0 ok, 2 API error, 3 model mismatch (strict), 4 schema_fail after repair, 5 parse_fail after repair, 6 version_mismatch.
 
 7. [MANUAL] **Prepare Round 1 for the user to paste into ChatGPT:**
 
-   a. Read the spec file content in full.
-   b. Print the following block so the user can copy-paste it into ChatGPT:
+   a. Print the spec file as a clickable VS Code markdown link so the operator can open it and attach it to ChatGPT-web in one click:
+
+      `Spec file: [<spec-file-path>](<spec-file-path>)`
+
+      Substitute `<spec-file-path>` with the actual repo-relative path detected in Step 2 (e.g. `[tasks/builds/foo-bar/spec.md](tasks/builds/foo-bar/spec.md)`). MUST be a repo-relative markdown link — never an absolute path, never backslashes, never a bare backtick-wrapped path (these break VSCode click-to-open; see "VSCode Extension Context / Code References in Text" guidance in CLAUDE.md).
+
+   b. Print the following ready-to-paste block (do NOT embed the spec content — the operator attaches the file via the link above):
 
    ```
-   --- Copy into ChatGPT ---
-   Review this specification document for completeness, clarity, and implementation readiness.
+   --- Copy into ChatGPT (and attach the spec file linked above) ---
+   Review the attached specification document for completeness, clarity, and implementation readiness.
    List your findings as numbered items, each with:
    - Title
    - Severity: critical / high / medium / low
@@ -147,8 +159,6 @@ Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1
 
    Focus on: missing contracts, ambiguous requirements, missing edge cases, internal inconsistencies, and unresolved forward references.
    End with an overall verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION.
-
-   [spec file content here]
    --- End ---
    ```
 
@@ -179,20 +189,9 @@ npx tsx scripts/chatgpt-review.ts --mode spec --file <spec-file-path>
 
 If the CLI exits non-zero, print stderr and stop.
 
-**[MANUAL]** Trigger: user pastes a ChatGPT response as their next message. Round 1 fires after the initial paste (per On Start §7-manual above); subsequent rounds begin after each round summary when the agent prints the updated spec and waits.
+**[MANUAL]** Trigger: user pastes a ChatGPT response as their next message. Round 1 fires after the initial paste (per On Start §7-manual above). Subsequent rounds fire when the operator pastes ChatGPT's response to the round-N+1 prompt block printed at the end of round N (see step 7 footer below). No content embedding or re-prompting is needed at the start of round N — the operator already has the prompt and the fresh file link from the previous round's footer.
 
-At the start of each manual round (rounds 2+):
-a. Re-read the spec file (which may have been edited in earlier rounds).
-b. Print:
-   ```
-   --- Copy into ChatGPT for Round <N> ---
-   The spec has been updated since the last round. Please review it again, focusing on remaining issues and any new ones introduced by the latest changes.
-
-   [updated spec content here]
-   --- End ---
-   ```
-c. Print: `Paste the ChatGPT response here to continue.`
-d. Wait for paste. Extract findings from the pasted text as described in On Start §7-manual.
+When the operator pastes for round N (N ≥ 2): treat the pasted text as `raw_response` and extract findings as described in On Start §7-manual.
 
 For each round:
 
@@ -218,8 +217,15 @@ For each round:
 
 1. Use the `findings[]` array from the CLI's JSON output directly — each entry is
    already a normalised finding with `id`, `title`, `severity`, `category`,
-   `finding_type`, `rationale`, and `evidence`. Do NOT re-parse `raw_response`;
-   the CLI has already done that work.
+   `finding_type`, `risk_domain`, `scope_signal`, `triage_hint`, `source_refs[]`,
+   `rationale`, `recommendation`, `acceptance_check`, `auto_apply_eligible`, and
+   optionally `proposed_edits[]`. Do NOT re-parse `raw_response`; the CLI has
+   already done that work.
+
+   **v2 routing rules:**
+   - Read `triage_hint` as the initial triage bucket. Override only with explicit evidence.
+   - For carve-out gating, use `risk_domain` (NOT `finding_type`). Any finding with `risk_domain` in `{tenant_isolation, auth, pii, sql_injection, privilege_escalation}` must NOT be auto-applied — surface in step 3b.
+   - Read `auto_apply_eligible` and `recommendation` to set the initial recommendation.
 
    Edge cases:
    - Empty findings array AND verdict `APPROVED` → log "Round N — no findings; ChatGPT verdict: APPROVED" and ask the user whether to finalise or run another round.
@@ -400,9 +406,39 @@ For each round:
   <only the edited sections, with their headings for context>
 
 **After printing the round summary: WAIT. Do not finalize.**
-Every round ends with the mode-appropriate line:
+Every round ends with the mode-appropriate footer:
+
   [Automated] "Say 'next round' to fetch another automated review, or 'done' to finalise."
-  [Manual] "Updated spec printed above — paste it into ChatGPT, then paste the response here. Or say 'done' to finalise."
+
+  [Manual] — print the following Round N+1 ready-to-paste block so the operator can copy this prompt + attach the updated spec file into ChatGPT in one motion. The prompt MUST enumerate per-finding what was applied, rejected, and deferred this round (with reasons drawn from the Recommendations and Decisions table just logged in step 5); omit any of the three sections that have zero entries rather than printing an empty bullet list:
+
+  ```
+  --- Copy into ChatGPT for Round <N+1> (and attach the updated spec file linked below) ---
+  Round <N> of review is complete. Summary of what changed:
+
+  Applied this round:
+  - <one-liner per applied finding, prefixed [auto] for technical auto-apply or [user] for user-approved>
+
+  Rejected (will not be applied) and why:
+  - <one-liner per rejected finding> — reason: <one-line rationale from the decisions table>
+
+  Deferred (routed to backlog; revisit later) and why:
+  - <one-liner per deferred finding> — reason: <one-line rationale from the decisions table>
+
+  Please re-review the updated spec, focusing on:
+  - Remaining issues from previous rounds that were not applied or deferred
+  - Any new issues introduced by this round's edits
+  - Whether any rejection/defer rationale above looks unsound
+
+  End with an overall verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION.
+  --- End ---
+  ```
+
+  Spec file (updated): [<spec-file-path>](<spec-file-path>)
+
+  Paste ChatGPT's response back here for Round <N+1>, or say 'done' to finalise.
+
+  Substitute `<spec-file-path>` with the actual repo-relative path (e.g. `[tasks/builds/foo-bar/spec.md](tasks/builds/foo-bar/spec.md)`). Same link-format rules as Step 7a — repo-relative markdown link only, no absolute paths, no backslashes, no bare backticks.
 
 Finalization ONLY triggers when the user explicitly says "done", "finished",
 "we're done", "that's it", or equivalent. Never auto-finalize after a round,
@@ -468,8 +504,8 @@ Triggered by: "done", "finished", "we're done", "that's it", or equivalent.
    Log each failure as a warning. If 2 or more fail, also log:
    ⚠ Spec not implementation-ready — resolve checklist failures before build.
 3. Write the Final Summary block to the session log AND insert a `**Verdict:**`
-   header line into the **Session Info** block at the top of the log so the
-   Mission Control dashboard can parse it. The line MUST match one of:
+   header line into the **Session Info** block at the top of the log so
+   downstream tooling can parse it. The line MUST match one of:
    - `**Verdict:** APPROVED` — spec is implementation-ready; checklist clean.
    - `**Verdict:** CHANGES_REQUESTED` — accepted spec edits remain pending or
      2+ implementation-readiness checklist items failed.
@@ -650,7 +686,7 @@ File: tasks/review-logs/chatgpt-spec-review-<slug>-<timestamp>.md
   each round's state lands on the PR before the next round starts.
 - **Test gates are CI-only — never run them and never write them into a
   spec.** Continuous integration runs the complete suite as a pre-merge gate.
-  Do NOT run `npm run test:gates`, `npm run test:qa`, `npm run test:unit`,
+  Do NOT run `npm run test:gates`, `npm run test:unit`,
   the umbrella `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or
   `scripts/run-all-*.sh` at any point — not as part of validating a
   ChatGPT-suggested spec edit, not as a "confirm the spec implementation

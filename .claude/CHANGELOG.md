@@ -32,6 +32,56 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.7.0 — 2026-05-28 — review-cascade-v3
+
+**Highlights:** Schema-gated multi-tier review pipeline upgrade. Replaces the ad-hoc prose review contract with a JSON-Schema-gated v2 envelope across all three review modes (spec, plan, PR). Adds two new advisory Claude reviewers, upgrades `pr-reviewer` to v2 with mechanical auto-fix authority, wires coordinator-side auto-apply with rollback, disagreement adjudication, and false-positive suppression memory. Golden corpus: 11/11 fixtures passing (8 coordinator + 3 driver smoke).
+
+**Added:**
+- `schemas/review-finding.schema.json` — active v2 contract for a single finding. Key additions: `risk_domain` (independent enum from `finding_type`; carve-out gate keys on this), `source_refs[]` (replaces `evidence` string; min 1 item), `scope_signal`, `triage_hint`, `proposed_edits[]` (required when `auto_apply_eligible: true` per §A11 patch contract), `acceptance_check` denylist via `pattern` constraint.
+- `schemas/review-result.schema.json` — active v2 envelope. Versioning quartet: `contract_version`, one of `{prompt_version | reviewer_version | stitched_from}`, `project_context_version`, `source_artifact_sha`. `oneOf` enforces mutual-exclusivity between OpenAI-tier, Claude-tier, and coordinator-stitched records.
+- `schemas/prior-rounds.schema.json` — PRIOR_ROUNDS input shape: `current_round`, `findings_settled[]` (with resolution enum), `coordinator_notes[]`.
+- `schemas/pr-context.schema.json` — PR_CONTEXT input shape: `pr_title`, `build_slug`, `task_class`, `phase_2_review_outcomes`, `accepted_deviations[]`.
+- `schemas/CHANGELOG.md` — field-move history for the schema contract surface.
+- `.claude/agents/claude-spec-review.md` — new advisory Claude spec reviewer. Read-only, 3-iteration lifetime cap per artifact. Runs before Codex and OpenAI; emits markdown log + canonical JSON validated by the v2 schema. Fail-closed on missing PROJECT_CONTEXT sections (§3b). `auto_apply_eligible: false` at launch; promoted via `CLAUDE_REVIEWER_FIX_MODE_SPEC` config flag.
+- `.claude/agents/claude-plan-review.md` — new advisory Claude plan reviewer. Read-only, 3-iteration lifetime cap per artifact. Risk-weighted chunk sampling (schema/migration/RLS/worker/route chunks always in the 2-3 sample). Runs as the only mechanical pre-screen before OpenAI plan review. `auto_apply_eligible: false` at launch; promoted via `CLAUDE_REVIEWER_FIX_MODE_PLAN`.
+- `scripts/review-coordinator/applyFindings.ts` — coordinator-side §11a auto-apply orchestrator: one-finding-at-a-time, snapshot + rollback, anchor-based patch, cumulative re-verify, structured commit.
+- `scripts/review-coordinator/applyFindingsPure.ts` — pure helper for the apply loop (no FS side effects; testable in isolation).
+- `scripts/review-coordinator/auditLog.ts` — structured audit log writer for coordinator decisions (applied / deferred / suppressed / quarantined).
+- `scripts/review-coordinator/buildDiffPackage.ts` — coordinator-side §3c diff truncation manifest builder; hashes the focused package (manifest + diff + PR_CONTEXT + PRIOR_ROUNDS) for `source_artifact_sha`.
+- `scripts/review-coordinator/buildDiffPackagePure.ts` — pure helper for diff package construction.
+- `scripts/review-coordinator/resolveBaseRef.ts` — F9 R1 fix: `resolveBaseRef()` dynamically resolves the merge-base against `origin/HEAD` or the configured default branch; no more hardcoded `origin/main`.
+- `scripts/review-coordinator/suppressionStore.ts` — §11c false-positive suppression memory with mandatory provenance, round-level dedup, and F10 R1 absent-directory tolerance.
+- `scripts/review-coordinator/validateProjectContextPure.ts` — §3b PROJECT_CONTEXT fail-closed preflight; rejects missing Stage, Framing assumptions, or Architecture + Guidelines sections; pure and testable.
+- `context/framing-defaults.md` — default PROJECT_CONTEXT framing block injected into all three review modes when the host repo does not supply its own.
+- `context/README.md` — context directory convention: how framing-defaults.md is loaded, override semantics, and the five canonical framing-assumption keys.
+
+**Changed:**
+- `.claude/agents/pr-reviewer.md` — upgraded in place to v2 (same file, same caller contract). New authorities: mechanical auto-fix via Edit for `scope_signal: local` AND `risk_domain: none` findings (`auto_apply_eligible: true`, `auto_apply_reason: "local_one_obvious_fix"`). Security carve-out (§13) keys on `risk_domain` — any value other than `none` blocks auto-fix regardless of `finding_type`. Inline-apply sets `applied_inline_by_reviewer: true`; coordinator verifies via `acceptance_check` and does NOT re-apply. JSON output now required alongside the markdown log; both validate against `schemas/review-result.schema.json`. `reviewer_version: "pr-reviewer.v2"`.
+- `.claude/agents/chatgpt-pr-review.md` — v2 routing rules: reads `triage_hint` as initial bucket, uses `risk_domain` (NOT `finding_type`) for carve-out gating, reads `auto_apply_eligible` and `proposed_edits[]` directly from the CLI's normalised findings[]. Automated mode flipped to default when `OPENAI_API_KEY` is set.
+- `.claude/agents/chatgpt-spec-review.md` — same v2 routing rules; reads normalised findings[] from CLI JSON (no re-parsing raw_response). Automated mode default when `OPENAI_API_KEY` set.
+- `.claude/agents/chatgpt-plan-review.md` — new agent (was absent from prior framework versions); automated mode auto-detected from `OPENAI_API_KEY`; manual fallback retained.
+- `.claude/agents/spec-coordinator.md` — Steps 6a/6b added: claude-spec-review invocation with D5 cap + validateProjectContext preflight (Step 6a), followed by coordinator apply of surfaced technical findings per §11a (Step 6b).
+- `.claude/agents/feature-coordinator.md` — Steps 3a/3b added: claude-plan-review invocation with D5 cap + validateProjectContext preflight (Step 3a), followed by coordinator apply of surfaced technical findings per §11a (Step 3b).
+
+**Coordinator wiring (§11a/11b/11c):**
+- §11a coordinator-side auto-apply: one-finding-at-a-time apply loop with snapshot before each apply, anchor-based patch (literal substring uniqueness check), cumulative re-verify (lint + typecheck after each), structured commit per finding, rollback on verification failure.
+- §11b reviewer-disagreement adjudication: when two reviewers disagree on the same finding, coordinator surfaces the delta with both rationales; operator decides; decision logged with `coordinator_override_reason`.
+- §11c false-positive suppression memory: findings suppressed in prior rounds persist to the suppression store; re-raised findings in subsequent rounds are auto-suppressed with provenance; F10 R1 tolerates absent suppression directory (creates on first write).
+
+**Fixed:**
+- F9 R1 — `resolveBaseRef()` replaces hardcoded `origin/main` with dynamic default-branch resolution; consuming repos on `origin/master` or custom default branches no longer fail the diff-package builder.
+- F10 R1 — `suppressionStore.ts` creates the store directory on first write instead of throwing on absent path.
+
+**Adoption notes (for repos consuming this framework upgrade):**
+- `schemas/` directory is new at the repo root. Sync deploys it automatically (glob `schemas/**`). No manifest entry was needed in prior versions; v2.7.0 adds the glob.
+- `scripts/review-coordinator/` is a new directory under `scripts/`. Consuming repos that mount the framework's `scripts/` must ensure their `tsconfig.json` picks up this subdirectory (standard `include: ["scripts/**"]` already covers it).
+- `context/` directory is new at the repo root. Contains `framing-defaults.md` and `README.md`. Coordinators load from `context/framing-defaults.md` unless the host repo ships a project-specific override at the same path.
+- `pr-reviewer.md` upgraded in place: consuming repos that had local customisations (e.g. project-specific "Specific Things to Check") will see a `.framework-new` sibling on next `sync.js` run. Merge the new §13 carve-out logic and the JSON output requirement; preserve project-specific checklist items.
+- `spec-coordinator.md` and `feature-coordinator.md` changed in place: Steps 6a/6b and 3a/3b are additive; consuming repos with `customisedLocally: true` should merge the new steps into their local copies.
+- `chatgpt-plan-review.md` is a new agent file. Sync deploys it automatically via the `agents/*.md` glob. Add the fleet table row and common-invocation entry to `CLAUDE.md` (manual step — `CLAUDE.md` is `doNotTouch` per manifest).
+
+---
+
 ## 2.6.4 — 2026-05-27
 
 **Highlights:** Docs-only patch documenting a gotcha discovered during the v2.6.3 adoption rollout. The `.framework-new` files sync.js writes when a customised file has a newer canonical version are per-clone working artefacts — if accidentally committed to git, they propagate one developer's mid-sync state to every clone and look like a shared "pending decisions backlog" needing collaborative resolution. They are NOT a team-shared backlog. SYNC.md Phase 5 now opens with a gitignore prerequisite so future adopters add `*.framework-new` to their root `.gitignore` once, up front.

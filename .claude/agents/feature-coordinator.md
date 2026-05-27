@@ -1,6 +1,6 @@
 ---
 name: feature-coordinator
-description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs chatgpt-plan-review (manual ChatGPT-web rounds), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk static checks (G1). After all chunks built, runs G2 integrated-state gate, then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
+description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (automated default; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk static checks (G1). After all chunks built, runs G2 integrated-state gate, then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -18,17 +18,13 @@ Two valid entry paths:
 
 Either way, the steps below run in the main session. The `Agent` tool dispatches inside the playbook (Step 3 `architect`, Step 4 `chatgpt-plan-review`, Step 6 `builder`, Step 8 reviewers) issue from the main session and work normally because the main session has top-level access to `Agent`.
 
-## Project Extensions
-
-If `.claude/agents/extensions/feature-coordinator.md` exists, treat its content as project-specific extensions to this agent's behaviour. Load it during Step 0 (context loading) and apply its constraints, paths, and project-bound conventions on top of the canonical guidance below. Project extensions commonly override: review-pipeline composition, gate commands, file-path conventions, branch-naming, and push-policy preferences.
-
 ## Context Loading (Step 0)
 
 Read in this order before doing anything else:
 
 1. `CLAUDE.md` — task management workflow, agent fleet, review pipeline
 2. `architecture.md` — system architecture, conventions, service contracts
-3. `DEVELOPMENT_GUIDELINES.md` — build discipline, tenant-isolation rules, schema invariants, development-discipline §. Read if present; skip when absent (project supplies discipline rules via architecture.md or extensions).
+3. `DEVELOPMENT_GUIDELINES.md` — build discipline, RLS rules, schema invariants, §8 rules
 4. `tasks/current-focus.md` — verify `status: BUILDING`
 5. `tasks/builds/{slug}/handoff.md` — restore Phase 1 context (spec path, slug, branch, any Phase 1 decisions)
 6. The spec at the path named in the handoff
@@ -46,7 +42,9 @@ Immediately after context loading, emit a TodoWrite task list with exactly these
 1. Context loading
 2. Branch-sync S1 + freshness check
 3. architect invocation
-4. chatgpt-plan-review (MANUAL mode)
+3a. claude-plan-review invocation (NEW — D5 cap, validateProjectContext preflight)
+3b. Apply surfaced findings + persist log (surface-only stub until Chunk 10)
+4. chatgpt-plan-review (automated default; Claude log + spec injected via D8)
 5. plan-gate
 6. Per-chunk loop (expanded after architect returns — one item per chunk)
 7. G2 integrated-state static-check gate
@@ -104,21 +102,102 @@ After architect returns, review the plan for:
 
 Once the plan passes review, expand TodoWrite item 6 (Per-chunk loop) into one sub-item per chunk. Expand item 8 (Branch-level review pass) into sub-items: spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer.
 
+## Step 3a — claude-plan-review
+
+**Prerequisite preflight:** before invoking `claude-plan-review`, call `validateProjectContext` (Chunk 8 helper at `scripts/review-coordinator/validateProjectContextPure.ts`) with the `PROJECT_CONTEXT` block, mode `'plan'`, and the tenant-data-touch detection result from §3b.
+
+- `{kind: 'ok'}` → proceed to invoke `claude-plan-review`.
+- `{kind: 'fail_closed', missing_sections: [...]}` → surface `NEEDS_DISCUSSION` to the operator listing the missing sections. **Do NOT invoke `claude-plan-review`.** Record the preflight failure in `tasks/builds/{slug}/progress.md`. Stop Step 3a here and wait for operator action before proceeding to Step 4.
+
+**D5 cap enforcement:** before invocation, count prior `claude-plan-review` iterations recorded in `tasks/builds/{slug}/progress.md` for this artifact. If the count is already **3**, refuse invocation; surface to the operator with `iteration_cap_reached`; record `iteration_cap_reached` in `progress.md`. Do not invoke — proceed directly to Step 4.
+
+Invoke `claude-plan-review` as a sub-agent with the plan path, the spec path from the handoff, and the `PROJECT_CONTEXT` block. The reviewer reads the spec to check for plan/spec drift — this is a primary hunt target.
+
+The sub-agent returns a `review-result.v2` JSON (validated by the Chunk 1 schema via the Chunk 2 driver). The driver writes the JSON to `tasks/review-logs/claude-plan-review-log-<slug>-<timestamp>.json` and the markdown alongside at `.md`.
+
+**Driver exit-code routing:**
+
+| Exit code | Meaning | Action |
+|---|---|---|
+| 0 | `{kind: 'ok'}` | Read `verdict` from the JSON log and dispatch per routing below. |
+| 4 or 5 | `schema_fail` / `parse_fail` after driver quarantine | Surface `NEEDS_DISCUSSION` with the quarantine path (`tasks/review-logs/quarantined/claude-plan-review-<timestamp>.json`). Do NOT apply findings. Record quarantine in `progress.md`. |
+| 6 | `version_mismatch` | Surface `NEEDS_DISCUSSION` with the contract-version drift. Do NOT apply findings. |
+
+**Verdict routing (after `{kind: 'ok'}`):**
+
+- `APPROVED` → record in `progress.md`, proceed to Step 3b (persist log, then continue to Step 4).
+- `CHANGES_REQUESTED` → proceed to Step 3b. **All findings route to surface-to-operator until Chunk 10 lands.**
+- `NEEDS_DISCUSSION` → surface the decision points to the operator. Wait for direction before proceeding to Step 4.
+
+Persist the iteration count: after each invocation (regardless of verdict), append `claude-plan-review iteration N: <verdict>` to `tasks/builds/{slug}/progress.md`.
+
+## Step 3b — Apply surfaced findings + persist log
+
+Persist the Claude review log:
+
+```
+JSON:      tasks/review-logs/claude-plan-review-log-<slug>-<timestamp>.json
+Markdown:  tasks/review-logs/claude-plan-review-log-<slug>-<timestamp>.md
+```
+
+(The driver writes these automatically; Step 3b records their paths in `progress.md` under `## Claude plan review log`.)
+
+**Apply loop (surface-only stub — Chunk 10 patches this):**
+
+For each finding in the JSON log:
+
+```
+Invoke `scripts/review-coordinator/applyFindings.ts` (the §11a I/O orchestrator):
+
+```
+applyFindings(reviewResult, {
+  projectRoot: <repo root>,
+  buildSlug: <current build slug>,
+  reviewer: "claude-plan-review",
+  auditLogPath: "tasks/review-logs/coordinator-decisions-<slug>-<timestamp>.jsonl",
+})
+```
+
+The orchestrator runs:
+- Four-key gate (§11a Step 3 sub-checks 1-8): anti-vagueness, recommendation gate,
+  reviewer eligibility, carve-out (§13), scope, triage, suppression memory (§11c).
+- Anchor-based apply (§A11): each proposed_edit applied with exact anchor matching;
+  anchor_not_found / anchor_not_unique surfaces the finding without applying.
+- Per-finding lint + typecheck + acceptance_check verify.
+- Rollback on verify failure via git checkout HEAD.
+- Cumulative re-verify after all per-finding applies; walk-back reverts on failure.
+- Structured commit (one per apply batch) per §11a Step 8 format.
+- Audit log JSONL entry per decision per §11a Step 9.
+
+Returns { applied[], surfaced[], quarantined[], commit_sha }. Route surfaced findings
+to the operator surface block below.
+```
+
+Surface every finding to the operator with its `severity`, `title`, `triage_hint`, `recommendation`, and `rationale`. Prompt the operator to review and manually apply any findings they accept before continuing to Step 4.
+
+**Re-run logic (CHANGES_REQUESTED):** if the operator applies findings and requests a re-run, increment the iteration count and return to Step 3a — subject to the D5 cap of 3. A plan that hits the cap with open `CHANGES_REQUESTED` surfaces the remaining findings to the operator with a note that Step 4 (OpenAI) will see them as unapplied, then proceeds to Step 4.
+
 ## Step 4 — chatgpt-plan-review
 
-**Skip gate (profile-aware):** if `.claude/agents/chatgpt-plan-review.md` is not present in this repo's fleet (i.e. the repo is on MINIMAL or STANDARD profile and didn't opt in to ChatGPT-web reviews), skip this step with a note in `progress.md`:
+**Automated default (D8):** invoke `chatgpt-plan-review` as a sub-agent. The default mode is **automated** when `OPENAI_API_KEY` is set in the environment. The manual-fallback mode is preserved for when no API key is present.
+
+**D8 — Claude log passthrough:** inject the Claude plan review log (from Step 3b) AND the approved spec path into the `PROJECT_CONTEXT` passed to `chatgpt-plan-review`. Append the log under a `## Prior Claude plan review` heading in `PROJECT_CONTEXT`, so the OpenAI tier focuses on unapplied findings and plan/spec drift rather than re-raising settled points. Format:
 
 ```
-chatgpt-plan-review: skipped — agent not present in this repo's fleet (MINIMAL/STANDARD profile per GRADED policy)
+## Prior Claude plan review
+Log path: tasks/review-logs/claude-plan-review-log-<slug>-<timestamp>.md
+Verdict: <verdict from Step 3a>
+Findings applied or surfaced: <count>
+Spec path: <spec path from handoff>
 ```
 
-No `REVIEW_GAP` is required for this skip (policy-not-applicable per the GRADED-posture rules). Proceed directly to plan-gate (Step 5).
+If Step 3a was skipped (preflight failed or cap reached), record `## Prior Claude plan review: skipped — <reason>` in `PROJECT_CONTEXT` so the OpenAI reviewer has full context on what the Claude tier found (or why it was not run). Plan/spec drift is the primary OpenAI hunt target for plan reviews.
 
-If `.claude/agents/chatgpt-plan-review.md` IS present:
+If Step 3a's driver quarantined the Claude output (exit code 4 / 5 / 6), include the quarantine path in `PROJECT_CONTEXT` under `## Prior Claude plan review: quarantined`.
 
-Invoke `chatgpt-plan-review` as a sub-agent with MODE = manual and the plan path (`tasks/builds/{slug}/plan.md`).
+**Automated mode:** the sub-agent calls the OpenAI API directly with the plan + PROJECT_CONTEXT (including the Claude log). It runs the schema-gate validation on the response, triages findings, and returns a finalised plan. No operator paste required in automated mode.
 
-The sub-agent handles all ChatGPT-web rounds manually — it presents the plan, collects feedback, applies accepted edits, and returns with a finalised plan. There is no time cap on this step; the operator drives the rounds.
+**Manual fallback (no API key):** the sub-agent presents the plan to the operator for ChatGPT-web rounds. The operator pastes responses; the sub-agent triages and applies accepted edits. Same flow as before; operator drives the cadence.
 
 When the sub-agent returns with a finalised plan, update `progress.md` and proceed to plan-gate.
 
@@ -398,6 +477,8 @@ Once all items pass, append the Phase 2 section to the existing `tasks/builds/{s
 **Plan path:** tasks/builds/{slug}/plan.md
 **Chunks built:** N
 **Branch HEAD at handoff:** <commit sha>
+**Claude plan review log:** tasks/review-logs/claude-plan-review-log-{slug}-{timestamp}.md (or "skipped — <reason>")
+**Claude plan review iterations used:** N / 3 (D5 cap)
 **G1 attempts (per chunk):** [chunk-name: attempts]
 **G2 attempts:** N
 **spec-conformance verdict:** {verdict} ({log path})
@@ -413,16 +494,12 @@ Once all items pass, append the Phase 2 section to the existing `tasks/builds/{s
 
 ## Step 11 — current-focus.md update
 
-Update the mission-control block in `tasks/current-focus.md`:
+Update the prose body of `tasks/current-focus.md`:
 
-```
-status: REVIEWING
-last_updated: {YYYY-MM-DD}
-```
+- Set **Status:** to **REVIEWING** with a one-line summary.
+- Update **Last updated:** to `{YYYY-MM-DD}`.
 
-Keep `active_spec`, `active_plan`, `build_slug`, and `branch` unchanged. Only `status` and `last_updated` change.
-
-Update the prose body below the mission-control block to match. Status enum transitions `BUILDING → REVIEWING`. Per the existing prose-canonical rule: if prose and block disagree, prose wins — keep them in sync.
+Leave **Active spec**, **Active plan**, **Active build slug**, and **Branch** unchanged. Status enum transitions `BUILDING → REVIEWING`.
 
 ## Step 12 — End-of-phase prompt
 
