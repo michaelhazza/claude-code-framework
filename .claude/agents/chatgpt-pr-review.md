@@ -472,16 +472,39 @@ If the live file disproves the finding, mark it `reject — diff-misread (verifi
     ```
 
   Compute size and file count, then print the round summary (step 9 above)
-  followed immediately by:
+  followed immediately by a Round N+1 ready-to-paste prompt block AND the
+  clickable diff link. The prompt MUST enumerate per-finding what was
+  implemented, rejected, and deferred this round (with reasons drawn from
+  the Recommendations and Decisions table just logged in step 7); omit any
+  of the three sections that have zero entries rather than printing an
+  empty bullet list:
 
     ```
-    Round <N+1> diff ready for upload to ChatGPT:
+    Round <N+1> ready for upload to ChatGPT. Copy this prompt + attach the diff file linked below:
+
+      --- Copy into ChatGPT for Round <N+1> ---
+      Round <N> of review is complete. Summary of what changed:
+
+      Implemented this round:
+      - <one-liner per implemented finding, prefixed [auto] for technical auto-apply or [user] for user-approved>
+
+      Rejected (will not be implemented) and why:
+      - <one-liner per rejected finding> — reason: <one-line rationale from the decisions table>
+
+      Deferred (routed to tasks/todo.md backlog; revisit later) and why:
+      - <one-liner per deferred finding> — reason: <one-line rationale from the decisions table>
+
+      Please re-review the attached updated diff, focusing on:
+      - Remaining issues from previous rounds that were not implemented or deferred
+      - Any new issues introduced by this round's edits
+      - Whether any rejection/defer rationale above looks unsound
+
+      End with verdict: APPROVED / CHANGES_REQUESTED / NEEDS_DISCUSSION.
+      --- End ---
 
       - [.chatgpt-diffs/pr<N>-round<N+1>-code-diff.diff](.chatgpt-diffs/pr<N>-round<N+1>-code-diff.diff) — <size>, code-only (<file-count> files)
 
-    Upload the file to ChatGPT (focus on remaining issues and any new ones
-    introduced by the latest changes), then paste the response here to continue.
-    Or say 'done' to finalise.
+    Paste ChatGPT's response back here for Round <N+1>, or say 'done' to finalise.
     ```
 
   The diff link MUST appear in the same message as the round summary. A round
@@ -504,22 +527,41 @@ If the live file disproves the finding, mark it `reject — diff-misread (verifi
   - Listing the file under a heading like "Absolute paths:" instead of inline
     in the round-summary block.
 
-  **Worked example — round 2 summary, exactly this shape:**
+  **Worked example — round 2 footer (after Round 1 had 2 implemented, 1 rejected, 1 deferred), exactly this shape:**
 
   ```
-  Round 2 diff ready for upload to ChatGPT:
+  Round 2 ready for upload to ChatGPT. Copy this prompt + attach the diff file linked below:
+
+    --- Copy into ChatGPT for Round 2 ---
+    Round 1 of review is complete. Summary of what changed:
+
+    Implemented this round:
+    - [auto] Added null guard in server/services/agentExecutionService.ts:142
+    - [user] Updated onboarding CTA copy in client/src/pages/Onboarding.tsx
+
+    Rejected (will not be implemented) and why:
+    - Rename internal helper `payload` to `body` — reason: `payload` is the established term throughout the codebase
+
+    Deferred (routed to tasks/todo.md backlog; revisit later) and why:
+    - Extract renderer to component — reason: out of scope for this PR; better as a follow-up
+
+    Please re-review the attached updated diff, focusing on:
+    - Remaining issues from previous rounds that were not implemented or deferred
+    - Any new issues introduced by this round's edits
+    - Whether any rejection/defer rationale above looks unsound
+
+    End with verdict: APPROVED / CHANGES_REQUESTED / NEEDS_DISCUSSION.
+    --- End ---
 
     - [.chatgpt-diffs/pr264-round2-code-diff.diff](.chatgpt-diffs/pr264-round2-code-diff.diff) — 8.2K, code-only (7 files)
 
-  Upload the file to ChatGPT (focus on remaining issues and any new ones
-  introduced by the latest changes), then paste the response here to continue.
-  Or say 'done' to finalise.
+  Paste ChatGPT's response back here for Round 2, or say 'done' to finalise.
   ```
 
 **After printing the round summary and round N+1 diff link: WAIT. Do not finalize.**
 Every round ends with the mode-appropriate line:
   [Automated] "Say 'next round' to fetch another automated review, or 'done' to finalise."
-  [Manual] "Round <N+1> diff ready at .chatgpt-diffs/pr<N>-round<N+1>-code-diff.diff — upload it to ChatGPT, paste the response here. Or say 'done' to finalise."
+  [Manual] "Round <N+1> prompt + diff link printed above — copy the prompt into ChatGPT alongside the attached diff file, then paste the response here. Or say 'done' to finalise."
 
 Finalization ONLY triggers when the user explicitly says "done", "finished",
 "we're done", "that's it", or equivalent. Never auto-finalize after a round,

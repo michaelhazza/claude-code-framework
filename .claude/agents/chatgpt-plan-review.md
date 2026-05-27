@@ -27,14 +27,23 @@ When invoked with `chatgpt-plan-review (mode: manual) target=tasks/builds/{slug}
    **IMPORTANT:** the glob MUST be scoped to the current slug — do not use the unscoped `chatgpt-plan-review-*.md` pattern, which would pick up logs from different features.
 4. If a log exists for this slug → resume from the last completed round.
 5. If no log → create `tasks/review-logs/chatgpt-plan-review-{slug}-{YYYY-MM-DDThh-mm-ssZ}.md` with Session Info header (see Log Format below).
-6. Print kickoff message:
+6. Print kickoff message — clickable file link first (so the operator can open and attach the plan to ChatGPT-web in one click), then a ready-to-paste prompt block:
 
    > **Round 1 of chatgpt-plan-review (manual mode).**
    >
-   > Plan: `tasks/builds/{slug}/plan.md`
-   > Upload this file to ChatGPT-web and ask for: phase sequencing review, contracts review, primitives-reuse review, chunk-sizing review.
+   > Plan file: [tasks/builds/{slug}/plan.md](tasks/builds/{slug}/plan.md) (click to open, then attach to ChatGPT-web)
    >
-   > When ChatGPT responds, paste the response back into this session.
+   > ```
+   > --- Copy into ChatGPT (and attach the plan file linked above) ---
+   > Review the attached implementation plan for: phase sequencing, contracts, primitives-reuse, and chunk-sizing.
+   > List findings as numbered items, each with severity (critical / high / medium / low) and a brief explanation.
+   > End with verdict: APPROVED / CHANGES_REQUESTED / NEEDS_DISCUSSION.
+   > --- End ---
+   > ```
+   >
+   > Paste ChatGPT's response back into this session when ready.
+
+   Substitute `{slug}` with the actual build slug. The plan link MUST be a repo-relative markdown link — never an absolute path, never backslashes, never a bare backtick-wrapped path (these break VSCode click-to-open; see "VSCode Extension Context / Code References in Text" guidance in CLAUDE.md).
 
 ## Per-Round Loop
 
@@ -45,7 +54,35 @@ When invoked with `chatgpt-plan-review (mode: manual) target=tasks/builds/{slug}
    - `user-facing` — directional decisions about what to build, priority changes, scope additions → print for operator approval before applying
 4. Auto-apply technical findings. For user-facing findings, print each and wait for operator `yes` / `no` / `defer`
 5. Log every decision (accept / reject / defer) in the session log
-6. Ask operator: "Run another round, or say `done`?"
+6. Print a Round N+1 ready-to-paste prompt block so the operator can copy this prompt + attach the updated plan file into ChatGPT in one motion. The prompt MUST enumerate per-finding what was applied, rejected, and deferred this round (with reasons drawn from the session-log Decisions table just logged in step 5); omit any of the three sections that have zero entries rather than printing an empty bullet list:
+
+   ```
+   --- Copy into ChatGPT for Round <N+1> (and attach the updated plan file linked below) ---
+   Round <N> of review is complete. Summary of what changed:
+
+   Applied this round:
+   - <one-liner per applied finding, prefixed [auto] for technical auto-apply or [user] for user-approved>
+
+   Rejected (will not be applied) and why:
+   - <one-liner per rejected finding> — reason: <one-line rationale from the decisions table>
+
+   Deferred (routed to backlog; revisit later) and why:
+   - <one-liner per deferred finding> — reason: <one-line rationale from the decisions table>
+
+   Please re-review the updated plan, focusing on:
+   - Remaining issues from previous rounds that were not applied or deferred
+   - Any new issues introduced by this round's edits
+   - Whether any rejection/defer rationale above looks unsound
+
+   End with verdict: APPROVED / CHANGES_REQUESTED / NEEDS_DISCUSSION.
+   --- End ---
+   ```
+
+   Plan file (updated): [tasks/builds/{slug}/plan.md](tasks/builds/{slug}/plan.md)
+
+   Paste ChatGPT's response back here for Round <N+1>, or say `done` to finalise.
+
+   Substitute `{slug}` with the actual build slug. Same link-format rules as Step 6 of On Start — repo-relative markdown link only, no absolute paths, no backslashes, no bare backticks.
 
 ## Termination
 
