@@ -32,6 +32,17 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.6.5 — 2026-05-27
+
+**Highlights:** Operator-facing UX upgrade across all three ChatGPT review agents (`chatgpt-spec-review`, `chatgpt-plan-review`, `chatgpt-pr-review`) for consistency. Every round (kickoff and Round N+1) now ends with two operator-ready outputs in one place: (a) a clickable repo-relative VS Code markdown link to the artefact (spec, plan, or per-round PR diff file), and (b) a ready-to-paste ChatGPT prompt block. For Round N+1, the prompt block enumerates per-finding what was applied, rejected (with reason), and deferred (with reason) drawn from that round's decisions table — so ChatGPT has the context needed to avoid re-flagging items the operator already decided about. Eliminates the previous friction of (1) operators having to manually ask the agent for a file link each round, (2) the spec agent embedding the entire spec content inline in the prompt rather than using ChatGPT-web's native file-attach support, (3) the plan agent providing no Round N+1 prompt at all (just "Run another round?"), and (4) the PR agent lacking the applied/rejected/deferred summary in its upload prompt despite already having clickable diff links.
+
+**Changed:**
+- `.claude/agents/chatgpt-spec-review.md` — Step 7 [MANUAL] (Round 1 kickoff) replaces "Read spec content in full + embed in prompt" with a clickable VS Code markdown link to the spec file + paste-ready prompt block (no inline content). Per-Round Loop Round 2+ block trimmed (no re-prompt at start of round N — the round N-1 footer carries the prompt and link). Round summary footer (step 7 manual line) now prints a structured Round N+1 prompt block with per-finding Applied / Rejected (with reason) / Deferred (with reason) sections + a fresh clickable spec link.
+- `.claude/agents/chatgpt-plan-review.md` — Step 6 (Round 1 kickoff) replaces backtick-wrapped path + "Upload this file" prose with a clickable markdown link + paste-ready ChatGPT prompt block. Per-Round Loop step 6 replaces the bare "Run another round, or say done?" prompt with the same structured Round N+1 prompt block + clickable plan link used by the spec agent.
+- `.claude/agents/chatgpt-pr-review.md` — Per-Round Loop step 9 [MANUAL] now prints a structured Round N+1 prompt block (Implemented / Rejected with reason / Deferred with reason) ABOVE the existing clickable diff-file link, so the operator gets one copy-paste unit (prompt + file attachment) instead of just the diff link. Worked example updated to show the new shape end-to-end. Diff-file generation, exclusions list, repo-relative-link format rules, and VSCode-clickable-link enforcement (no absolute paths, no backslashes, no bare backticks) are unchanged — they were already correct.
+
+---
+
 ## 2.6.4 — 2026-05-27
 
 **Highlights:** Docs-only patch documenting a gotcha discovered during the v2.6.3 adoption rollout. The `.framework-new` files sync.js writes when a customised file has a newer canonical version are per-clone working artefacts — if accidentally committed to git, they propagate one developer's mid-sync state to every clone and look like a shared "pending decisions backlog" needing collaborative resolution. They are NOT a team-shared backlog. SYNC.md Phase 5 now opens with a gitignore prerequisite so future adopters add `*.framework-new` to their root `.gitignore` once, up front.

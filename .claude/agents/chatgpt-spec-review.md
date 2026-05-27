@@ -133,12 +133,17 @@ Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1
 
 7. [MANUAL] **Prepare Round 1 for the user to paste into ChatGPT:**
 
-   a. Read the spec file content in full.
-   b. Print the following block so the user can copy-paste it into ChatGPT:
+   a. Print the spec file as a clickable VS Code markdown link so the operator can open it and attach it to ChatGPT-web in one click:
+
+      `Spec file: [<spec-file-path>](<spec-file-path>)`
+
+      Substitute `<spec-file-path>` with the actual repo-relative path detected in Step 2 (e.g. `[tasks/builds/foo-bar/spec.md](tasks/builds/foo-bar/spec.md)`). MUST be a repo-relative markdown link — never an absolute path, never backslashes, never a bare backtick-wrapped path (these break VSCode click-to-open; see "VSCode Extension Context / Code References in Text" guidance in CLAUDE.md).
+
+   b. Print the following ready-to-paste block (do NOT embed the spec content — the operator attaches the file via the link above):
 
    ```
-   --- Copy into ChatGPT ---
-   Review this specification document for completeness, clarity, and implementation readiness.
+   --- Copy into ChatGPT (and attach the spec file linked above) ---
+   Review the attached specification document for completeness, clarity, and implementation readiness.
    List your findings as numbered items, each with:
    - Title
    - Severity: critical / high / medium / low
@@ -147,8 +152,6 @@ Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1
 
    Focus on: missing contracts, ambiguous requirements, missing edge cases, internal inconsistencies, and unresolved forward references.
    End with an overall verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION.
-
-   [spec file content here]
    --- End ---
    ```
 
@@ -179,20 +182,9 @@ npx tsx scripts/chatgpt-review.ts --mode spec --file <spec-file-path>
 
 If the CLI exits non-zero, print stderr and stop.
 
-**[MANUAL]** Trigger: user pastes a ChatGPT response as their next message. Round 1 fires after the initial paste (per On Start §7-manual above); subsequent rounds begin after each round summary when the agent prints the updated spec and waits.
+**[MANUAL]** Trigger: user pastes a ChatGPT response as their next message. Round 1 fires after the initial paste (per On Start §7-manual above). Subsequent rounds fire when the operator pastes ChatGPT's response to the round-N+1 prompt block printed at the end of round N (see step 7 footer below). No content embedding or re-prompting is needed at the start of round N — the operator already has the prompt and the fresh file link from the previous round's footer.
 
-At the start of each manual round (rounds 2+):
-a. Re-read the spec file (which may have been edited in earlier rounds).
-b. Print:
-   ```
-   --- Copy into ChatGPT for Round <N> ---
-   The spec has been updated since the last round. Please review it again, focusing on remaining issues and any new ones introduced by the latest changes.
-
-   [updated spec content here]
-   --- End ---
-   ```
-c. Print: `Paste the ChatGPT response here to continue.`
-d. Wait for paste. Extract findings from the pasted text as described in On Start §7-manual.
+When the operator pastes for round N (N ≥ 2): treat the pasted text as `raw_response` and extract findings as described in On Start §7-manual.
 
 For each round:
 
@@ -400,9 +392,39 @@ For each round:
   <only the edited sections, with their headings for context>
 
 **After printing the round summary: WAIT. Do not finalize.**
-Every round ends with the mode-appropriate line:
+Every round ends with the mode-appropriate footer:
+
   [Automated] "Say 'next round' to fetch another automated review, or 'done' to finalise."
-  [Manual] "Updated spec printed above — paste it into ChatGPT, then paste the response here. Or say 'done' to finalise."
+
+  [Manual] — print the following Round N+1 ready-to-paste block so the operator can copy this prompt + attach the updated spec file into ChatGPT in one motion. The prompt MUST enumerate per-finding what was applied, rejected, and deferred this round (with reasons drawn from the Recommendations and Decisions table just logged in step 5); omit any of the three sections that have zero entries rather than printing an empty bullet list:
+
+  ```
+  --- Copy into ChatGPT for Round <N+1> (and attach the updated spec file linked below) ---
+  Round <N> of review is complete. Summary of what changed:
+
+  Applied this round:
+  - <one-liner per applied finding, prefixed [auto] for technical auto-apply or [user] for user-approved>
+
+  Rejected (will not be applied) and why:
+  - <one-liner per rejected finding> — reason: <one-line rationale from the decisions table>
+
+  Deferred (routed to backlog; revisit later) and why:
+  - <one-liner per deferred finding> — reason: <one-line rationale from the decisions table>
+
+  Please re-review the updated spec, focusing on:
+  - Remaining issues from previous rounds that were not applied or deferred
+  - Any new issues introduced by this round's edits
+  - Whether any rejection/defer rationale above looks unsound
+
+  End with an overall verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION.
+  --- End ---
+  ```
+
+  Spec file (updated): [<spec-file-path>](<spec-file-path>)
+
+  Paste ChatGPT's response back here for Round <N+1>, or say 'done' to finalise.
+
+  Substitute `<spec-file-path>` with the actual repo-relative path (e.g. `[tasks/builds/foo-bar/spec.md](tasks/builds/foo-bar/spec.md)`). Same link-format rules as Step 7a — repo-relative markdown link only, no absolute paths, no backslashes, no bare backticks.
 
 Finalization ONLY triggers when the user explicitly says "done", "finished",
 "we're done", "that's it", or equivalent. Never auto-finalize after a round,
