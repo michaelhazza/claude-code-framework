@@ -128,10 +128,10 @@ Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1
 
    Capture the stdout JSON — it conforms to the `ChatGPTReviewResult` contract. The fields you will use:
    - `findings[]` — pre-extracted, normalised, enum-locked. Use this directly for the per-round triage table.
-     - `risk_domain` — `tenant_isolation | auth | pii | sql_injection | privilege_escalation | none`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` other than `none` must go through the security-escalated path before auto-apply.
+     - `risk_domain` — `none | tenant_isolation | security | auth_authorisation | idempotency | data_integrity | user_visible | compliance`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface in step 3b.
      - `auto_apply_eligible` — when `true`, the finding carries `proposed_edits[]` and the coordinator may apply it automatically. When `false`, surface for human review.
      - `recommendation` — the reviewer's suggested action: apply / reject / defer.
-     - `triage_hint` — `technical | user-facing | technical-escalated | security-escalated`. Use as the first triage signal; override only with explicit evidence.
+     - `triage_hint` — `technical | user-facing | technical-escalated`. Use as the first triage signal; override only with explicit evidence.
    - `verdict` — one of `APPROVED | CHANGES_REQUESTED | NEEDS_DISCUSSION`. Will be written into the log Session Info block at finalisation.
    - `raw_response` — verbatim model output. Preserve in the round's "ChatGPT Feedback (raw)" log section.
 
@@ -224,7 +224,7 @@ For each round:
 
    **v2 routing rules:**
    - Read `triage_hint` as the initial triage bucket. Override only with explicit evidence.
-   - For carve-out gating, use `risk_domain` (NOT `finding_type`). Any finding with `risk_domain` in `{tenant_isolation, auth, pii, sql_injection, privilege_escalation}` must NOT be auto-applied — surface in step 3b.
+   - For carve-out gating, use `risk_domain` (NOT `finding_type`). Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface in step 3b.
    - Read `auto_apply_eligible` and `recommendation` to set the initial recommendation.
 
    Edge cases:

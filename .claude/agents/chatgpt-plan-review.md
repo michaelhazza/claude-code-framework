@@ -48,10 +48,10 @@ npx tsx scripts/chatgpt-review.ts --mode plan --file tasks/builds/{slug}/plan.md
 
 Capture the stdout JSON. The fields you will use:
 - `findings[]` — pre-extracted, normalised, enum-locked.
-  - `risk_domain` — `tenant_isolation | auth | pii | sql_injection | privilege_escalation | none`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` other than `none` must NOT be auto-applied — surface for operator approval.
+  - `risk_domain` — `none | tenant_isolation | security | auth_authorisation | idempotency | data_integrity | user_visible | compliance`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface for operator approval.
   - `auto_apply_eligible` — when `true`, the finding may be auto-applied to the plan. When `false`, surface for operator review.
   - `recommendation` — apply / reject / defer.
-  - `triage_hint` — `technical | user-facing | technical-escalated | security-escalated`. Use as the initial triage signal.
+  - `triage_hint` — `technical | user-facing | technical-escalated`. Use as the initial triage signal.
 - `verdict` — `APPROVED | CHANGES_REQUESTED | NEEDS_DISCUSSION`.
 - `raw_response` — verbatim model output.
 
@@ -91,7 +91,7 @@ For each round:
 
    **v2 routing rules:**
    - Read `triage_hint` as the initial bucket. Override only with explicit evidence from CLAUDE.md or architecture.md.
-   - For carve-out gating, use `risk_domain` (NOT `finding_type`). Any finding with `risk_domain` in `{tenant_isolation, auth, pii, sql_injection, privilege_escalation}` is security-escalated — surface for operator approval regardless of `triage_hint`.
+   - For carve-out gating, use `risk_domain` (NOT `finding_type`). Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface for operator approval regardless of `triage_hint`.
    - Read `auto_apply_eligible`: when `false`, always surface for operator review even if the finding is otherwise `technical`.
    - Read `recommendation`: use as the initial recommendation for the auto-execute path.
 
@@ -176,7 +176,7 @@ Per-round section:
 | # | Finding | risk_domain | triage_hint | auto_apply_eligible | Decision | Rationale |
 |---|---------|-------------|-------------|---------------------|----------|-----------|
 | 1 | ... | none | technical | true | ACCEPT (auto) | ... |
-| 2 | ... | tenant_isolation | security-escalated | false | ESCALATED | operator approved |
+| 2 | ... | tenant_isolation | technical-escalated | false | ESCALATED | operator approved |
 
 ### Changes applied
 [bullet list of edits made to the plan]
@@ -189,4 +189,4 @@ Per-round section:
 - Never auto-commit during the loop — edits happen; commits happen at the caller (feature-coordinator) boundary.
 - Never use an unscoped log glob — always scope to the current slug.
 - Use `risk_domain` (not `finding_type`) for security carve-out routing.
-- A finding with `risk_domain` other than `none` is never auto-applied — always surface for operator approval.
+- A finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` is never auto-applied — always surface for operator approval.

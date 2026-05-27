@@ -98,10 +98,10 @@ Run: `ls tasks/review-logs/chatgpt-pr-review-*.md 2>/dev/null | sort | tail -1`
 
    Capture the stdout JSON — it conforms to the `ChatGPTReviewResult` contract. The fields you will use:
    - `findings[]` — pre-extracted, normalised, enum-locked. Use this directly for the per-round triage table.
-     - `risk_domain` — `tenant_isolation | auth | pii | sql_injection | privilege_escalation | none`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` other than `none` must go through the security-escalated path before auto-apply.
+     - `risk_domain` — `none | tenant_isolation | security | auth_authorisation | idempotency | data_integrity | user_visible | compliance`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface in step 3b.
      - `auto_apply_eligible` — when `true`, the finding carries `proposed_edits[]` and the coordinator may apply it automatically. When `false`, surface for human review.
      - `recommendation` — the reviewer's suggested action: apply / reject / defer.
-     - `triage_hint` — `technical | user-facing | technical-escalated | security-escalated`. Use as the first triage signal; override only when you have explicit evidence from CLAUDE.md or architecture.md.
+     - `triage_hint` — `technical | user-facing | technical-escalated`. Use as the first triage signal; override only when you have explicit evidence from CLAUDE.md or architecture.md.
    - `verdict` — one of `APPROVED | CHANGES_REQUESTED | NEEDS_DISCUSSION`. Will be written into the log Session Info block at finalisation.
    - `raw_response` — verbatim text the model returned. Preserve this in the round's "ChatGPT Feedback (raw)" log section so the audit trail shows exactly what the model said.
 
@@ -236,8 +236,8 @@ For each round:
    already done that work.
 
    **v2 routing rules:**
-   - Read `triage_hint` as the initial triage bucket (`technical` / `user-facing` / `technical-escalated` / `security-escalated`). Override only with explicit evidence.
-   - For carve-out gating, use `risk_domain` (NOT `finding_type`). Any finding with `risk_domain` in `{tenant_isolation, auth, pii, sql_injection, privilege_escalation}` must NOT be auto-applied — surface in step 3b regardless of `auto_apply_eligible`.
+   - Read `triage_hint` as the initial triage bucket (`technical` / `user-facing` / `technical-escalated`). Override only with explicit evidence.
+   - For carve-out gating, use `risk_domain` (NOT `finding_type`). Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface in step 3b regardless of `auto_apply_eligible`.
    - Read `auto_apply_eligible` and `recommendation` to set the initial recommendation. A finding with `auto_apply_eligible: false` always requires human review even if the coordinator would otherwise auto-apply it.
 
    Edge cases:
