@@ -27,7 +27,7 @@
           "type": "string",
           "enum": ["CONFORMANT", "CONFORMANT_AFTER_FIXES", "NON_CONFORMANT", "skipped"]
         },
-        "pr_reviewer": {
+        "reality_checker": {
           "type": "string",
           "enum": ["APPROVED", "CHANGES_REQUESTED", "NEEDS_DISCUSSION", "skipped"]
         },
@@ -44,19 +44,8 @@
     "accepted_deviations": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": ["deviation", "rationale"],
-        "additionalProperties": false,
-        "properties": {
-          "deviation": {
-            "type": "string",
-            "minLength": 1
-          },
-          "rationale": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
+        "type": "string",
+        "minLength": 1
       }
     },
     "spec_path": {
@@ -69,9 +58,21 @@
       "type": "string"
     },
     "verification_evidence": {
-      "type": "array",
-      "items": {
-        "type": "string"
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lint": {
+          "type": "string"
+        },
+        "typecheck": {
+          "type": "string"
+        },
+        "targeted_tests": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     }
   }

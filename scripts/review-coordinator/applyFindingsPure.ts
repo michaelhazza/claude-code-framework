@@ -18,10 +18,11 @@ import { classifyAcceptanceCheck } from '../chatgpt-reviewPure.js';
 /** Risk domains that always trigger the carve-out (§13). */
 export const CARVE_OUT_RISK_DOMAINS = new Set([
   'tenant_isolation',
-  'auth',
-  'pii',
-  'sql_injection',
-  'privilege_escalation',
+  'security',
+  'auth_authorisation',
+  'idempotency',
+  'data_integrity',
+  'compliance',
 ]);
 
 /** Default maximum number of findings per auto-apply batch (§11a Step 4b). */
@@ -43,6 +44,7 @@ export type CoordinatorDecision =
 export type CoordinatorOverrideReason =
   | 'invalid_acceptance_check'
   | 'recommendation_not_implement'
+  | 'auto_apply_not_eligible'
   | 'carve_out_risk_domain'
   | 'architectural'
   | 'user_facing'
@@ -155,7 +157,7 @@ export function runFourKeyGate(
     finding.auto_apply_eligible !== true ||
     finding.auto_apply_reason !== 'local_one_obvious_fix'
   ) {
-    return { eligible: false, reason: 'recommendation_not_implement' };
+    return { eligible: false, reason: 'auto_apply_not_eligible' };
   }
 
   // Sub-check 5: carve-out (§13)
@@ -172,7 +174,7 @@ export function runFourKeyGate(
   if (finding.triage_hint === 'user-facing') {
     return { eligible: false, reason: 'user_facing' };
   }
-  if (finding.triage_hint === 'technical-escalated' || finding.triage_hint === 'security-escalated') {
+  if (finding.triage_hint === 'technical-escalated') {
     return { eligible: false, reason: 'technical_escalated' };
   }
 

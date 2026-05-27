@@ -15,18 +15,29 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "resolution"],
+        "required": ["id", "prior_decision"],
         "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string",
             "minLength": 1
           },
-          "resolution": {
+          "prior_severity": {
             "type": "string",
-            "enum": ["applied", "deferred", "suppressed", "operator_overridden"]
+            "enum": ["critical", "high", "medium", "low"]
           },
-          "coordinator_override_reason": {
+          "prior_decision": {
+            "type": "string",
+            "enum": ["applied", "rejected", "deferred"]
+          },
+          "applied_at_round": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "applied_via": {
+            "type": "string"
+          },
+          "rationale": {
             "type": "string"
           }
         }

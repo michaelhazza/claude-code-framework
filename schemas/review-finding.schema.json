@@ -59,21 +59,23 @@
     "risk_domain": {
       "type": "string",
       "enum": [
+        "none",
         "tenant_isolation",
-        "auth",
-        "pii",
-        "sql_injection",
-        "privilege_escalation",
-        "none"
+        "security",
+        "auth_authorisation",
+        "idempotency",
+        "data_integrity",
+        "user_visible",
+        "compliance"
       ]
     },
     "scope_signal": {
       "type": "string",
-      "enum": ["local", "cross_file", "cross_service", "cross_tenant"]
+      "enum": ["local", "architectural"]
     },
     "triage_hint": {
       "type": "string",
-      "enum": ["technical", "user-facing", "technical-escalated", "security-escalated"]
+      "enum": ["technical", "user-facing", "technical-escalated"]
     },
     "source_refs": {
       "type": "array",

@@ -177,9 +177,10 @@ and the JSON block to
 Schema validation (§3d) gates the JSON before any downstream use, so future
 measurement (§16) can compare your findings to OpenAI's and the operator's.
 
-When auto_apply_eligible is false, emit proposed_edits as an empty array:
-`"proposed_edits": []`. The coordinator does not attempt to apply findings
-where this is false.
+When auto_apply_eligible is false, OMIT the proposed_edits field entirely.
+The schema requires proposed_edits to have at least 1 item when present; an
+empty array fails validation. The coordinator does not attempt to apply
+findings where auto_apply_eligible is false.
 
 ## Rules
 
