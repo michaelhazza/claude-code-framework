@@ -245,7 +245,20 @@ The snapshot is (re)written at the end of every chunk loop iteration (see "Chunk
 
 ### Builder invocation
 
-Invoke `builder` as a sub-agent (Sonnet) with:
+**HARD RULE — builder dispatch is mandatory for all chunk construction.** The coordinator MUST dispatch `builder` via the `Agent` tool for every chunk in the plan. The coordinator MUST NEVER write chunk code inline with `Edit` or `Write` in the main session. Inline construction in the main session runs on the operator's main-session model (Opus during this coordinator) instead of Sonnet, defeats the cost model that motivates the builder sub-agent, and creates an unreviewed scope-drift hole because the commit-integrity invariant below depends on builder's structured `files-changed` verdict. If a chunk feels too small to dispatch, that is a plan defect — escalate as a `PLAN_GAP` to architect rather than implementing inline.
+
+Invoke `builder` as a sub-agent with an explicit per-invocation model override (belt-and-suspenders over `builder.md` frontmatter):
+
+```
+Agent({
+  subagent_type: "builder",
+  model: "sonnet",
+  description: "Build chunk {N} — {chunk-name}",
+  prompt: <chunk-name, plan path, declared-files list>
+})
+```
+
+Provide the sub-agent with:
 - The plan path: `tasks/builds/{slug}/plan.md`
 - The chunk name
 - The list of files the plan associates with this chunk
@@ -323,13 +336,13 @@ After G2 passes, present this checkpoint to the operator verbatim:
 
 > **G2 complete — all chunks built.**
 >
-> **MANDATORY STOP: switch to Opus before continuing.** The branch-level review pass (spec-conformance → adversarial-reviewer → pr-reviewer → reality-checker → dual-reviewer) requires the most capable model. Switch your session to Opus now, then reply.
->
 > Before proceeding to branch-level review: has anything discovered during this build invalidated the spec? (E.g. a constraint that changes described behavior, a plan gap requiring a different implementation, an external API change.)
 >
-> Reply **continue** to proceed to the review pass (Opus only). Or describe the issue — coordinator writes `phase_status: PHASE_2_SPEC_DRIFT_DETECTED` to handoff.md and pauses; the operator decides whether to re-run `spec-coordinator` for a targeted re-spec, or proceed with a documented deviation recorded in handoff.md under `spec_deviations:`.
+> Reply **continue** to proceed to the review pass. Or describe the issue — coordinator writes `phase_status: PHASE_2_SPEC_DRIFT_DETECTED` to handoff.md and pauses; the operator decides whether to re-run `spec-coordinator` for a targeted re-spec, or proceed with a documented deviation recorded in handoff.md under `spec_deviations:`.
 
-Wait for operator reply. Do not proceed until `continue` is received or the deviation is recorded. **Do not start Step 8 until the operator has confirmed they are on Opus.**
+Wait for operator reply. Do not proceed until `continue` is received or the deviation is recorded.
+
+(Note: no model switch is required here. The coordinator runs the build loop with `builder` dispatched as a Sonnet sub-agent, so the main session stays on Opus throughout Phase 2 and is already on the correct model for the branch-level review pass.)
 
 ## Step 8 — Branch-level review pass
 

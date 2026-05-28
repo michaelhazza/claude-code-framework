@@ -32,6 +32,27 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.7.1 — 2026-05-28 — feature-coordinator model-switch contradiction fix
+
+**Highlights:** Resolves the Opus/Sonnet model-switching contradiction between Model A (builder dispatched as a Sonnet sub-agent) and Model B (operator manually switches the main session). Commits Model A — the only execution model that actually matches Claude Code runtime constraints (a running interactive session cannot change its own model programmatically). The main session now stays on Opus end-to-end through the three-coordinator pipeline; token-heavy chunk construction runs on Sonnet via the `builder` sub-agent dispatch. No more `/model` prompts during a `feature-coordinator` run.
+
+**Changed:**
+- `.claude/agents/feature-coordinator.md` Step 6 (Builder invocation) — added a HARD RULE that the coordinator MUST dispatch `builder` via the `Agent` tool for all chunk construction and MUST NEVER write chunk code inline with `Edit` or `Write` in the main session. The dispatch now passes an explicit `model: "sonnet"` per-invocation override as belt-and-suspenders over the `builder.md` frontmatter (per-invocation override beats frontmatter per Claude Code runtime). Inline construction closes a scope-drift hole and ensures the cost model holds: heavy build tokens are Sonnet, coordinator orchestration tokens are Opus.
+- `.claude/agents/feature-coordinator.md` Step 7 (Post-G2 spec-validity checkpoint) — removed the `MANDATORY STOP: switch to Opus before continuing` block and the `Do not start Step 8 until the operator has confirmed they are on Opus` enforcement. The main session is already on Opus throughout Phase 2 under Model A; no switch is needed. The spec-validity question itself is retained — operator still confirms `continue` before Step 8.
+- `CLAUDE.md` "Model guidance per phase" table — rewrote to reflect Model A end-to-end. Old table conflated execution model (which session runs) with sub-agent model (per-agent frontmatter). New table has two columns: "Main session" (Opus throughout) and "Sub-agent model" (Sonnet for builder, Opus for everything else). Removed plan-gate "manually switch to Sonnet" and post-G2 "switch back to Opus" rows. Added a closing paragraph explaining why no main-session switch is needed and what the headless `claude -p --model sonnet` escape hatch is if orchestration cost ever becomes an issue.
+
+**Why:**
+- A running interactive Claude Code session cannot change its own model programmatically. `/model` is interactive and user-only; no tool, hook, or settings entry lets an agent switch its session model mid-run. Model B (manual main-session switching) was unreachable from inside the coordinator playbook — the operator was being asked to perform a manual dance that the coordinator could not enforce.
+- Model A (builder-as-Sonnet-sub-agent) was already implemented (`.claude/agents/builder.md` frontmatter `model: sonnet`; `feature-coordinator.md` Step 6 dispatches `builder` via the `Agent` tool). The fix commits Model A as the sole execution model and deletes Model B's documentation residue.
+- The plan-gate and post-G2 stops remain as operator-review seams; they just no longer demand a model switch.
+
+**Not done (deliberately):**
+- `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` was NOT set. That env var forces ALL sub-agents to Sonnet, which would wrongly demote `architect`, `pr-reviewer`, `reality-checker`, and other reviewers intentionally pinned to `model: opus`. Per-agent frontmatter is the correct mechanism.
+- Orchestration cost (coordinator's own Opus tokens during the build loop — running lint/typecheck, reading builder output, writing commits) is accepted as the tradeoff. If it ever becomes material, the right answer is to run the build loop as a separate headless `claude -p --model sonnet` invocation across the plan-gate or post-G2 seam, handing off through `tasks/builds/{slug}/plan.md` and `progress.md`. This is documented in the CLAUDE.md model-guidance table but not implemented in this release.
+
+**Fixed (defence-in-depth):**
+- The new HARD RULE in Step 6 also closes a latent drift hole: prior wording allowed the coordinator to be interpreted as optionally dispatching builder, which could lead a future agent (or a confused operator) to inline-write chunk code in the main session, defeating both the cost model and the commit-integrity invariant (which depends on builder's structured `files-changed` verdict).
+
 ## 2.7.0 — 2026-05-28 — review-cascade-v3
 
 **Highlights:** Schema-gated multi-tier review pipeline upgrade. Replaces the ad-hoc prose review contract with a JSON-Schema-gated v2 envelope across all three review modes (spec, plan, PR). Adds two new advisory Claude reviewers, upgrades `pr-reviewer` to v2 with mechanical auto-fix authority, wires coordinator-side auto-apply with rollback, disagreement adjudication, and false-positive suppression memory. Golden corpus: 11/11 fixtures passing (8 coordinator + 3 driver smoke).
