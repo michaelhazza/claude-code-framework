@@ -80,7 +80,7 @@ If the CLI exits non-zero, print its stderr and stop. Exit codes: 0 ok, 2 API er
 >
 > Paste ChatGPT's response back into this session when ready.
 
-Substitute `{slug}` with the actual build slug. The plan link MUST be a repo-relative markdown link — never an absolute path, never backslashes, never a bare backtick-wrapped path.
+Substitute `{slug}` with the actual build slug. The plan link MUST be a repo-relative markdown link — never an absolute path, never backslashes, never a bare backtick-wrapped path (these break VSCode click-to-open; see "VSCode Extension Context / Code References in Text" guidance in CLAUDE.md).
 
 ## Per-Round Loop
 
@@ -115,7 +115,7 @@ For each round:
 
 4. Auto-apply approved technical findings to `tasks/builds/{slug}/plan.md`. Log every decision.
 
-5. Print a Round N+1 ready-to-paste prompt block (for manual mode) or a "next round" cue (for automated mode). The prompt MUST enumerate per-finding what was applied, rejected, and deferred this round; omit any of the three sections that have zero entries:
+5. Print a Round N+1 ready-to-paste prompt block (for manual mode) or a "next round" cue (for automated mode). The prompt MUST enumerate per-finding what was applied, rejected, and deferred this round (with reasons drawn from the session-log Decisions table just logged in step 4); omit any of the three sections that have zero entries:
 
    ```
    --- Copy into ChatGPT for Round <N+1> (and attach the updated plan file linked below) ---
@@ -143,7 +143,7 @@ For each round:
 
    Paste ChatGPT's response back here for Round <N+1>, or say `done` to finalise.
 
-   Substitute `{slug}` with the actual build slug. Same link-format rules — repo-relative markdown link only, no absolute paths, no backslashes, no bare backticks.
+   Substitute `{slug}` with the actual build slug. Same link-format rules as Step 6 of On Start ([MANUAL] kickoff) — repo-relative markdown link only, no absolute paths, no backslashes, no bare backticks.
 
 ## Termination
 
