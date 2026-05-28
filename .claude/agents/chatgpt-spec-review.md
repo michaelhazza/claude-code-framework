@@ -179,6 +179,8 @@ Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1
 
 ## Per-Round Loop
 
+**Round cap: 5.** After Round 5, if no APPROVED verdict has been reached, escalate to the operator: surface unresolved findings + recommend either operator-driven adjudication, a re-spec, or accepting the remaining findings as deferred. Do NOT fire Round 6 automatically. The 5-round cap is a hard ceiling; operator may explicitly authorise additional rounds case-by-case ("continue past cap").
+
 **[AUTOMATED]** Trigger: user says "next round", "another round", "go again", or equivalent — no paste required. Round 1 fires automatically on agent start; subsequent rounds fire on user signal.
 
 The agent re-reads the spec file (which may have been edited in earlier rounds) and re-invokes the CLI:

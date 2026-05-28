@@ -191,6 +191,8 @@ Run: `ls tasks/review-logs/chatgpt-pr-review-*.md 2>/dev/null | sort | tail -1`
 
 ## Per-Round Loop
 
+**Round cap: 5.** After Round 5, if no APPROVED verdict has been reached, escalate to the operator: surface unresolved findings + recommend either operator-driven adjudication, a re-spec, or accepting the remaining findings as deferred. Do NOT fire Round 6 automatically. The 5-round cap is a hard ceiling; operator may explicitly authorise additional rounds case-by-case ("continue past cap"), but the default is to stop and surface.
+
 **[AUTOMATED]** Trigger: user says "next round", "another round", "go again", or equivalent — no paste required. Round 1 fires automatically on agent start; subsequent rounds fire on user signal.
 
 The agent runs the same code-only diff command as round 1 (with identical exclusions) piped to `npx tsx scripts/chatgpt-review.ts --mode pr` to fetch fresh feedback against the latest diff (including any code changes made in earlier rounds). If the CLI exits non-zero, print stderr and stop. Do not guess or retry.

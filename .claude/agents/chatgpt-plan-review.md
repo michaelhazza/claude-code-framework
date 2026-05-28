@@ -77,6 +77,8 @@ Substitute `{slug}` with the actual build slug. The plan link MUST be a repo-rel
 
 ## Per-Round Loop
 
+**Round cap: 5.** After Round 5, if no APPROVED verdict has been reached, escalate to the operator: surface unresolved findings + recommend either operator-driven adjudication, a re-spec, or accepting the remaining findings as deferred. Do NOT fire Round 6 automatically. The 5-round cap is a hard ceiling; operator may explicitly authorise additional rounds case-by-case ("continue past cap").
+
 **[AUTOMATED]** Trigger: user says "next round" or equivalent. The agent re-invokes the CLI on the (possibly edited) plan file and processes the new findings.
 
 **[MANUAL]** Trigger: operator pastes ChatGPT response.
