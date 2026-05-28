@@ -1,6 +1,6 @@
 ---
 name: chatgpt-spec-review
-description: "Coordinates ChatGPT spec review sessions. Run in a dedicated new Claude Code session. Supports two modes: manual (user copies spec into ChatGPT UI and pastes response back — no API cost) and automated (calls OpenAI API via OPENAI_API_KEY). Auto-detects the spec file from branch changes, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (apply / reject / defer) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (changes to product surface, visible copy/behaviour, workflow, feature policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction."
+description: "Coordinates ChatGPT spec review sessions. Run in a dedicated new Claude Code session. Supports three modes: manual (user copies spec into ChatGPT UI and pastes response back — no API cost), automated (calls OpenAI API via OPENAI_API_KEY), and parallel (runs both and renders a side-by-side compare panel — used to A/B tune the OpenAI prompts until they reliably beat ChatGPT-web; see docs/review-pipeline/parallel-mode.md). Auto-detects the spec file from branch changes, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / discuss / defer / reject) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (changes to product surface, visible copy/behaviour, workflow, feature policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction."
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---
@@ -31,9 +31,12 @@ user can audit after the fact.
 
 ## Configuration
 
-**MODE** — set per invocation, not per session. Default is `manual` — only use `automated` if the user explicitly says "automated".
-- `manual` (default) — you copy the spec into the ChatGPT UI and paste the response back. No API key required.
+**MODE** — three values: `manual`, `automated`, `parallel`. Resolution order: (1) explicit operator phrase at invocation; (2) `CHATGPT_REVIEW_DEFAULT_MODE` env var; (3) hard default `manual`. Recorded in the session log Session Info block and restored on resume.
+- `manual` (hard default) — you copy the spec into the ChatGPT UI and paste the response back. No API key required.
 - `automated` — the agent calls the OpenAI API via `scripts/chatgpt-review.ts`. Requires `OPENAI_API_KEY`.
+- `parallel` — runs BOTH paths in interleaved order: kicks off the OpenAI CLI in the background while the operator uploads the spec to ChatGPT-web, then renders a side-by-side compare panel before triage. Requires `OPENAI_API_KEY`. Used to A/B-tune the OpenAI prompts until they reliably catch the ChatGPT-web finding set. **Shared contract:** [`docs/review-pipeline/parallel-mode.md`](../../docs/review-pipeline/parallel-mode.md) — loop shape, compare-panel rendering, session-log schema, failure handling, and the Phase 3 transition criteria live there. Defer to that file for behaviour not spelled out below.
+
+**PROMPT_VERSION** — controls which prompt version the CLI sends to OpenAI (default: 2). To use v1 prompts, set `CHATGPT_REVIEW_PROMPT_VERSION=1` before invoking the CLI. This is a fallback for regression testing only.
 
 **HUMAN_IN_LOOP: yes** — default for automated sessions only. Has no effect in manual mode (the user is already in the loop by definition).
 
@@ -48,7 +51,7 @@ To toggle mid-session: say **"set human in loop off"** or **"set human in loop o
 ## Before doing anything else, read:
 1. `CLAUDE.md` — project conventions and the "Before you write a spec" section
 2. `docs/spec-context.md` — framing ground truth for all specs in this project
-3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (tenant isolation, service-tier, gates, migrations, development-discipline §) used to evaluate whether a ChatGPT spec suggestion contradicts existing locked policy. Read if present; skip when absent OR for trivial typo / formatting specs.
+3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (RLS, service-tier, gates, migrations, §8 development discipline) used to evaluate whether a ChatGPT spec suggestion contradicts existing locked policy. Always read; skip only for trivial typo / formatting specs.
 
 ---
 
@@ -58,10 +61,16 @@ When the user says "run chatgpt-spec-review" (or equivalent):
 
 **First: determine MODE from the invocation.**
 
-- If the invocation contains "automated" → MODE = automated
-- Otherwise (invocation contains "manual", or neither keyword appears) → MODE = manual. Do NOT ask — default silently to manual. Only invoke automated mode when the user explicitly says "automated".
+Apply the resolution order from § Configuration:
+1. Explicit operator phrase in the invocation → that wins. Recognised keywords: `automated`, `manual`, `parallel`.
+2. If no keyword is present, read `CHATGPT_REVIEW_DEFAULT_MODE` env var. Accept `manual` / `automated` / `parallel`; any other value is treated as unset.
+3. Fall back to hard default: `manual`. Do NOT ask the operator — silent default keeps the no-cost path active on a fresh machine.
+
+If MODE resolves to `automated` or `parallel`, verify `OPENAI_API_KEY` is set before proceeding. If missing, abort with: `error: <mode> mode requires OPENAI_API_KEY. Add it to your shell or .env file before running this agent.` Do NOT silently fall back to `manual`.
 
 MODE is recorded in the session log Session Info block and restored on resume.
+
+**Parallel-mode entry note:** when MODE = `parallel`, run BOTH the [MANUAL] and [AUTOMATED] entry steps below in interleaved order per [`docs/review-pipeline/parallel-mode.md` § Parallel-mode loop](../../docs/review-pipeline/parallel-mode.md). Specifically: generate the spec bundle (manual step 7), kick off the OpenAI CLI in the background — spec mode uses `--file` so input is unambiguous; keep stderr in its own file so JSON capture stays clean: `npx tsx scripts/chatgpt-review.ts --mode spec --file <spec-path> > <openai-json-file> 2> <openai-stderr-file> &` — print the operator instructions noting both are in flight, then wait for the operator paste. When the paste arrives, poll the background CLI silently, then render the compare panel via `renderComparePanel(compareFindingSets(openai, chatgpt))`. **Then run the learning analysis** (parallel-mode.md § Learning analysis — Step 7) before triage — every ChatGPT-only finding is a candidate prompt-improvement proposal for `SYSTEM_PROMPT_SPEC_V2` in `scripts/chatgpt-reviewPure.ts`. Operator may skip with `skip learning`.
 
 **Next: check for an existing session log (resume detection)**
 Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1`
@@ -124,12 +133,17 @@ Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1
    npx tsx scripts/chatgpt-review.ts --mode spec --file <spec-file-path>
    ```
 
-   Capture the stdout JSON — it conforms to the `ChatGPTReviewResult` contract at `docs/superpowers/specs/2026-04-28-dev-mission-control-spec.md § C1`. The fields you will use:
+   Capture the stdout JSON — it conforms to the `ChatGPTReviewResult` contract. The fields you will use:
    - `findings[]` — pre-extracted, normalised, enum-locked. Use this directly for the per-round triage table.
+     - `risk_domain` — `none | tenant_isolation | security | auth_authorisation | idempotency | data_integrity | user_visible | compliance`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface in step 3b.
+     - `auto_apply_eligible` — when `true`, the finding carries `proposed_edits[]` and the coordinator may apply it automatically. When `false`, surface for human review.
+     - `recommendation` — the reviewer's suggested action: `implement` (actionable fix; only this value is eligible for coordinator auto-apply) / `discuss` (product/architecture choice) / `defer` (with `deferred_until` + `backlog_target`) / `reject` (round 2+ rejection of a prior-round proposal).
+     - `triage_hint` — `technical | user-facing | technical-escalated`. Use as the first triage signal; override only with explicit evidence.
    - `verdict` — one of `APPROVED | CHANGES_REQUESTED | NEEDS_DISCUSSION`. Will be written into the log Session Info block at finalisation.
    - `raw_response` — verbatim model output. Preserve in the round's "ChatGPT Feedback (raw)" log section.
 
    If the CLI exits non-zero, print its stderr and stop.
+   Exit codes: 0 ok, 2 API error, 3 model mismatch (strict), 4 schema_fail after repair, 5 parse_fail after repair, 6 version_mismatch.
 
 7. [MANUAL] **Prepare Round 1 for the user to paste into ChatGPT:**
 
@@ -172,6 +186,8 @@ Run: `ls tasks/review-logs/chatgpt-spec-review-*.md 2>/dev/null | sort | tail -1
 
 ## Per-Round Loop
 
+**Round cap: 5.** After Round 5, if no APPROVED verdict has been reached, escalate to the operator: surface unresolved findings + recommend either operator-driven adjudication, a re-spec, or accepting the remaining findings as deferred. Do NOT fire Round 6 automatically. The 5-round cap is a hard ceiling; operator may explicitly authorise additional rounds case-by-case ("continue past cap").
+
 **[AUTOMATED]** Trigger: user says "next round", "another round", "go again", or equivalent — no paste required. Round 1 fires automatically on agent start; subsequent rounds fire on user signal.
 
 The agent re-reads the spec file (which may have been edited in earlier rounds) and re-invokes the CLI:
@@ -210,8 +226,15 @@ For each round:
 
 1. Use the `findings[]` array from the CLI's JSON output directly — each entry is
    already a normalised finding with `id`, `title`, `severity`, `category`,
-   `finding_type`, `rationale`, and `evidence`. Do NOT re-parse `raw_response`;
-   the CLI has already done that work.
+   `finding_type`, `risk_domain`, `scope_signal`, `triage_hint`, `source_refs[]`,
+   `rationale`, `recommendation`, `acceptance_check`, `auto_apply_eligible`, and
+   optionally `proposed_edits[]`. Do NOT re-parse `raw_response`; the CLI has
+   already done that work.
+
+   **v2 routing rules:**
+   - Read `triage_hint` as the initial triage bucket. Override only with explicit evidence.
+   - For carve-out gating, use `risk_domain` (NOT `finding_type`). Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface in step 3b.
+   - Read `auto_apply_eligible` and `recommendation` to set the initial recommendation.
 
    Edge cases:
    - Empty findings array AND verdict `APPROVED` → log "Round N — no findings; ChatGPT verdict: APPROVED" and ask the user whether to finalise or run another round.
@@ -252,7 +275,7 @@ For each round:
    is one extra user decision; the cost of a false-negative is silently
    changing described product behaviour without the user's sign-off.
 
-3. For each finding produce a RECOMMENDATION of apply / reject / defer +
+3. For each finding produce a RECOMMENDATION of implement / discuss / defer / reject +
    severity (critical/high/medium/low) + a one-line rationale. This is a
    recommendation. It becomes the decision directly for technical findings
    (you auto-execute per step 3a) and it is advisory for user-facing findings
@@ -490,8 +513,8 @@ Triggered by: "done", "finished", "we're done", "that's it", or equivalent.
    Log each failure as a warning. If 2 or more fail, also log:
    ⚠ Spec not implementation-ready — resolve checklist failures before build.
 3. Write the Final Summary block to the session log AND insert a `**Verdict:**`
-   header line into the **Session Info** block at the top of the log so the
-   Mission Control dashboard can parse it. The line MUST match one of:
+   header line into the **Session Info** block at the top of the log so
+   downstream tooling can parse it. The line MUST match one of:
    - `**Verdict:** APPROVED` — spec is implementation-ready; checklist clean.
    - `**Verdict:** CHANGES_REQUESTED` — accepted spec edits remain pending or
      2+ implementation-readiness checklist items failed.
@@ -672,7 +695,7 @@ File: tasks/review-logs/chatgpt-spec-review-<slug>-<timestamp>.md
   each round's state lands on the PR before the next round starts.
 - **Test gates are CI-only — never run them and never write them into a
   spec.** Continuous integration runs the complete suite as a pre-merge gate.
-  Do NOT run `npm run test:gates`, `npm run test:qa`, `npm run test:unit`,
+  Do NOT run `npm run test:gates`, `npm run test:unit`,
   the umbrella `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or
   `scripts/run-all-*.sh` at any point — not as part of validating a
   ChatGPT-suggested spec edit, not as a "confirm the spec implementation

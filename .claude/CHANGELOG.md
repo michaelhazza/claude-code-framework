@@ -32,6 +32,101 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.7.2 — 2026-05-28 — chatgpt-review parallel mode + learning component
+
+**Highlights:** Fixes three stacked bugs in the OpenAI-driven chatgpt-review CLI that caused real schema quarantines on real artefacts, then adds a `parallel` mode to all three review agents (PR, spec, plan) that runs OpenAI and manual ChatGPT-web side-by-side and renders a compare panel. New learning step (Step 7) inspects every parallel round, proposes targeted edits to the OpenAI prompts when ChatGPT-web catches things OpenAI missed, gates each proposal on operator approval, and persists every edit to a durable `tasks/review-logs/prompt-evolution-log.md` audit trail. Three rounds of self-test on the introducing PR (#441) drove ChatGPT-web's verdict from CHANGES_REQUESTED → APPROVED with three durable prompt-evolution entries logged. The system is the prerequisite for the future Phase 3 flip to fully automated review.
+
+**Added:**
+- `docs/review-pipeline/parallel-mode.md` — shared contract for the parallel mode used by `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`. Covers loop shape, compare-panel rendering, session-log schema (with the new 7a/7b learning sub-sections), failure handling, the three learning channels (chatgpt-only, severity-delta, anti-hunt), Step 7a (pre-triage Channels 1+2) and Step 7b (post-triage Channel 3) split, the `CHATGPT_REVIEW_DEFAULT_MODE` env-var gate, and the Phase 3 flip criterion (zero ChatGPT-only findings for two consecutive rounds).
+- `manifest.json` entry for the new shared contract doc as a managed reference file.
+
+**Changed:**
+- `.claude/agents/chatgpt-pr-review.md` — mode resolution now lists three modes (`manual` / `automated` / `parallel`); resolution order honours explicit operator phrase, then `CHATGPT_REVIEW_DEFAULT_MODE` env var, then hard-default `manual`. Parallel-mode entry note pins explicit stdin redirection for PR mode to prevent `readStdin` deadlock, splits stdout/stderr to keep JSON capture clean, and points at the shared contract for Step 7 learning analysis.
+- `.claude/agents/chatgpt-spec-review.md` — same three-mode resolution + parallel entry note + Step 7 pointer; spec mode uses `--file` for unambiguous input.
+- `.claude/agents/chatgpt-plan-review.md` — three-mode resolution + parallel entry note + Step 7 pointer; the legacy "`OPENAI_API_KEY` set → automated by default" behaviour was REMOVED so all three agents now follow the same hard-default-manual contract (no silent token-burn on a fresh machine with the key set). Front-matter description and Mode Detection section both updated.
+
+**Why:**
+- The OpenAI-driven CLI was quarantining real responses on real PR diffs because three bugs stacked: (A) the CLI never substituted prompt placeholders (model saw raw `{{DIFF}}` literals), (B) the v2 prompts under-specified the result envelope (verdict enum, integrity_check string contract, source_refs shape, category enum, the conditional `operator_decision_required_reason` requirement), and (C) the repair prompt was generic. Parallel mode is the dev-loop that lets the operator A/B-test the automated OpenAI path against manual ChatGPT-web until OpenAI consistently catches what ChatGPT-web catches plus more — the criterion for flipping the default to automated.
+- All three agents reading the shared contract from one doc keeps the loop shape, session-log schema, and Phase 3 transition criteria in one place — three copies of the same content drift apart.
+
+**Project-side companion changes (not framework-managed; documented here for cross-repo awareness):**
+- `scripts/chatgpt-reviewPure.ts` and `scripts/chatgpt-review.ts` were rewritten in the introducing PR (#441 on automation-v1) to: substitute `{{KEY}}` placeholders (with fail-fast on missing keys), split each v2 prompt into `_SYSTEM` (instructions + envelope skeleton) and `_USER` (artefact + metadata) templates so untrusted document content stays out of the highest-priority instruction channel, add `buildAdHocPromptVars` for ad-hoc CLI runs, add `buildRepairPrompt` + `OUTPUT_ENVELOPE_SKELETON` + `translateAjvErrorsToChecklist` + `SYSTEM_PROMPT_REPAIR_V2` (dedicated repair-retry system prompt), add `compareFindingSets` + `renderComparePanel` + `mdCell` + `jaccard` for the compare panel, true-alias the `--expected-sha` / `--source-artifact-sha` flags at argument-parse time with conflict detection, and add CLI flags (`--project-context`, `--pr-context`, `--prior-rounds`, `--project-context-version`, `--source-artifact-sha`) for coordinator-driven invocations. These scripts live per-project (the framework does not manage `scripts/`); other repos adopting the framework should pull the same shape from the canonical implementation in `automation-v1`.
+- `tasks/review-logs/prompt-evolution-log.md` was introduced as the append-only audit trail for every learning-step edit. Each repo that adopts parallel mode should create the same file using the header template in the canonical implementation.
+
+**Not done (deliberately):**
+- `scripts/chatgpt-review.ts` and `scripts/chatgpt-reviewPure.ts` were NOT promoted to framework-managed. Each project's prompts evolve based on its own A/B history; promoting the scripts to framework-canonical would couple prompt evolution across all consumers. The decision was flagged in the introducing PR's session log for future revisit.
+
+## 2.7.1 — 2026-05-28 — feature-coordinator model-switch contradiction fix
+
+**Highlights:** Resolves the Opus/Sonnet model-switching contradiction between Model A (builder dispatched as a Sonnet sub-agent) and Model B (operator manually switches the main session). Commits Model A — the only execution model that actually matches Claude Code runtime constraints (a running interactive session cannot change its own model programmatically). The main session now stays on Opus end-to-end through the three-coordinator pipeline; token-heavy chunk construction runs on Sonnet via the `builder` sub-agent dispatch. No more `/model` prompts during a `feature-coordinator` run.
+
+**Changed:**
+- `.claude/agents/feature-coordinator.md` Step 6 (Builder invocation) — added a HARD RULE that the coordinator MUST dispatch `builder` via the `Agent` tool for all chunk construction and MUST NEVER write chunk code inline with `Edit` or `Write` in the main session. The dispatch now passes an explicit `model: "sonnet"` per-invocation override as belt-and-suspenders over the `builder.md` frontmatter (per-invocation override beats frontmatter per Claude Code runtime). Inline construction closes a scope-drift hole and ensures the cost model holds: heavy build tokens are Sonnet, coordinator orchestration tokens are Opus.
+- `.claude/agents/feature-coordinator.md` Step 7 (Post-G2 spec-validity checkpoint) — removed the `MANDATORY STOP: switch to Opus before continuing` block and the `Do not start Step 8 until the operator has confirmed they are on Opus` enforcement. The main session is already on Opus throughout Phase 2 under Model A; no switch is needed. The spec-validity question itself is retained — operator still confirms `continue` before Step 8.
+- `CLAUDE.md` "Model guidance per phase" table — rewrote to reflect Model A end-to-end. Old table conflated execution model (which session runs) with sub-agent model (per-agent frontmatter). New table has two columns: "Main session" (Opus throughout) and "Sub-agent model" (Sonnet for builder, Opus for everything else). Removed plan-gate "manually switch to Sonnet" and post-G2 "switch back to Opus" rows. Added a closing paragraph explaining why no main-session switch is needed and what the headless `claude -p --model sonnet` escape hatch is if orchestration cost ever becomes an issue.
+
+**Why:**
+- A running interactive Claude Code session cannot change its own model programmatically. `/model` is interactive and user-only; no tool, hook, or settings entry lets an agent switch its session model mid-run. Model B (manual main-session switching) was unreachable from inside the coordinator playbook — the operator was being asked to perform a manual dance that the coordinator could not enforce.
+- Model A (builder-as-Sonnet-sub-agent) was already implemented (`.claude/agents/builder.md` frontmatter `model: sonnet`; `feature-coordinator.md` Step 6 dispatches `builder` via the `Agent` tool). The fix commits Model A as the sole execution model and deletes Model B's documentation residue.
+- The plan-gate and post-G2 stops remain as operator-review seams; they just no longer demand a model switch.
+
+**Not done (deliberately):**
+- `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` was NOT set. That env var forces ALL sub-agents to Sonnet, which would wrongly demote `architect`, `pr-reviewer`, `reality-checker`, and other reviewers intentionally pinned to `model: opus`. Per-agent frontmatter is the correct mechanism.
+- Orchestration cost (coordinator's own Opus tokens during the build loop — running lint/typecheck, reading builder output, writing commits) is accepted as the tradeoff. If it ever becomes material, the right answer is to run the build loop as a separate headless `claude -p --model sonnet` invocation across the plan-gate or post-G2 seam, handing off through `tasks/builds/{slug}/plan.md` and `progress.md`. This is documented in the CLAUDE.md model-guidance table but not implemented in this release.
+
+**Fixed (defence-in-depth):**
+- The new HARD RULE in Step 6 also closes a latent drift hole: prior wording allowed the coordinator to be interpreted as optionally dispatching builder, which could lead a future agent (or a confused operator) to inline-write chunk code in the main session, defeating both the cost model and the commit-integrity invariant (which depends on builder's structured `files-changed` verdict).
+
+## 2.7.0 — 2026-05-28 — review-cascade-v3
+
+**Highlights:** Schema-gated multi-tier review pipeline upgrade. Replaces the ad-hoc prose review contract with a JSON-Schema-gated v2 envelope across all three review modes (spec, plan, PR). Adds two new advisory Claude reviewers, upgrades `pr-reviewer` to v2 with mechanical auto-fix authority, wires coordinator-side auto-apply with rollback, disagreement adjudication, and false-positive suppression memory. Golden corpus: 11/11 fixtures passing (8 coordinator + 3 driver smoke).
+
+**Added:**
+- `schemas/review-finding.schema.json` — active v2 contract for a single finding. Key additions: `risk_domain` (independent enum from `finding_type`; carve-out gate keys on this), `source_refs[]` (replaces `evidence` string; min 1 item), `scope_signal`, `triage_hint`, `proposed_edits[]` (required when `auto_apply_eligible: true` per §A11 patch contract), `acceptance_check` denylist via `pattern` constraint.
+- `schemas/review-result.schema.json` — active v2 envelope. Versioning quartet: `contract_version`, one of `{prompt_version | reviewer_version | stitched_from}`, `project_context_version`, `source_artifact_sha`. `oneOf` enforces mutual-exclusivity between OpenAI-tier, Claude-tier, and coordinator-stitched records.
+- `schemas/prior-rounds.schema.json` — PRIOR_ROUNDS input shape: `current_round`, `findings_settled[]` (with resolution enum), `coordinator_notes[]`.
+- `schemas/pr-context.schema.json` — PR_CONTEXT input shape: `pr_title`, `build_slug`, `task_class`, `phase_2_review_outcomes`, `accepted_deviations[]`.
+- `schemas/CHANGELOG.md` — field-move history for the schema contract surface.
+- `.claude/agents/claude-spec-review.md` — new advisory Claude spec reviewer. Read-only, 3-iteration lifetime cap per artifact. Runs before Codex and OpenAI; emits markdown log + canonical JSON validated by the v2 schema. Fail-closed on missing PROJECT_CONTEXT sections (§3b). `auto_apply_eligible: false` at launch; promoted via `CLAUDE_REVIEWER_FIX_MODE_SPEC` config flag.
+- `.claude/agents/claude-plan-review.md` — new advisory Claude plan reviewer. Read-only, 3-iteration lifetime cap per artifact. Risk-weighted chunk sampling (schema/migration/RLS/worker/route chunks always in the 2-3 sample). Runs as the only mechanical pre-screen before OpenAI plan review. `auto_apply_eligible: false` at launch; promoted via `CLAUDE_REVIEWER_FIX_MODE_PLAN`.
+- `scripts/review-coordinator/applyFindings.ts` — coordinator-side §11a auto-apply orchestrator: one-finding-at-a-time, snapshot + rollback, anchor-based patch, cumulative re-verify, structured commit.
+- `scripts/review-coordinator/applyFindingsPure.ts` — pure helper for the apply loop (no FS side effects; testable in isolation).
+- `scripts/review-coordinator/auditLog.ts` — structured audit log writer for coordinator decisions (applied / deferred / suppressed / quarantined).
+- `scripts/review-coordinator/buildDiffPackage.ts` — coordinator-side §3c diff truncation manifest builder; hashes the focused package (manifest + diff + PR_CONTEXT + PRIOR_ROUNDS) for `source_artifact_sha`.
+- `scripts/review-coordinator/buildDiffPackagePure.ts` — pure helper for diff package construction.
+- `scripts/review-coordinator/resolveBaseRef.ts` — F9 R1 fix: `resolveBaseRef()` dynamically resolves the merge-base against `origin/HEAD` or the configured default branch; no more hardcoded `origin/main`.
+- `scripts/review-coordinator/suppressionStore.ts` — §11c false-positive suppression memory with mandatory provenance, round-level dedup, and F10 R1 absent-directory tolerance.
+- `scripts/review-coordinator/validateProjectContextPure.ts` — §3b PROJECT_CONTEXT fail-closed preflight; rejects missing Stage, Framing assumptions, or Architecture + Guidelines sections; pure and testable.
+- `context/framing-defaults.md` — default PROJECT_CONTEXT framing block injected into all three review modes when the host repo does not supply its own.
+- `context/README.md` — context directory convention: how framing-defaults.md is loaded, override semantics, and the five canonical framing-assumption keys.
+
+**Changed:**
+- `.claude/agents/pr-reviewer.md` — upgraded in place to v2 (same file, same caller contract). New authorities: mechanical auto-fix via Edit for `scope_signal: local` AND `risk_domain: none` findings (`auto_apply_eligible: true`, `auto_apply_reason: "local_one_obvious_fix"`). Security carve-out (§13) keys on `risk_domain` — any value other than `none` blocks auto-fix regardless of `finding_type`. Inline-apply sets `applied_inline_by_reviewer: true`; coordinator verifies via `acceptance_check` and does NOT re-apply. JSON output now required alongside the markdown log; both validate against `schemas/review-result.schema.json`. `reviewer_version: "pr-reviewer.v2"`.
+- `.claude/agents/chatgpt-pr-review.md` — v2 routing rules: reads `triage_hint` as initial bucket, uses `risk_domain` (NOT `finding_type`) for carve-out gating, reads `auto_apply_eligible` and `proposed_edits[]` directly from the CLI's normalised findings[]. Automated mode flipped to default when `OPENAI_API_KEY` is set.
+- `.claude/agents/chatgpt-spec-review.md` — same v2 routing rules; reads normalised findings[] from CLI JSON (no re-parsing raw_response). Automated mode default when `OPENAI_API_KEY` set.
+- `.claude/agents/chatgpt-plan-review.md` — new agent (was absent from prior framework versions); automated mode auto-detected from `OPENAI_API_KEY`; manual fallback retained.
+- `.claude/agents/spec-coordinator.md` — Steps 6a/6b added: claude-spec-review invocation with D5 cap + validateProjectContext preflight (Step 6a), followed by coordinator apply of surfaced technical findings per §11a (Step 6b).
+- `.claude/agents/feature-coordinator.md` — Steps 3a/3b added: claude-plan-review invocation with D5 cap + validateProjectContext preflight (Step 3a), followed by coordinator apply of surfaced technical findings per §11a (Step 3b).
+
+**Coordinator wiring (§11a/11b/11c):**
+- §11a coordinator-side auto-apply: one-finding-at-a-time apply loop with snapshot before each apply, anchor-based patch (literal substring uniqueness check), cumulative re-verify (lint + typecheck after each), structured commit per finding, rollback on verification failure.
+- §11b reviewer-disagreement adjudication: when two reviewers disagree on the same finding, coordinator surfaces the delta with both rationales; operator decides; decision logged with `coordinator_override_reason`.
+- §11c false-positive suppression memory: findings suppressed in prior rounds persist to the suppression store; re-raised findings in subsequent rounds are auto-suppressed with provenance; F10 R1 tolerates absent suppression directory (creates on first write).
+
+**Fixed:**
+- F9 R1 — `resolveBaseRef()` replaces hardcoded `origin/main` with dynamic default-branch resolution; consuming repos on `origin/master` or custom default branches no longer fail the diff-package builder.
+- F10 R1 — `suppressionStore.ts` creates the store directory on first write instead of throwing on absent path.
+
+**Adoption notes (for repos consuming this framework upgrade):**
+- `schemas/` directory is new at the repo root. Sync deploys it automatically (glob `schemas/**`). No manifest entry was needed in prior versions; v2.7.0 adds the glob.
+- `scripts/review-coordinator/` is a new directory under `scripts/`. Consuming repos that mount the framework's `scripts/` must ensure their `tsconfig.json` picks up this subdirectory (standard `include: ["scripts/**"]` already covers it).
+- `context/` directory is new at the repo root. Contains `framing-defaults.md` and `README.md`. Coordinators load from `context/framing-defaults.md` unless the host repo ships a project-specific override at the same path.
+- `pr-reviewer.md` upgraded in place: consuming repos that had local customisations (e.g. project-specific "Specific Things to Check") will see a `.framework-new` sibling on next `sync.js` run. Merge the new §13 carve-out logic and the JSON output requirement; preserve project-specific checklist items.
+- `spec-coordinator.md` and `feature-coordinator.md` changed in place: Steps 6a/6b and 3a/3b are additive; consuming repos with `customisedLocally: true` should merge the new steps into their local copies.
+- `chatgpt-plan-review.md` is a new agent file. Sync deploys it automatically via the `agents/*.md` glob. Add the fleet table row and common-invocation entry to `CLAUDE.md` (manual step — `CLAUDE.md` is `doNotTouch` per manifest).
+
+---
+
 ## 2.6.5 — 2026-05-27
 
 **Highlights:** Operator-facing UX upgrade across all three ChatGPT review agents (`chatgpt-spec-review`, `chatgpt-plan-review`, `chatgpt-pr-review`) for consistency. Every round (kickoff and Round N+1) now ends with two operator-ready outputs in one place: (a) a clickable repo-relative VS Code markdown link to the artefact (spec, plan, or per-round PR diff file), and (b) a ready-to-paste ChatGPT prompt block. For Round N+1, the prompt block enumerates per-finding what was applied, rejected (with reason), and deferred (with reason) drawn from that round's decisions table — so ChatGPT has the context needed to avoid re-flagging items the operator already decided about. Eliminates the previous friction of (1) operators having to manually ask the agent for a file link each round, (2) the spec agent embedding the entire spec content inline in the prompt rather than using ChatGPT-web's native file-attach support, (3) the plan agent providing no Round N+1 prompt at all (just "Run another round?"), and (4) the PR agent lacking the applied/rejected/deferred summary in its upload prompt despite already having clickable diff links.
