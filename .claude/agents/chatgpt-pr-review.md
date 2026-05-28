@@ -1,6 +1,6 @@
 ---
 name: chatgpt-pr-review
-description: "Coordinates ChatGPT PR review sessions. Run in a dedicated new Claude Code session. Supports two modes: manual (user copies diff into ChatGPT UI and pastes response back — no API cost) and automated (calls OpenAI API via OPENAI_API_KEY). Reads the current branch diff, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / discuss / defer / reject) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (UX, workflow, visible copy/behaviour, product policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction and PR readiness confirmation."
+description: "Coordinates ChatGPT PR review sessions. Run in a dedicated new Claude Code session. Supports three modes: manual (user copies diff into ChatGPT UI and pastes response back — no API cost), automated (calls OpenAI API via OPENAI_API_KEY), and parallel (runs both and renders a side-by-side compare panel — used to A/B tune the OpenAI prompts until they reliably beat ChatGPT-web; see docs/review-pipeline/parallel-mode.md). Reads the current branch diff, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / discuss / defer / reject) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (UX, workflow, visible copy/behaviour, product policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction and PR readiness confirmation."
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---
@@ -15,9 +15,10 @@ Every finding is triaged into one of the two buckets. Every triage decision, eve
 
 ## Configuration
 
-**MODE** — set per invocation, not per session. Default is `manual` — only use `automated` if the user explicitly says "automated".
-- `manual` (default) — you copy the diff into the ChatGPT UI and paste the response back. No API key required.
+**MODE** — three values: `manual`, `automated`, `parallel`. Resolution order: (1) explicit operator phrase at invocation; (2) `CHATGPT_REVIEW_DEFAULT_MODE` env var; (3) hard default `manual`. Recorded in the session log Session Info block and restored on resume.
+- `manual` (hard default) — you copy the diff into the ChatGPT UI and paste the response back. No API key required.
 - `automated` — the agent calls the OpenAI API via `scripts/chatgpt-review.ts`. Requires `OPENAI_API_KEY`.
+- `parallel` — runs BOTH paths in interleaved order: kicks off the OpenAI CLI in the background while the operator uploads the diff to ChatGPT-web, then renders a side-by-side compare panel before triage. Requires `OPENAI_API_KEY`. Used to A/B-tune the OpenAI prompts until they reliably catch the ChatGPT-web finding set. **Shared contract:** [`docs/review-pipeline/parallel-mode.md`](../../docs/review-pipeline/parallel-mode.md) — loop shape, compare-panel rendering, session-log schema, failure handling, and the Phase 3 transition criteria live there. Defer to that file for behaviour not spelled out below.
 
 **PROMPT_VERSION** — controls which prompt version the CLI sends to OpenAI (default: 2). To use v1 prompts, set `CHATGPT_REVIEW_PROMPT_VERSION=1` before invoking the CLI. This is a fallback for regression testing only.
 
@@ -44,10 +45,16 @@ When the user says "run chatgpt-pr-review" (or equivalent):
 
 **First: determine MODE from the invocation.**
 
-- If the invocation contains "automated" → MODE = automated
-- Otherwise (invocation contains "manual", or neither keyword appears) → MODE = manual. Do NOT ask — default silently to manual. Only invoke automated mode when the user explicitly says "automated".
+Apply the resolution order from § Configuration:
+1. Explicit operator phrase in the invocation → that wins. Recognised keywords: `automated`, `manual`, `parallel`.
+2. If no keyword is present, read `CHATGPT_REVIEW_DEFAULT_MODE` env var. Accept `manual` / `automated` / `parallel`; any other value is treated as unset.
+3. Fall back to hard default: `manual`. Do NOT ask the operator — silent default keeps the no-cost path active on a fresh machine.
+
+If MODE resolves to `automated` or `parallel`, verify `OPENAI_API_KEY` is set before proceeding (see step 6). If missing, abort with the specific error in that step — do NOT silently fall back to `manual` (environment surprises are worse than an explicit stop).
 
 MODE is recorded in the session log Session Info block and restored on resume.
+
+**Parallel-mode entry note:** when MODE = `parallel`, run BOTH the [MANUAL] and [AUTOMATED] entry steps below in interleaved order per [`docs/review-pipeline/parallel-mode.md` § Parallel-mode loop](../../docs/review-pipeline/parallel-mode.md). Specifically: generate the diff bundle (manual step 7), kick off the OpenAI CLI in the background — for PR mode the redirection MUST be explicit (stdin into the CLI, stderr to its own file so JSON capture stays clean): `npx tsx scripts/chatgpt-review.ts --mode pr < .chatgpt-diffs/pr<N>-round1-code-diff.diff > .chatgpt-diffs/pr<N>-round1-openai.json 2> .chatgpt-diffs/pr<N>-round1-openai.stderr &` — print the operator instructions noting both are in flight, then wait for the operator paste. When the paste arrives, poll the background CLI silently, then render the compare panel. **Then run the learning analysis** (parallel-mode.md § Learning analysis — Step 7) before triage — every ChatGPT-only finding is a candidate prompt-improvement proposal. Operator may skip with `skip learning`.
 
 **Next: check for an existing session log (resume detection)**
 Run: `ls tasks/review-logs/chatgpt-pr-review-*.md 2>/dev/null | sort | tail -1`

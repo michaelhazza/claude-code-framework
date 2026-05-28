@@ -32,6 +32,30 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.7.2 — 2026-05-28 — chatgpt-review parallel mode + learning component
+
+**Highlights:** Fixes three stacked bugs in the OpenAI-driven chatgpt-review CLI that caused real schema quarantines on real artefacts, then adds a `parallel` mode to all three review agents (PR, spec, plan) that runs OpenAI and manual ChatGPT-web side-by-side and renders a compare panel. New learning step (Step 7) inspects every parallel round, proposes targeted edits to the OpenAI prompts when ChatGPT-web catches things OpenAI missed, gates each proposal on operator approval, and persists every edit to a durable `tasks/review-logs/prompt-evolution-log.md` audit trail. Three rounds of self-test on the introducing PR (#441) drove ChatGPT-web's verdict from CHANGES_REQUESTED → APPROVED with three durable prompt-evolution entries logged. The system is the prerequisite for the future Phase 3 flip to fully automated review.
+
+**Added:**
+- `docs/review-pipeline/parallel-mode.md` — shared contract for the parallel mode used by `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`. Covers loop shape, compare-panel rendering, session-log schema (with the new 7a/7b learning sub-sections), failure handling, the three learning channels (chatgpt-only, severity-delta, anti-hunt), Step 7a (pre-triage Channels 1+2) and Step 7b (post-triage Channel 3) split, the `CHATGPT_REVIEW_DEFAULT_MODE` env-var gate, and the Phase 3 flip criterion (zero ChatGPT-only findings for two consecutive rounds).
+- `manifest.json` entry for the new shared contract doc as a managed reference file.
+
+**Changed:**
+- `.claude/agents/chatgpt-pr-review.md` — mode resolution now lists three modes (`manual` / `automated` / `parallel`); resolution order honours explicit operator phrase, then `CHATGPT_REVIEW_DEFAULT_MODE` env var, then hard-default `manual`. Parallel-mode entry note pins explicit stdin redirection for PR mode to prevent `readStdin` deadlock, splits stdout/stderr to keep JSON capture clean, and points at the shared contract for Step 7 learning analysis.
+- `.claude/agents/chatgpt-spec-review.md` — same three-mode resolution + parallel entry note + Step 7 pointer; spec mode uses `--file` for unambiguous input.
+- `.claude/agents/chatgpt-plan-review.md` — three-mode resolution + parallel entry note + Step 7 pointer; the legacy "`OPENAI_API_KEY` set → automated by default" behaviour was REMOVED so all three agents now follow the same hard-default-manual contract (no silent token-burn on a fresh machine with the key set). Front-matter description and Mode Detection section both updated.
+
+**Why:**
+- The OpenAI-driven CLI was quarantining real responses on real PR diffs because three bugs stacked: (A) the CLI never substituted prompt placeholders (model saw raw `{{DIFF}}` literals), (B) the v2 prompts under-specified the result envelope (verdict enum, integrity_check string contract, source_refs shape, category enum, the conditional `operator_decision_required_reason` requirement), and (C) the repair prompt was generic. Parallel mode is the dev-loop that lets the operator A/B-test the automated OpenAI path against manual ChatGPT-web until OpenAI consistently catches what ChatGPT-web catches plus more — the criterion for flipping the default to automated.
+- All three agents reading the shared contract from one doc keeps the loop shape, session-log schema, and Phase 3 transition criteria in one place — three copies of the same content drift apart.
+
+**Project-side companion changes (not framework-managed; documented here for cross-repo awareness):**
+- `scripts/chatgpt-reviewPure.ts` and `scripts/chatgpt-review.ts` were rewritten in the introducing PR (#441 on automation-v1) to: substitute `{{KEY}}` placeholders (with fail-fast on missing keys), split each v2 prompt into `_SYSTEM` (instructions + envelope skeleton) and `_USER` (artefact + metadata) templates so untrusted document content stays out of the highest-priority instruction channel, add `buildAdHocPromptVars` for ad-hoc CLI runs, add `buildRepairPrompt` + `OUTPUT_ENVELOPE_SKELETON` + `translateAjvErrorsToChecklist` + `SYSTEM_PROMPT_REPAIR_V2` (dedicated repair-retry system prompt), add `compareFindingSets` + `renderComparePanel` + `mdCell` + `jaccard` for the compare panel, true-alias the `--expected-sha` / `--source-artifact-sha` flags at argument-parse time with conflict detection, and add CLI flags (`--project-context`, `--pr-context`, `--prior-rounds`, `--project-context-version`, `--source-artifact-sha`) for coordinator-driven invocations. These scripts live per-project (the framework does not manage `scripts/`); other repos adopting the framework should pull the same shape from the canonical implementation in `automation-v1`.
+- `tasks/review-logs/prompt-evolution-log.md` was introduced as the append-only audit trail for every learning-step edit. Each repo that adopts parallel mode should create the same file using the header template in the canonical implementation.
+
+**Not done (deliberately):**
+- `scripts/chatgpt-review.ts` and `scripts/chatgpt-reviewPure.ts` were NOT promoted to framework-managed. Each project's prompts evolve based on its own A/B history; promoting the scripts to framework-canonical would couple prompt evolution across all consumers. The decision was flagged in the introducing PR's session log for future revisit.
+
 ## 2.7.1 — 2026-05-28 — feature-coordinator model-switch contradiction fix
 
 **Highlights:** Resolves the Opus/Sonnet model-switching contradiction between Model A (builder dispatched as a Sonnet sub-agent) and Model B (operator manually switches the main session). Commits Model A — the only execution model that actually matches Claude Code runtime constraints (a running interactive session cannot change its own model programmatically). The main session now stays on Opus end-to-end through the three-coordinator pipeline; token-heavy chunk construction runs on Sonnet via the `builder` sub-agent dispatch. No more `/model` prompts during a `feature-coordinator` run.

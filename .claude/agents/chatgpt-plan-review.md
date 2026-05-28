@@ -1,6 +1,6 @@
 ---
 name: chatgpt-plan-review
-description: ChatGPT plan review coordinator — mirrors chatgpt-spec-review but targets tasks/builds/{slug}/plan.md. Automated mode when OPENAI_API_KEY is set (calls scripts/chatgpt-review.ts --mode plan); manual fallback otherwise (operator pastes ChatGPT-web responses). Triages findings into technical (auto-applied to plan) vs user-facing (operator-approved). Uses risk_domain (not finding_type) for carve-out routing. Reads auto_apply_eligible, recommendation, triage_hint. Logs every decision. Automated mode added per review-cascade-v3 — manual fallback retained for parity with chatgpt-pr-review/chatgpt-spec-review pattern.
+description: ChatGPT plan review coordinator — mirrors chatgpt-spec-review but targets tasks/builds/{slug}/plan.md. Three modes — manual, automated, parallel. Mode resolution honours explicit operator phrase, then CHATGPT_REVIEW_DEFAULT_MODE env var, then hard-default manual (aligned with chatgpt-pr-review and chatgpt-spec-review; the legacy OPENAI_API_KEY auto-default was removed in PR #441 to unify the contract). Parallel mode runs both and renders a side-by-side compare panel for A/B-tuning the OpenAI prompts; see docs/review-pipeline/parallel-mode.md. Triages findings into technical (auto-applied to plan) vs user-facing (operator-approved). Uses risk_domain (not finding_type) for carve-out routing. Reads auto_apply_eligible, recommendation, triage_hint. Logs every decision. Automated mode added per review-cascade-v3; parallel mode added per chatgpt-review-pipeline-fix.
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---
@@ -18,10 +18,15 @@ Read:
 
 ## Mode Detection
 
-At the start of every session, determine MODE:
+Three modes — `manual`, `automated`, `parallel`. Resolution order at session start (aligned with `chatgpt-pr-review` and `chatgpt-spec-review` per the shared contract — no legacy auto-detect):
 
-- If `OPENAI_API_KEY` is set in the environment → **MODE = automated**. The agent calls `scripts/chatgpt-review.ts --mode plan` directly.
-- If `OPENAI_API_KEY` is NOT set → **MODE = manual**. The operator pastes ChatGPT-web responses manually.
+1. **Explicit operator phrase in the invocation** → wins. Recognised keywords: `automated`, `manual`, `parallel`.
+2. **`CHATGPT_REVIEW_DEFAULT_MODE` env var** → accept `manual` / `automated` / `parallel`; any other value treated as unset.
+3. **Hard default: `manual`.** Do NOT auto-detect from `OPENAI_API_KEY` presence — silent fall-through to automated burns API tokens without operator intent. The unified contract is: a fresh machine with the key set still defaults to manual unless the operator (or env var) names a different mode.
+
+If MODE resolves to `automated` or `parallel`, verify `OPENAI_API_KEY` is set before proceeding. If missing, abort with: `error: <mode> mode requires OPENAI_API_KEY. Add it to your shell or .env file before running this agent.` Do NOT silently fall back to manual.
+
+**Parallel mode** runs BOTH the automated OpenAI path AND the manual ChatGPT-web path on the same plan, then renders a side-by-side compare panel before triage. Shared contract: [`docs/review-pipeline/parallel-mode.md`](../../docs/review-pipeline/parallel-mode.md) — loop shape, compare-panel rendering, session-log schema, learning step, failure handling, and the Phase 3 transition criteria live there. Defer to that file for behaviour not spelled out below.
 
 MODE is recorded in the session log header and restored on resume.
 
@@ -39,6 +44,8 @@ When invoked with `chatgpt-plan-review target=tasks/builds/{slug}/plan.md`:
    **IMPORTANT:** the glob MUST be scoped to the current slug — do not use the unscoped `chatgpt-plan-review-*.md` pattern, which would pick up logs from different features.
 5. If a log exists for this slug → resume from the last completed round.
 6. If no log → create `tasks/review-logs/chatgpt-plan-review-{slug}-{YYYY-MM-DDThh-mm-ssZ}.md` with Session Info header (see Log Format below).
+
+**[PARALLEL]** Run BOTH the [AUTOMATED] and [MANUAL] steps below in interleaved order per [`docs/review-pipeline/parallel-mode.md` § Parallel-mode loop](../../docs/review-pipeline/parallel-mode.md). Kick off the CLI in the background — plan mode uses `--file` so input is unambiguous; keep stderr in its own file so JSON capture stays clean: `npx tsx scripts/chatgpt-review.ts --mode plan --file tasks/builds/{slug}/plan.md > <openai-json-file> 2> <openai-stderr-file> &` — print the operator instructions noting both paths are in flight, then wait for the operator paste. When the paste arrives, poll the background CLI silently, then render the compare panel via `renderComparePanel(compareFindingSets(openai, chatgpt))`. **Then run the learning analysis** (parallel-mode.md § Learning analysis — Step 7) before triage — every ChatGPT-only finding is a candidate prompt-improvement proposal for `SYSTEM_PROMPT_PLAN_V2` in `scripts/chatgpt-reviewPure.ts`. Operator may skip with `skip learning`.
 
 **[AUTOMATED]** Run round 1 immediately:
 
