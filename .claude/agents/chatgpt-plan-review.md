@@ -50,7 +50,7 @@ Capture the stdout JSON. The fields you will use:
 - `findings[]` — pre-extracted, normalised, enum-locked.
   - `risk_domain` — `none | tenant_isolation | security | auth_authorisation | idempotency | data_integrity | user_visible | compliance`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface for operator approval.
   - `auto_apply_eligible` — when `true`, the finding may be auto-applied to the plan. When `false`, surface for operator review.
-  - `recommendation` — apply / reject / defer.
+  - `recommendation` — `implement` (actionable plan edit; only this value is eligible for coordinator auto-apply) / `discuss` (product/architecture choice) / `defer` (with `deferred_until` + `backlog_target`) / `reject` (round 2+ rejection of a prior-round proposal).
   - `triage_hint` — `technical | user-facing | technical-escalated`. Use as the initial triage signal.
 - `verdict` — `APPROVED | CHANGES_REQUESTED | NEEDS_DISCUSSION`.
 - `raw_response` — verbatim model output.

@@ -100,7 +100,7 @@ Run: `ls tasks/review-logs/chatgpt-pr-review-*.md 2>/dev/null | sort | tail -1`
    - `findings[]` — pre-extracted, normalised, enum-locked. Use this directly for the per-round triage table.
      - `risk_domain` — `none | tenant_isolation | security | auth_authorisation | idempotency | data_integrity | user_visible | compliance`. Use this (NOT `finding_type`) for security carve-out routing. Any finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` must NOT be auto-applied — surface in step 3b.
      - `auto_apply_eligible` — when `true`, the finding carries `proposed_edits[]` and the coordinator may apply it automatically. When `false`, surface for human review.
-     - `recommendation` — the reviewer's suggested action: apply / reject / defer.
+     - `recommendation` — the reviewer's suggested action: `implement` (actionable fix; only this value is eligible for coordinator auto-apply) / `discuss` (product/architecture choice) / `defer` (with `deferred_until` + `backlog_target`) / `reject` (round 2+ rejection of a prior-round proposal).
      - `triage_hint` — `technical | user-facing | technical-escalated`. Use as the first triage signal; override only when you have explicit evidence from CLAUDE.md or architecture.md.
    - `verdict` — one of `APPROVED | CHANGES_REQUESTED | NEEDS_DISCUSSION`. Will be written into the log Session Info block at finalisation.
    - `raw_response` — verbatim text the model returned. Preserve this in the round's "ChatGPT Feedback (raw)" log section so the audit trail shows exactly what the model said.
