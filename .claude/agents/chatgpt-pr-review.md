@@ -1,6 +1,6 @@
 ---
 name: chatgpt-pr-review
-description: "Coordinates ChatGPT PR review sessions. Run in a dedicated new Claude Code session. Supports two modes: manual (user copies diff into ChatGPT UI and pastes response back — no API cost) and automated (calls OpenAI API via OPENAI_API_KEY). Reads the current branch diff, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / reject / defer) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (UX, workflow, visible copy/behaviour, product policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction and PR readiness confirmation."
+description: "Coordinates ChatGPT PR review sessions. Run in a dedicated new Claude Code session. Supports two modes: manual (user copies diff into ChatGPT UI and pastes response back — no API cost) and automated (calls OpenAI API via OPENAI_API_KEY). Reads the current branch diff, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / discuss / defer / reject) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (UX, workflow, visible copy/behaviour, product policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction and PR readiness confirmation."
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---
@@ -293,7 +293,7 @@ If the live file disproves the finding, mark it `reject — diff-misread (verifi
    (e.g. forcing a re-auth, invalidating sessions, changing a permission) that
    visibility makes it user-facing — escalate.
 
-3. For each finding produce a RECOMMENDATION of implement / reject / defer +
+3. For each finding produce a RECOMMENDATION of implement / discuss / defer / reject +
    severity (critical/high/medium/low) + a one-line rationale. This is a
    recommendation. It becomes the decision directly for technical findings
    (you act on your own recommendation) and it is advisory for user-facing
@@ -668,7 +668,7 @@ Steps 6 and 10 in particular have historically been bundled into broader "finali
    - [missing-doc] >2 → directly update CLAUDE.md or architecture.md
 4. Structured index: append one JSONL line per finding to
    tasks/review-logs/_index.jsonl (create file if not exists, append only).
-   Only write findings with a final user decision (implement / reject / defer).
+   Only write findings with a final user decision (implement / discuss / defer / reject).
    {"timestamp":"...","agent":"chatgpt-pr-review","finding_type":"null_check",
     "recommendation":"implement","decision":"implement","severity":"high",
     "file":"agentExecutionService.ts","category":"bug","fingerprint":"a3f9c2"}
