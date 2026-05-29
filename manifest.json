@@ -30,7 +30,9 @@
     { "path": "scripts/chatgpt-review-api.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/chatgpt-reviewPure.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/__tests__/chatgpt-reviewPure.test.ts", "category": "review-script-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/review-coordinator/*.ts", "category": "review-coordinator", "mode": "sync", "substituteAt": "never" }
+    { "path": "scripts/review-coordinator/*.ts", "category": "review-coordinator", "mode": "sync", "substituteAt": "never" },
+    { "path": "schemas/*.json", "category": "review-schema", "mode": "sync", "substituteAt": "never" },
+    { "path": "schemas/CHANGELOG.md", "category": "review-schema", "mode": "sync", "substituteAt": "never" }
   ],
   "removedFiles": [],
   "doNotTouch": [
