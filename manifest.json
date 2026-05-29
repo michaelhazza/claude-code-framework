@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.7.2",
+  "frameworkVersion": "2.8.0",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
@@ -9,6 +9,7 @@
     { "path": ".claude/settings.json", "category": "settings", "mode": "settings-merge", "substituteAt": "never" },
     { "path": ".claude/FRAMEWORK_VERSION", "category": "version", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/CHANGELOG.md", "category": "changelog", "mode": "sync", "substituteAt": "never" },
+    { "path": ".claude/project-registries.json.template", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
     { "path": "docs/decisions/0001-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/0002-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/0005-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
@@ -24,7 +25,12 @@
     { "path": "docs/spec-context.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
     { "path": "docs/frontend-design-examples.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
     { "path": "docs/doc-sync.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": "references/verification-commands.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" }
+    { "path": "references/verification-commands.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
+    { "path": "scripts/chatgpt-review.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/chatgpt-review-api.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/chatgpt-reviewPure.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/__tests__/chatgpt-reviewPure.test.ts", "category": "review-script-test", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/review-coordinator/*.ts", "category": "review-coordinator", "mode": "sync", "substituteAt": "never" }
   ],
   "removedFiles": [],
   "doNotTouch": [

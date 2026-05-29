@@ -32,6 +32,36 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.8.0 — 2026-05-29 — chatgpt-review prompts framework-managed + 13 new Hunt Targets + PROJECT_CONTEXT registries
+
+**Highlights:** Promotes the chatgpt-review prompt harness (`scripts/chatgpt-review.ts`, `scripts/chatgpt-review-api.ts`, `scripts/chatgpt-reviewPure.ts`, `scripts/__tests__/chatgpt-reviewPure.test.ts`) from per-repo local copies to framework-managed files so all consuming repos receive prompt updates via the standard submodule-bump + sync.js adoption path. Adds 13 new Hunt-Target patterns across the three system prompts based on the 2026-05-29 notifications-system build's full end-to-end review run (2 SPEC + 1 in-place SPEC extension + 5 PLAN + 6 PR). Patterns are tied to specific incidents in that build's spec-review false-positives, plan-review missed chunk-discipline, PR-review CI fix-loop iterations, and dual-reviewer test-mock-staleness findings. Adds a parallel coordinator-side change requiring PROJECT_CONTEXT to expose 5 named registry sections (registry/manifest surfaces, CI-only gates, gate IDs + suppression scopes, CI workflow files, local-vs-CI verification policy) so the new Hunt Targets can fire reliably across consuming repos. Posture is soft-default at launch (missing sections degrade gracefully with a console.warn; the corresponding Hunt Targets fall silent on that run) and may flip to fail-closed in a future framework version.
+
+**Added:**
+- `scripts/chatgpt-review.ts`, `scripts/chatgpt-review-api.ts`, `scripts/chatgpt-reviewPure.ts`, `scripts/__tests__/chatgpt-reviewPure.test.ts` — now framework-managed (new `review-script` / `review-script-test` categories in `manifest.json`). Consuming repos that previously kept local copies will see the framework's version supersede the local copy via `sync.js --apply`.
+- `scripts/review-coordinator/*.ts` — newly added to `manifest.json` `managedFiles` (the directory existed in the framework canonical but was not previously synced to consuming repos).
+- `.claude/project-registries.json.template` — template for the new `.claude/project-registries.json` per-repo config that the chatgpt-review coordinator reads at dispatch time to inject registry/manifest/gate/workflow names into PROJECT_CONTEXT. Consuming repos copy the template and fill in the 5 sections to enable the new Hunt Targets.
+- 13 new Hunt-Target patterns in `scripts/chatgpt-reviewPure.ts`:
+  - **SYSTEM_PROMPT_SPEC_V2** (2 new + 1 in-place extension): stale-view false-positive prevention; chunk-discipline file-count check on the spec's own chunk plan; testing-posture-contradiction escalation rule appended to the existing "Testing-posture drift inside a single spec" bullet so the contradiction now emits as `recommendation="implement"` rather than `"discuss"`.
+  - **SYSTEM_PROMPT_PLAN_V2** (5 new): local-vs-CI verification language consistency; Registry / Manifest Completeness (plan-stage); test-mock-staleness implication of implementation contract changes; discovery and precondition-validation sequencing (generalised from probe-specific to any chunk whose output can invalidate later work); forward-reference and migration-order check across the chunk DAG.
+  - **SYSTEM_PROMPT_PR_V2** (6 new): Registry / Manifest Completeness (PR-stage); gate convention regex pre-check on new files; test-mock staleness when implementation adds new method calls on a mocked parameter; guard-ignore comment correctness check; module side-effects on import (with standalone-script exception and uncertainty-noting diagnostic); large-diff CI infrastructure adequacy heads-up (advisory only — never blocking).
+- `scripts/review-coordinator/validateProjectContextPure.ts` — new exported `findMissingRegistrySections(context)` helper + `REGISTRY_SECTIONS` const array. Returns the list of §6.2 registry headings missing from PROJECT_CONTEXT for the coordinator to log as console.warn (soft-default posture; does NOT fail-close).
+
+**Changed:**
+- `manifest.json`: bumped `frameworkVersion` to `2.8.0`; added 5 new `managedFiles` entries for the relocated chatgpt-review scripts + the project-registries template + the review-coordinator helpers; introduced two new categories (`review-script`, `review-script-test`, `review-coordinator`).
+
+**Why the prompts move to the framework now:** the notifications-system build (PR #447 in automation-v1) was the first complete end-to-end run of all three OpenAI-driven review tiers under the parallel-mode v2.7.2 contract. The build's full audit log (4 CI fix-loop iterations, 6 distinct missed-pattern classes, 14 distinct findings across 2 rounds of chatgpt-pr-review) yielded enough concrete patterns to justify a meaningful tuning pass. Keeping the prompts as per-repo local copies meant Foundry / CryptoTrackr / Freedom Planner would not have benefited from these patterns without a manual mirror per repo. Promoting to framework-managed makes future prompt-tuning iterations a single PR against the framework canonical, propagating to every consuming repo via the existing submodule bump pattern.
+
+**Brief and source incidents:**
+- Full brief (revision 3, APPROVED): `tasks/builds/chatgpt-prompt-tuning-notifications-system-2026-05-29/brief.md`
+- Source incident logs (in automation-v1): `tasks/review-logs/chatgpt-{spec,plan,pr}-review-*-notifications-system-*.md`, `tasks/review-logs/auto-fix-log-notifications-system-*.md`, `tasks/review-logs/dual-review-log-notifications-system-*.md`.
+
+**Migration for consuming repos (Trivial follow-up PR per repo):**
+1. Bump `.claude-framework/` submodule pointer to this version's merge commit.
+2. Run `node .claude-framework/sync.js --apply` — deploys the 4 chatgpt-review scripts, the review-coordinator helpers, and the project-registries.json.template.
+3. Delete any pre-existing local copies of `scripts/chatgpt-review*.ts` in the consuming repo (now superseded by synced versions).
+4. Copy `.claude/project-registries.json.template` to `.claude/project-registries.json` and fill in the 5 sections with paths that exist in your repo. Missing or null sections are tolerated at v2.8.0 launch (the relevant Hunt Targets fall silent on that run) but will be required by a future framework version.
+5. Bump `.claude/FRAMEWORK_VERSION` in the consuming repo to `2.8.0` and run lint + typecheck. No behaviour change is expected until the next chatgpt-review dispatch picks up the new prompts.
+
 ## 2.7.2 — 2026-05-28 — chatgpt-review parallel mode + learning component
 
 **Highlights:** Fixes three stacked bugs in the OpenAI-driven chatgpt-review CLI that caused real schema quarantines on real artefacts, then adds a `parallel` mode to all three review agents (PR, spec, plan) that runs OpenAI and manual ChatGPT-web side-by-side and renders a compare panel. New learning step (Step 7) inspects every parallel round, proposes targeted edits to the OpenAI prompts when ChatGPT-web catches things OpenAI missed, gates each proposal on operator approval, and persists every edit to a durable `tasks/review-logs/prompt-evolution-log.md` audit trail. Three rounds of self-test on the introducing PR (#441) drove ChatGPT-web's verdict from CHANGES_REQUESTED → APPROVED with three durable prompt-evolution entries logged. The system is the prerequisite for the future Phase 3 flip to fully automated review.

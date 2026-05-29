@@ -127,3 +127,50 @@ export function artifactTouchesTenantData(
   }
   return false;
 }
+
+/**
+ * Registry-section headings required by the v2.8.0 Hunt-Target additions
+ * (chatgpt-prompt-tuning-notifications-system brief §6.2).
+ *
+ * The chatgpt-{spec,plan,pr}-review prompts now reference "named in
+ * PROJECT_CONTEXT" for several patterns. The coordinator should inject these
+ * sections from the consuming repo's `.claude/project-registries.json`
+ * config file (see `.claude/project-registries.json.template` in the
+ * framework canonical for the expected shape).
+ */
+export const REGISTRY_SECTIONS = [
+  'Registry / manifest surfaces',
+  'CI-only gates',
+  'Gate IDs and suppression scopes',
+  'CI workflow files',
+  'Local-vs-CI verification policy',
+] as const;
+
+export type RegistrySection = (typeof REGISTRY_SECTIONS)[number];
+
+/**
+ * Detect which §6.2 registry sections are missing from PROJECT_CONTEXT.
+ *
+ * Used by the coordinator AFTER `validateProjectContext` returns `ok` to
+ * surface advisory warnings. Soft-default posture (v2.8.0 launch): missing
+ * registry sections do NOT fail-close the review; the coordinator logs a
+ * one-line console.warn per missing section so consuming repos see they
+ * should adopt the new contract, but the reviewer call still proceeds.
+ *
+ * The new Hunt Targets that reference "named in PROJECT_CONTEXT" degrade
+ * gracefully when these sections are absent — the reviewer simply cannot
+ * fire those patterns on this run.
+ *
+ * Future framework versions (v2.9.0+) may flip this to a fail-closed
+ * requirement once consuming-repo adoption is widespread; the change will
+ * be announced in CHANGELOG.md.
+ */
+export function findMissingRegistrySections(context: string): RegistrySection[] {
+  const missing: RegistrySection[] = [];
+  for (const section of REGISTRY_SECTIONS) {
+    if (!hasHeading(context, section)) {
+      missing.push(section);
+    }
+  }
+  return missing;
+}
