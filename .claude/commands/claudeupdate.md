@@ -53,59 +53,70 @@ This is the one-shot, fully-automated flow as of framework v2.9.0. Earlier versi
    | Submodule has uncommitted edits | Skip — "uncommitted submodule edits in <repo>" |
    | Clean, on main, behind target | Run the **one-shot update sequence** below |
 
-6. **One-shot update sequence (safe path only).** Run from `<repo>` (the consumer root):
+6. **One-shot update sequence (safe path only).** Run from `<repo>` (the consumer root). Order matters: migrations run **before** `sync.js` so pre-existing matching local files get adopted into state before `sync.js` would otherwise write `.framework-new` siblings for them. See `migrations/README.md § Lifecycle position` for the rationale.
 
    ```bash
    cd <repo>
 
-   # 6a. Bump the submodule pointer
+   # 6a. Bump the submodule pointer (frameworkRoot now points to TARGET_SHA)
    git submodule update --remote .claude-framework
 
-   # 6b. Deploy canonical files via sync.js
-   #     Writes managed files into the working .claude/, schemas/, scripts/, docs/, etc.
-   #     Customised files get .framework-new siblings for manual merge.
+   # 6b. Run pending migrations in semver order. Migrations operate on the
+   #     post-bump submodule (framework canonical) and the consumer working tree.
+   #     v2.8.0's job: auto-adopt pre-existing local files whose content matches
+   #     framework, seed .claude/project-registries.json from the template.
+   node .claude-framework/scripts/run-migrations.js "$PWD" "$FROM_VERSION" "$TARGET_VERSION" || {
+     echo "FAILED: migration runner threw — fix root cause and re-run /claudeupdate"
+     exit 1
+   }
+
+   # 6c. Deploy canonical files via sync.js. Files the migration just pre-adopted
+   #     into state are now seen as 'clean' and skipped silently. Files genuinely
+   #     diverging from framework get .framework-new siblings.
    node .claude-framework/sync.js
 
-   # 6c. Detect unresolved .framework-new conflicts BEFORE running migrations
-   CONFLICTS=$(find .claude .claude-framework -name '*.framework-new' 2>/dev/null | head -20)
+   # 6d. Detect unresolved .framework-new conflicts across the WHOLE consumer tree
+   #     (excluding .git and the submodule's own .git). sync.js can write
+   #     .framework-new under .claude/, scripts/, schemas/, docs/, references/, etc.
+   CONFLICTS=$(find . -name '*.framework-new' -not -path './.git/*' -not -path './.claude-framework/.git/*' 2>/dev/null)
    if [ -n "$CONFLICTS" ]; then
-     echo "PAUSE: $(echo "$CONFLICTS" | wc -l) .framework-new conflict(s) need manual merge before continuing."
+     CONFLICT_COUNT=$(echo "$CONFLICTS" | wc -l)
+     echo "PAUSE: $CONFLICT_COUNT .framework-new conflict(s) need manual merge before continuing."
      echo "$CONFLICTS"
      exit 1
    fi
 
-   # 6d. Run pending migrations in semver order
-   node .claude-framework/scripts/run-migrations.js "$PWD" "$FROM_VERSION" "$TARGET_VERSION"
-
-   # 6e. Stage everything sync.js + migrations touched
+   # 6e. Stage everything sync.js + migrations touched (submodule pointer + new
+   #     managed files + state.json + any registry/template seeds).
    git add -A
 
-   # 6f. Single commit summarising the one-shot update
+   # 6f. Single commit covering the bump + sync + migrations.
    git commit -m "$(cat <<EOF
    chore(framework): bump claude-code-framework submodule to ${TARGET_VERSION}
 
    Pointer: ${OLD_SHA} -> ${TARGET_SHA}
-   sync.js: applied managed files
    migrations: ran pending migrations in (${FROM_VERSION}, ${TARGET_VERSION}]
+   sync.js: applied managed files
 
    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
    EOF
    )"
 
-   # 6g. Push
+   # 6g. Push.
    git push origin main
    ```
 
-7. **On .framework-new conflict (6c trips):**
+7. **On `.framework-new` conflict (6d trips):**
    - Do NOT auto-merge or auto-resolve.
    - Stop the one-shot for this repo and report `paused — manual merge of N .framework-new files`.
    - Surface the file list to the operator. The operator merges, deletes the `.framework-new` sibling, then re-runs `/claudeupdate` for that repo.
+   - On re-run, any migration that returned `conflict` last time is retried (it is intentionally NOT recorded in `appliedMigrations` until it returns `applied` or `skipped`).
 
-8. **On migration failure (6d throws):**
-   - sync.js already wrote canonical files; staged state may be inconsistent.
+8. **On migration failure (6b throws):**
+   - `sync.js` has NOT run yet — the consumer's working tree only has the bumped submodule pointer.
    - Do NOT commit or push.
    - Report `failed — migration v<X> threw <error>`. Surface the error to the operator.
-   - The runner persists state after each successful migration, so re-running `/claudeupdate` resumes after the failed one (operator must fix the root cause first).
+   - The runner persists state after each successfully-completed migration, so re-running `/claudeupdate` resumes from the failed one (operator must fix the root cause first).
 
 9. **Final report.** Single plain table — one row per repo. Columns: Repo, Before, After, Sync, Migrations, Outcome.
 
@@ -122,9 +133,10 @@ This is the one-shot, fully-automated flow as of framework v2.9.0. Earlier versi
 ## Rules
 
 - **Never `--force` past dirty state.** If a repo isn't on `main` or has uncommitted work, skip and report. Don't try to be clever.
-- **One commit per repo.** No batching across repos.
+- **One commit per repo.** Submodule bump + migrations + sync.js results land in a single commit (step 6f). No batching across repos.
 - **No auto-resolution of `.framework-new` conflicts.** Customised files survive only because manual review is the merge point. The one-shot pauses on conflict; the operator resolves and re-runs.
-- **Migrations run after sync.js, before commit.** Order matters: sync.js deploys new framework files (including the migrations themselves), then the runner picks them up. If sync.js produces a `.framework-new` conflict, the runner doesn't run — keeping state and files in sync.
+- **Migrations run BEFORE sync.js, both before commit.** Migrations get the post-bump submodule via `frameworkRoot` and can pre-populate state so `sync.js` skips files the consumer already has at framework-equivalent content. See `migrations/README.md § Lifecycle position` for the rationale.
+- **Conflict-status migrations are retried on the next run.** The runner only records a migration as applied when it returns `applied` or `skipped`. A `conflict` result intentionally leaves the migration unrecorded so it re-runs after the operator merges the related `.framework-new` files.
 - **Skip the current working directory** unless the operator passes it explicitly. The session's own repo is usually already in flight; if it's behind, surface it but don't auto-commit there — let the operator decide.
 
 ## Arguments

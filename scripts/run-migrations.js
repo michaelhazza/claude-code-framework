@@ -12,9 +12,10 @@
  *   2. Discover migrations/v*.js in framework root, sort by semver ascending
  *   3. Filter to: version > fromVersion && version <= toVersion && !appliedMigrations.includes(version)
  *   4. Run each in order, capturing result
- *   5. On success, append the version ID to appliedMigrations and persist after EACH migration
- *      so a mid-flight failure doesn't re-run already-applied migrations
- *   6. On throw, stop and propagate
+ *   5. On `applied` or `skipped`, append the version ID to appliedMigrations and persist
+ *      after EACH migration so a mid-flight failure doesn't re-run already-applied migrations.
+ *      On `conflict`, DO NOT record — operator must resolve and the migration re-runs on next pass.
+ *   6. On throw, stop and propagate.
  *
  * Invocation:
  *   node scripts/run-migrations.js <consumerRoot> <fromVersion> <toVersion>
@@ -25,7 +26,9 @@
  *   Per-note line indented: `  note=<text>`
  *   End-of-run summary: `MIGRATIONS: <applied> applied, <skipped> skipped, <conflict> conflict, time=<sec>s`
  *   Exit 0 on full success (or no migrations to run), 1 on any thrown error.
- *   `conflict` status counts as success — the migration ran and reported a non-destructive conflict.
+ *   `conflict` status counts as ran-but-incomplete — the migration ran, reported a non-destructive
+ *   conflict, and is intentionally NOT recorded so the next /claudeupdate retries it after the
+ *   operator resolves the underlying conflict (e.g. merged a .framework-new file).
  */
 
 const fs = require('fs');
@@ -158,13 +161,19 @@ async function run(consumerRoot, fromVersion, toVersion) {
     else if (result.status === 'skipped') skippedCount++;
     else if (result.status === 'conflict') conflictCount++;
 
-    // Record applied / conflict / skipped — all count as "the migration ran".
-    // Persist after EACH migration so a later failure cannot re-run earlier ones.
-    state = readState(consumerRoot) || state;
-    if (!Array.isArray(state.appliedMigrations)) state.appliedMigrations = [];
-    if (!state.appliedMigrations.includes(m.version)) {
-      state.appliedMigrations.push(m.version);
-      await writeStateAtomic(consumerRoot, state);
+    // Only `applied` and `skipped` count as truly done. `conflict` means the migration
+    // ran, found local state requiring operator action, and did NOT complete — leaving
+    // it unrecorded forces a re-run on the next /claudeupdate after the operator
+    // resolves the underlying conflict (e.g. by merging the .framework-new file sync.js
+    // produced for the divergent local copy). Persist after each completed migration so
+    // a later failure cannot re-run earlier ones.
+    if (result.status === 'applied' || result.status === 'skipped') {
+      state = readState(consumerRoot) || state;
+      if (!Array.isArray(state.appliedMigrations)) state.appliedMigrations = [];
+      if (!state.appliedMigrations.includes(m.version)) {
+        state.appliedMigrations.push(m.version);
+        await writeStateAtomic(consumerRoot, state);
+      }
     }
   }
 
