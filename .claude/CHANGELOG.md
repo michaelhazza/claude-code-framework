@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.10.2 — 2026-05-30 — lint fix for e2e smoke test
+
+**Fixed:** `scripts/__tests__/local-override-e2e.js:110` had `catch (err)` where `err` was unused, tripping `@typescript-eslint/no-unused-vars` in consuming repos that lint `.js` files under `scripts/`. Changed to optional catch binding (`catch {`). Smoke tests still 4/4 pass.
+
+---
+
 ## 2.10.1 — 2026-05-30 — upstream automation-v1 security + schema enum extensions
 
 **Highlights:** Adopts three improvements made in automation-v1 after the v2.8.0 framework PR shipped, that hadn't yet been upstreamed: path-traversal protection + pre-edit snapshot in `applyFindings.ts`, and `observability` + `spec_delta` additions to the `finding_type` enum in `review-finding.schema.json` (with matching schema CHANGELOG entry). Without these in the framework canonical, consumers who had locally improved these files were seeing them regress on `sync.js` deployment.

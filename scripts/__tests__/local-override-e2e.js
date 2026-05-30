@@ -107,7 +107,7 @@ fs.writeFileSync(path.join(fwRoot, 'manifest.json'), JSON.stringify({
   ...JSON.parse(fs.readFileSync(path.join(fwRoot, 'manifest.json'), 'utf8')),
   frameworkVersion: '2.10.2',
 }, null, 2));
-try { runSync(); } catch (err) {
+try { runSync(); } catch {
   // sync.js exits 1 when there are pre-existing .framework-new files; ignore that error
 }
 assert.ok(fs.existsSync(fwNewPath), 'out-of-block edit should produce .framework-new');
