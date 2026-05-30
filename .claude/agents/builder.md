@@ -130,3 +130,12 @@ Notes for caller: [out-of-scope observations — dead code, smells, drift; do NO
 - Never write to `tasks/current-focus.md` or `tasks/builds/{slug}/handoff.md` — coordinator-owned.
 - Never run full test gates (see Step 4 forbidden list).
 - Never `--no-verify`, never amend a commit.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

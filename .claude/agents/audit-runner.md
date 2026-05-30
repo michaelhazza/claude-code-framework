@@ -363,3 +363,12 @@ See also: `architect.md` § *Test gates are CI-only — never put them in a plan
 - When a Universal Rule (1–15) and your tactical judgement disagree, the rule wins. The framework was designed to override session-local enthusiasm.
 - Do not spawn sub-agents. All investigation, grep, and file reads happen directly via `Bash`, `Grep`, `Glob`, and `Read`. `spec-conformance` and `pr-reviewer` are the caller's responsibility after the audit completes.
 - Do not create the final PR — that is the user's call.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

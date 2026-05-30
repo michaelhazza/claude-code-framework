@@ -147,3 +147,12 @@ The YAML marker is the canonical signal of completion. Any future tooling that n
 spec-coordinator's Step 5 mockup loop follows the same designer + reviewer dispatch pattern documented here. When spec-coordinator runs, it executes the same loop logic in its own Step 5 rather than calling this playbook as a sub-step. The two coordinators share the dispatch pattern; the difference is the entry point and the post-loop handoff (mockup-coordinator stops; spec-coordinator proceeds to spec authoring).
 
 If the operator first runs mockup-coordinator, then later invokes spec-coordinator on the same build, spec-coordinator's Step 5 detects the existing `mockup-log.md` and skips Round 1 unless the operator explicitly asks for another round.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

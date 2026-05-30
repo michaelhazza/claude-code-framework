@@ -513,3 +513,12 @@ If every box is checked, the spec is ready for `spec-reviewer`. If any box is un
 This checklist is built from patterns observed in `tasks/spec-review-checkpoint-*.md` across 15+ specs. When a new recurring pattern emerges across three or more specs, extend this checklist with a new section that points at the reviewer signal and the existing deep reference.
 
 When a section of this checklist stops catching recurrent findings (i.e. the reviewer no longer raises that signal for specs authored against this checklist), leave the section in place — it is working. Do not remove "working" sections; only remove sections that turn out to be noisy or wrong.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

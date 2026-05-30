@@ -803,3 +803,12 @@ Mark the final TodoWrite item complete and stop.
 - **`gh pr merge` fails (Step 12.3)** → diagnose the mergeability state. If BEHIND, S2-sync and return to Step 11. Otherwise escalate.
 - **`git push origin main` blocked by branch protection (Step 12.4)** → skip the post-merge sha patch and surface to operator with the placeholder note. Do not force-push, do not bypass.
 - **`tasks/current-focus.md` status mismatch (entry guard)** → refuse with the current status and expected status. Tell the operator to either launch the correct phase coordinator or manually correct the status field if the previous coordinator exited uncleanly.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

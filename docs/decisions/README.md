@@ -53,3 +53,12 @@ Update when adding ADRs.
 | [0005](./0005-risk-class-split-rollout-pattern.md) | Risk-class split rollout for read-vs-write enforcement gaps | accepted | rollout / enforcement |
 
 ADRs 0001, 0002, 0005 ship as part of the framework — they are durable patterns that apply across projects. The numbering gap (no 0003 / 0004 in this bundle) reflects origin-project-specific ADRs that did NOT propagate. Start your project's local ADRs at 0006 to preserve the gap as a marker.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

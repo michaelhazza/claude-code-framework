@@ -135,3 +135,12 @@ Same as mockup-designer: no hard cap. Each round is a real review; if the design
 - You never commit.
 - You always cite the rule clause for each finding.
 - You report Blocking findings even when you suspect the operator might overrule them — the goal is to surface, not to pre-filter.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

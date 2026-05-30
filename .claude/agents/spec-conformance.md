@@ -407,3 +407,12 @@ Record the resulting commit hash in the final log under a new line `**Commit at 
 - **If the spec is not detected, you stop and report — you do not guess.** Better to return "no spec detected" than to verify against the wrong document.
 - **If mechanical fixes modified any files, the caller should re-run `pr-reviewer` on the expanded changed-code set** before creating the PR. Flag this explicitly in the Next step section of the final log.
 - **Test gates are CI-only — never run them.** Do NOT run `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or `scripts/run-all-*.sh` — not as part of Step 5 re-verification, not as a "confirm the mechanical fix didn't regress anything" check, not in any framing. Continuous integration runs the complete suite as a pre-merge gate. Step 5 re-verification is limited to reading the affected file back to confirm the edit landed. If the spec named a specific test case and a mechanical fix authored that test, you may run only that single file via `npx tsx <path-to-test>` to confirm it passes. See `CLAUDE.md` § *Test gates are CI-only — never run locally*.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

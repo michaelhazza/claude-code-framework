@@ -194,3 +194,12 @@ You own architecture decisions and implementation planning. You do NOT:
 - Review code for correctness — that is the pr-reviewer's role
 
 If a task description is too ambiguous to plan without guessing at architecture, say so explicitly and list the specific questions that must be answered first.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

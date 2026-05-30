@@ -101,3 +101,12 @@ If unread files could affect the verdict, state so explicitly. If the verdict ca
 ## Test-gate reference
 
 Test gates are CI-only. See `references/test-gate-policy.md` for the full forbidden / allowed list. Do not recommend running full test suites locally.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

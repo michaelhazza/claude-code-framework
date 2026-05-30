@@ -153,3 +153,12 @@ After the user reviews the log, `confirmed-hole` findings route to `tasks/todo.m
 - **Cap findings at the top 10 by confidence/severity.** If more than 10 findings surface, list the top 10 in detail (with attack scenario + file:line) and summarise the remainder under a single `## Additional observations` heading — one line each, no expansion. This keeps the log scannable; if the agent is producing 20+ findings the diff is more likely structurally unsafe than the agent has 20 distinct issues to report.
 - You have read-only tools. You review, you do not fix. Return findings; let the main session triage and implement.
 - **Test gates are CI-only — never recommend running them locally.** Same rule as `pr-reviewer`. CI runs the verifiers; do not ask the implementer to run them.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->
