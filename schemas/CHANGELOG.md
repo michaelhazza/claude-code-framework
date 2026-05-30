@@ -1,5 +1,14 @@
 # Schema CHANGELOG
 
+## review-finding.schema.json — `finding_type` enum extension (2026-05-28)
+
+- Added `observability` and `spec_delta` to the `finding_type` enum to match
+  the v2 spec/plan/PR prompts in `scripts/chatgpt-reviewPure.ts`, which
+  instruct reviewers to emit these values. Previously valid model output
+  was being quarantined as `schema_fail`. The corresponding TypeScript
+  union (`FindingType`) and `FINDING_TYPES` runtime array were updated in
+  lockstep.
+
 ## review-result.v2 (introduced in review-cascade-v3)
 
 - `risk_domain` field introduced on findings (enum: `tenant_isolation`, `auth`, `pii`, `sql_injection`, `privilege_escalation`, `none`). Carve-out gate keys on `risk_domain`, not `finding_type`.
