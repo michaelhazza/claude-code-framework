@@ -1122,13 +1122,36 @@ Hunt targets:
   non-throwing enqueue failures.
 - Security and tenant isolation: shell-string execution with file/user input,
   path traversal, auth/permission bypass, IDOR, missing tenant/org filters, wrong
-  scoped transaction context, raw DB on tenant tables.
+  scoped transaction context, raw DB on tenant tables. Also hunt
+  client-side safety controls not enforced server-side: when the diff
+  adds a UI confirmation gate (typed-confirmation input, "type the name
+  to confirm" modal, double-click confirm, scary-red-button + countdown)
+  in front of a destructive endpoint (DELETE, drop, wipe, purge, reset,
+  rotate-and-invalidate, undo-irreversibly), verify the server endpoint
+  independently requires equivalent proof in the request body — e.g.
+  \`{ confirmName: "<value>" }\` matched against the URL param, or a
+  one-shot confirmation token issued by a preview endpoint. A UI-only
+  gate is bypassable by anyone with the admin token, including the admin
+  themselves via a mis-aimed curl or a stale tab on a different version
+  of the UI. Flag the server endpoint as the gap, not the UI.
 - RLS and transactions: new transactions touching tenant tables must establish
   the correct org context first or use the canonical scoped helper; jobs resolve
   tenant context before scoped DB access.
 - Idempotency and retries: retry after commit, duplicate queue jobs, singleton
   key scope, unique constraints, conflict handling, first/last-wins, outbox
-  durability.
+  durability. Specifically hunt check-then-act / select-then-insert
+  sequences against unique constraints: a SELECT that decides whether to
+  INSERT, with no transaction or ON CONFLICT clause, is a race — under
+  concurrent calls both readers can miss the row, one INSERT succeeds and
+  the other surfaces the unique-violation as a 500 (or worse, as a
+  rethrown DB error the client sees as an opaque internal error). The fix
+  is INSERT ... ON CONFLICT DO NOTHING + re-select, or wrapping the
+  read-write pair in a transaction with a row-level lock on the conflict
+  key. Flag the unguarded select-then-insert as the bug; the unique
+  constraint is the safety net, not the contract. Same pattern applies
+  to read-decide-update-check sequences where the decision predicate
+  could be invalidated by a concurrent writer between the read and the
+  write (TOCTOU on a guard that the final write does not re-check).
 - Concurrency: shared module state, buffers, caches, caps, counters, worker
   overlap, advisory-lock scope, lost updates, cross-job/tenant mixing.
 - Determinism: primary-only ORDER BY, unstable pagination, capped selection
@@ -1188,6 +1211,24 @@ Hunt targets:
   env vars FOO_BAR, table names \`foo_bar\`), grep the changed files and
   flag mismatches. Prefer "update spec to match impl" or "update impl to
   match spec" framing in the recommendation.
+- Comment-vs-code semantic divergence (transaction / ordering / async claims).
+  When a comment in changed code documents an ordering, lifecycle, or
+  transactional guarantee — e.g. "after commit", "fire-and-forget",
+  "before the transaction returns", "outside the lock", "swallows errors",
+  "non-blocking", "synchronous" — verify the surrounding code actually
+  delivers that guarantee. Common shapes: (a) "after commit" claimed but
+  the await is still inside a db.transaction(async (tx) => { ... })
+  callback — the callback's return is what triggers commit, so any await
+  inside it runs pre-commit; (b) "fire and forget" claimed but the call
+  is awaited; (c) "outside the lock" claimed but the call is inside the
+  lock-acquiring block; (d) "swallows errors" claimed on a call that
+  actually rethrows. Diagnostic: read the comment claim, then trace the
+  await's lexical position vs the transaction/lock boundary, or the
+  catch clause shape vs the swallow claim. Flag the comment OR the code
+  as the divergence, whichever is the canonical one — the code is
+  usually canonical when the comment is aspirational, but the comment
+  may be canonical when it documents an externally-visible contract
+  (B1-style audit-swallow semantics, fire-and-forget callbacks, etc.).
 - Registry / Manifest Completeness (PR-stage). When the diff introduces a
   new artefact-shape that the project's CI gates check against a registry
   or manifest (e.g. a new pgTable for an RLS-protected-tables registry, a
@@ -1269,8 +1310,15 @@ Pass 1 Inventory. Pass 2 Evidence (the diff is the source of truth; claims about
 code not in the diff are out of scope). Pass 3 Diff-misread guard (confirm the
 issue is in + or unchanged context, not in - lines; if in deleted code, drop it).
 Pass 4 Severity recalibration (drop low; to call something high, name the
-trigger). Pass 5 Scope signal (local = contained, no contract change;
-architectural = >3 services, contract change, new column/permission/primitive).
+trigger). Triggers for high/critical include: (a) silent data loss or
+silent state drift between the local DB and an external system
+(GitHub/queue/billing/IdP) with no reconciliation job; (b) bypass of an
+auth/tenant boundary; (c) double-execution of a side-effectful external
+call on retry; (d) state-machine transitions that violate documented
+invariants without a guard. Pure local error-handling tightening with
+no cross-system impact is medium at most. Pass 5 Scope signal (local =
+contained, no contract change; architectural = >3 services, contract
+change, new column/permission/primitive).
 Pass 6 Failure-mode specificity. Pass 7 Acceptance-check verifiability — every
 acceptance_check must name a concrete artefact (test path, grep pattern, lint
 rule, SQL query, UI spec). Reject "covered by tests", "verify manually", "spot
