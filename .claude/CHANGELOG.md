@@ -53,7 +53,7 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 **Operator workflow after v2.9.0:**
 1. From any consumer with the new framework deployed: `/claudeupdate` (with optional scan-root arg).
-2. The command discovers all consuming repos under the scan root, fetches the latest framework tip, and for each clean+on-main repo: bumps submodule, runs `sync.js`, runs `run-migrations.js`, commits, pushes.
+2. The command discovers all consuming repos under the scan root, fetches the latest framework tip, and for each clean+on-main repo: bumps submodule, runs `run-migrations.js` (pre-sync), runs `sync.js`, scans the whole consumer tree for `.framework-new` conflicts, commits, pushes.
 3. Repos with `.framework-new` conflicts pause and are surfaced in the final report — operator resolves and re-runs `/claudeupdate` for that repo only.
 4. Repos with migration failures are surfaced with the error — operator fixes root cause and re-runs (the runner resumes from the failed migration, not from the start).
 
