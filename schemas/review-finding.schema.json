@@ -53,6 +53,8 @@
         "transaction_scope",
         "rls_policy",
         "input_validation",
+        "observability",
+        "spec_delta",
         "other"
       ]
     },

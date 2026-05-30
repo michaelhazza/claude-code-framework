@@ -23,8 +23,8 @@
  *   re-apply. On failure: coordinator_override_reason "inline_apply_verification_failed".
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { resolve, sep, relative, isAbsolute } from 'node:path';
 import { execSync } from 'node:child_process';
 import type { Finding, ReviewResult } from '../chatgpt-reviewPure.js';
 import type { SuppressionEntry } from './applyFindingsPure.js';
@@ -157,6 +157,60 @@ interface AnchorApplyFailure {
 type AnchorApplyOutcome = AnchorApplyResult | AnchorApplyFailure;
 
 /**
+ * Reject paths that escape the project root via absolute paths or `..` segments.
+ * Reviewer-supplied file paths are untrusted model output.
+ */
+function isPathInsideRoot(absPath: string, projectRoot: string): boolean {
+  const rootResolved = resolve(projectRoot);
+  const rel = relative(rootResolved, absPath);
+  if (rel === '') return true;
+  return !rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel);
+}
+
+/**
+ * In-memory byte snapshot of the affected files BEFORE applying edits.
+ * `null` content means the file did not exist (snapshot restore = delete).
+ *
+ * This preserves any pre-existing uncommitted operator changes in those
+ * files — a `git checkout HEAD -- <file>` rollback would discard them.
+ */
+type FileSnapshot = { absPath: string; original: string | null };
+
+function snapshotFiles(absPaths: string[]): FileSnapshot[] {
+  const snapshots: FileSnapshot[] = [];
+  for (const absPath of absPaths) {
+    if (existsSync(absPath)) {
+      try {
+        snapshots.push({ absPath, original: readFileSync(absPath, 'utf-8') });
+      } catch {
+        snapshots.push({ absPath, original: null });
+      }
+    } else {
+      snapshots.push({ absPath, original: null });
+    }
+  }
+  return snapshots;
+}
+
+function restoreSnapshots(snapshots: FileSnapshot[]): void {
+  for (const snap of snapshots) {
+    try {
+      if (snap.original === null) {
+        // File did not exist before — best-effort: leave on disk only if
+        // it still doesn't exist; otherwise we'd need fs.rmSync. The apply
+        // path never creates new files (anchor must already match), so
+        // this branch is defensive and typically a no-op.
+        continue;
+      }
+      writeFileSync(snap.absPath, snap.original, 'utf-8');
+    } catch {
+      // Best-effort restore — if we can't write, the worktree is in an
+      // unknown state and the operator will see it via git status.
+    }
+  }
+}
+
+/**
  * Apply all proposed_edits[] for a single finding atomically.
  * If any edit fails (anchor not found / not unique), no files are written.
  */
@@ -174,6 +228,18 @@ export function applyAnchorEdits(
 
   for (const edit of edits) {
     const absPath = resolve(projectRoot, edit.file_path);
+
+    // Path-traversal guard: reviewer output is untrusted — refuse paths
+    // that escape projectRoot via absolute paths or `..` segments.
+    if (!isPathInsideRoot(absPath, projectRoot)) {
+      return {
+        success: false,
+        reason: 'anchor_not_found',
+        file_path: edit.file_path,
+        anchor: edit.anchor,
+      };
+    }
+
     let content: string;
     try {
       content = readFileSync(absPath, 'utf-8');
@@ -463,10 +529,23 @@ export async function applyFindings(
   }
 
   // Step 5: One-finding-at-a-time apply
+  // Track per-finding snapshots so rollback preserves any pre-existing
+  // uncommitted operator changes in the same files (§11a Step 5 / 6).
   const successfullyApplied: Finding[] = [];
+  const findingSnapshots = new Map<Finding, FileSnapshot[]>();
 
   for (const finding of batch) {
-    const affectedFiles = (finding.affected_files ?? []).map((f) => resolve(projectRoot, f));
+    // Filter `affected_files` through the same path-traversal guard used
+    // by applyAnchorEdits. Reviewer-supplied paths that escape projectRoot
+    // must not be snapshotted (and therefore cannot be written by the
+    // rollback path either).
+    const affectedFiles = (finding.affected_files ?? [])
+      .map((f) => resolve(projectRoot, f))
+      .filter((absPath) => isPathInsideRoot(absPath, projectRoot));
+
+    // Snapshot affected files BEFORE the apply so we can restore exact
+    // pre-apply bytes on failure (spec §11a Step 5.1).
+    const snapshots = snapshotFiles(affectedFiles);
 
     // Apply anchor-based edits
     const applyResult = applyAnchorEdits(finding, projectRoot);
@@ -488,12 +567,8 @@ export async function applyFindings(
     const verifyResult = gitAdapter.runVerify(projectRoot);
 
     if (!verifyResult.success) {
-      // Step 6: Rollback on failure
-      try {
-        gitAdapter.revertFiles(affectedFiles);
-      } catch {
-        // Best-effort revert
-      }
+      // Step 6: Rollback on failure — restore exact pre-apply bytes
+      restoreSnapshots(snapshots);
       logDecision(auditLogPath, {
         finding,
         reviewer,
@@ -511,11 +586,7 @@ export async function applyFindings(
     const checkResult = gitAdapter.runAcceptanceCheck(acceptanceCheck, projectRoot);
 
     if (!checkResult.success) {
-      try {
-        gitAdapter.revertFiles(affectedFiles);
-      } catch {
-        // Best-effort revert
-      }
+      restoreSnapshots(snapshots);
       logDecision(auditLogPath, {
         finding,
         reviewer,
@@ -529,6 +600,7 @@ export async function applyFindings(
     }
 
     successfullyApplied.push(finding);
+    findingSnapshots.set(finding, snapshots);
   }
 
   // Step 7: Cumulative re-verify
@@ -540,11 +612,13 @@ export async function applyFindings(
       const toRevert = [...successfullyApplied].reverse();
 
       for (const finding of toRevert) {
-        const affectedFiles = (finding.affected_files ?? []).map((f) => resolve(projectRoot, f));
-        try {
-          gitAdapter.revertFiles(affectedFiles);
-        } catch {
-          // Best-effort
+        // Restore the exact pre-apply bytes captured before this finding
+        // ran. Falls back to nothing if no snapshot recorded — preferable
+        // to a destructive `git checkout HEAD --` that would also discard
+        // any pre-existing uncommitted operator changes in those files.
+        const snap = findingSnapshots.get(finding);
+        if (snap) {
+          restoreSnapshots(snap);
         }
 
         const recheckResult = gitAdapter.runVerify(projectRoot);

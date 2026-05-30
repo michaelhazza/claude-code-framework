@@ -32,6 +32,23 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.10.1 — 2026-05-30 — upstream automation-v1 security + schema enum extensions
+
+**Highlights:** Adopts three improvements made in automation-v1 after the v2.8.0 framework PR shipped, that hadn't yet been upstreamed: path-traversal protection + pre-edit snapshot in `applyFindings.ts`, and `observability` + `spec_delta` additions to the `finding_type` enum in `review-finding.schema.json` (with matching schema CHANGELOG entry). Without these in the framework canonical, consumers who had locally improved these files were seeing them regress on `sync.js` deployment.
+
+**Added:**
+- `scripts/review-coordinator/applyFindings.ts`:
+  - `isPathInsideRoot(absPath, projectRoot)` — rejects paths that escape the project root via absolute paths or `..` segments. Reviewer-supplied file paths are untrusted model output; this is the defence.
+  - `snapshotFiles(absPaths)` + `FileSnapshot` type — in-memory byte snapshot of affected files before applying edits, used for rollback on verification failure. Preserves pre-existing uncommitted operator changes that a `git checkout HEAD -- <file>` rollback would discard.
+- `schemas/review-finding.schema.json` — `finding_type` enum gains `observability` and `spec_delta`. The v2 spec/plan/PR prompts in `chatgpt-reviewPure.ts` already instruct reviewers to emit these values; previously valid model output was being quarantined as `schema_fail`.
+- `schemas/CHANGELOG.md` — corresponding entry for the enum extension (dated 2026-05-28).
+
+**Why now:** the v2.10.0 bootstrap of automation-v1 surfaced these as silent regressions when `sync.js` overwrote consumer's improved files with the framework v2.8.0 versions. Three real safety/correctness improvements were about to be lost. Upstreaming closes the loop: every consumer gets the protection.
+
+**Breaking:** None. Both helper functions are internal additions. The enum extension is strictly additive — existing model output remains valid.
+
+---
+
 ## 2.10.0 — 2026-05-30 — LOCAL-OVERRIDE blocks for app-specific customisations
 
 **Highlights:** Solves the long-standing "consuming repos can't customise framework files without forking them" problem. Introduces named override slots that the framework declares inline (HTML comments, invisible in rendered markdown), and a `sync.js` upgrade that extracts the consumer's content from each slot before deploying a framework update, then re-injects it. Consumers can edit inside slots without triggering `.framework-new` siblings; edits outside slots still trigger the manual-merge flow as before. Mechanism is content-driven (presence of `<!-- LOCAL-OVERRIDE:start name="..." -->` markers in the framework file) — no new manifest mode required, no API surface added, every existing managed file is forward-compatible. Ships with `project-notes` slots pre-added to 21 framework files where the automation-v1 consumer had documented additions, plus a `project-ui-patterns` slot in `docs/frontend-design-principles.md` for the consumer's "Recurring UI patterns" extension. Convention documented at `references/local-override-convention.md`.
