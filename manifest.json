@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.8.0",
+  "frameworkVersion": "2.9.0",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
@@ -32,7 +32,10 @@
     { "path": "scripts/__tests__/chatgpt-reviewPure.test.ts", "category": "review-script-test", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/review-coordinator/*.ts", "category": "review-coordinator", "mode": "sync", "substituteAt": "never" },
     { "path": "schemas/*.json", "category": "review-schema", "mode": "sync", "substituteAt": "never" },
-    { "path": "schemas/CHANGELOG.md", "category": "review-schema", "mode": "sync", "substituteAt": "never" }
+    { "path": "schemas/CHANGELOG.md", "category": "review-schema", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/run-migrations.js", "category": "migration-runner", "mode": "sync", "substituteAt": "never" },
+    { "path": "migrations/README.md", "category": "migration", "mode": "sync", "substituteAt": "never" },
+    { "path": "migrations/v*.js", "category": "migration", "mode": "sync", "substituteAt": "never" }
   ],
   "removedFiles": [],
   "doNotTouch": [
