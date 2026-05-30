@@ -199,3 +199,12 @@ Per-round section:
 - Never use an unscoped log glob — always scope to the current slug.
 - Use `risk_domain` (not `finding_type`) for security carve-out routing.
 - A finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` is never auto-applied — always surface for operator approval.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

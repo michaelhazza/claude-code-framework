@@ -34,3 +34,12 @@ Load these sections only.
 ## Why this scope
 
 A reviewer needs the layer rules, the contracts every change must respect, and the "watch out for this" gotchas. They do NOT need the full LLM routing primitive list, the full UI design principles, or every architectural ADR.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

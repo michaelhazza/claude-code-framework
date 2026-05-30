@@ -147,6 +147,12 @@ Three worked examples — drawn from origin-project features — live in [`front
 
 Read for method, not content. If you're adapting this framework to a new project, replace these with worked examples from your own product.
 
+<!-- LOCAL-OVERRIDE:start name="project-ui-patterns" -->
+<!-- Replace this comment with your project-specific recurring UI patterns: row-action menus,
+     badge conventions, stat-tile rules, banner behaviour, admin-control visibility, etc.
+     Sync.js preserves your content here on framework updates. -->
+<!-- LOCAL-OVERRIDE:end name="project-ui-patterns" -->
+
 ## Re-check before delivery
 
 Before committing any UI artifact (mockup, PR, component), run through this quickly:

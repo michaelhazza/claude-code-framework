@@ -146,3 +146,12 @@ If the fix needs to ship to production immediately, the user owns the deploy —
 - KNOWLEDGE entry is mandatory — the durable artifact of the fix.
 - Never auto-commit. The user decides when to land it.
 - Never use `--no-verify`. If a pre-commit hook fails, fix the issue and try again.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

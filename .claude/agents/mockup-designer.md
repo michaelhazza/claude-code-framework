@@ -122,3 +122,12 @@ Rule violations: [list, or "none"]
 - Never modify the brief or the spec — only write to `prototypes/` and `tasks/builds/{slug}/mockup-log.md`.
 - Never declare the mockup "complete" — only the operator decides that via the caller.
 - Never commit.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

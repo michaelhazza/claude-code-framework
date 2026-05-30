@@ -114,3 +114,12 @@ Do NOT auto-commit. Do NOT modify files. Print and exit.
 - One report per invocation. Reports go to stdout, not to disk (the operator decides whether to log).
 - Don't speculate about fixes — point at the file:line and let the operator decide.
 - If the framework was just adopted and obvious incompleteness is expected (e.g. architecture.md not yet written), record as a warning, not a critical finding.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

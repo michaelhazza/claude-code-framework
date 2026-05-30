@@ -523,9 +523,33 @@ function classifyFile(ctx, entry, relativePath) {
       return { kind: 'skipped', reason: 'already-on-version' };
     }
     return { kind: 'clean', needsUpdate: true };
-  } else {
+  }
+
+  // Target diverges from last-applied hash. Two possibilities:
+  // (a) Operator edited the file (anywhere) → customised → .framework-new
+  // (b) Operator edited only inside LOCAL-OVERRIDE blocks (v2.10.0) → clean + needsUpdate;
+  //     writeUpdated will re-inject their override content and update the hash.
+  // Check (b) by synthesising "current framework + consumer's current override contents"
+  // and comparing against the consumer's actual content.
+  const sourcePath = path.join(ctx.frameworkRoot, relativePath);
+  let fwContent;
+  try { fwContent = fsSync.readFileSync(sourcePath, 'utf8'); } catch { return { kind: 'customised' }; }
+  if (entry.substituteAt !== 'never') {
+    fwContent = applySubstitutions(fwContent, state && state.substitutions ? state.substitutions : {});
+  }
+  const inj = injectConsumerOverrides(fwContent, targetPath);
+  if (inj.frameworkBlockNames.length === 0) {
+    // No override slots in framework — divergence is real customisation.
     return { kind: 'customised' };
   }
+  const synthesisedHash = hashContent(normaliseContent(inj.injected));
+  if (synthesisedHash === targetHash) {
+    // Consumer edits live entirely within LOCAL-OVERRIDE blocks — clean.
+    // Mark as needing update so the new framework version (with consumer's overrides re-injected) gets written;
+    // even if framework content is identical, we still want lastAppliedHash and lastAppliedFrameworkVersion refreshed.
+    return { kind: 'clean', needsUpdate: true };
+  }
+  return { kind: 'customised' };
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +624,193 @@ function applySubstitutions(content, substitutions) {
 }
 
 // ---------------------------------------------------------------------------
+// LOCAL-OVERRIDE block mechanism (v2.10.0)
+// ---------------------------------------------------------------------------
+//
+// Allows the framework to declare named slots in a managed file where the
+// consumer can put app-specific content that sync.js preserves on update.
+// Markers are HTML comments (invisible in markdown render) of the form:
+//
+//   <!-- LOCAL-OVERRIDE:start name="rule-list-extension" -->
+//   ... default content (replaced by consumer content if consumer has any) ...
+//   <!-- LOCAL-OVERRIDE:end name="rule-list-extension" -->
+//
+// On sync.js update for any managed file:
+//   1. Read framework content, apply substitutions, normalise.
+//   2. Scan for LOCAL-OVERRIDE markers — collect block boundaries + names.
+//   3. If consumer's existing file has the same named blocks, extract the
+//      consumer's content between markers and inject into the framework version.
+//   4. The resulting "framework structure + consumer overrides" is what
+//      sync.js writes to disk; its hash is what gets recorded in state.
+//
+// Names must match `^[a-z0-9][a-z0-9_-]*$`. Duplicate names within a single
+// file are an error. Nested blocks are not supported.
+
+const OVERRIDE_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
+const OVERRIDE_START_RE = /<!--\s*LOCAL-OVERRIDE:start\s+name="([^"]+)"\s*-->/g;
+const OVERRIDE_END_RE = /<!--\s*LOCAL-OVERRIDE:end\s+name="([^"]+)"\s*-->/g;
+
+/**
+ * Parse all LOCAL-OVERRIDE blocks in `content`.
+ * @param {string} content
+ * @returns {{ blocks: Map<string, { startIdx: number, endIdx: number, contentStart: number, contentEnd: number }>, errors: string[] }}
+ *   - blocks: keyed by name; offsets are character positions in `content`.
+ *     startIdx/endIdx span from before `<!-- LOCAL-OVERRIDE:start ... -->` to after `<!-- LOCAL-OVERRIDE:end ... -->`.
+ *     contentStart/contentEnd span just the content between markers (excluding the marker comments themselves).
+ *   - errors: human-readable validation failures; non-empty means content is malformed.
+ */
+function parseOverrideBlocks(content) {
+  /** @type {Map<string, { startIdx: number, endIdx: number, contentStart: number, contentEnd: number }>} */
+  const blocks = new Map();
+  /** @type {string[]} */
+  const errors = [];
+
+  /** @type {{ name: string, startIdx: number, contentStart: number }[]} */
+  const opens = [];
+  const startMatches = [];
+  const endMatches = [];
+
+  let m;
+  const startRe = new RegExp(OVERRIDE_START_RE.source, 'g');
+  while ((m = startRe.exec(content)) !== null) {
+    startMatches.push({ name: m[1], startIdx: m.index, contentStart: m.index + m[0].length });
+  }
+  const endRe = new RegExp(OVERRIDE_END_RE.source, 'g');
+  while ((m = endRe.exec(content)) !== null) {
+    endMatches.push({ name: m[1], contentEnd: m.index, endIdx: m.index + m[0].length });
+  }
+
+  // Interleave start/end in order of appearance
+  /** @type {{ kind: 'start'|'end', name: string, pos: number, info: any }[]} */
+  const events = [
+    ...startMatches.map(s => ({ kind: /** @type {'start'} */('start'), name: s.name, pos: s.startIdx, info: s })),
+    ...endMatches.map(e => ({ kind: /** @type {'end'} */('end'), name: e.name, pos: e.contentEnd, info: e })),
+  ].sort((a, b) => a.pos - b.pos);
+
+  for (const ev of events) {
+    if (!OVERRIDE_NAME_RE.test(ev.name)) {
+      errors.push(`invalid LOCAL-OVERRIDE block name "${ev.name}" (must match /^[a-z0-9][a-z0-9_-]*$/)`);
+      continue;
+    }
+    if (ev.kind === 'start') {
+      if (opens.length > 0) {
+        errors.push(`LOCAL-OVERRIDE block "${ev.name}" starts before previous block "${opens[opens.length - 1].name}" closes (nested blocks not supported)`);
+        continue;
+      }
+      if (blocks.has(ev.name)) {
+        errors.push(`duplicate LOCAL-OVERRIDE block name "${ev.name}" in the same file`);
+        continue;
+      }
+      opens.push({ name: ev.name, startIdx: ev.info.startIdx, contentStart: ev.info.contentStart });
+    } else {
+      const open = opens.pop();
+      if (!open) {
+        errors.push(`LOCAL-OVERRIDE end "${ev.name}" with no matching start`);
+        continue;
+      }
+      if (open.name !== ev.name) {
+        errors.push(`LOCAL-OVERRIDE end "${ev.name}" does not match preceding start "${open.name}"`);
+        continue;
+      }
+      blocks.set(ev.name, {
+        startIdx: open.startIdx,
+        endIdx: ev.info.endIdx,
+        contentStart: open.contentStart,
+        contentEnd: ev.info.contentEnd,
+      });
+    }
+  }
+  for (const stillOpen of opens) {
+    errors.push(`LOCAL-OVERRIDE block "${stillOpen.name}" started but never closed`);
+  }
+  return { blocks, errors };
+}
+
+/**
+ * Extract the consumer's content for each named override block, keyed by name.
+ * Returns null if `consumerContent` is malformed (errors present).
+ *
+ * @param {string} consumerContent
+ * @returns {Map<string, string> | null}
+ */
+function extractOverrideContents(consumerContent) {
+  const { blocks, errors } = parseOverrideBlocks(consumerContent);
+  if (errors.length > 0) return null;
+  /** @type {Map<string, string>} */
+  const out = new Map();
+  for (const [name, b] of blocks) {
+    out.set(name, consumerContent.slice(b.contentStart, b.contentEnd));
+  }
+  return out;
+}
+
+/**
+ * Inject consumer override contents into framework content. For each LOCAL-OVERRIDE block
+ * in `frameworkContent` whose name appears in `consumerOverrides`, replace the framework
+ * default content between the markers with the consumer's content.
+ *
+ * Block markers themselves stay intact (sourced from framework). If the consumer has an
+ * override for a name the framework doesn't declare, that override is dropped — the framework
+ * controls slot existence.
+ *
+ * @param {string} frameworkContent  framework-canonical content (post-substitution)
+ * @param {Map<string, string>} consumerOverrides
+ * @returns {{ result: string, frameworkBlockNames: string[], orphanedConsumerNames: string[], errors: string[] }}
+ */
+function injectOverrides(frameworkContent, consumerOverrides) {
+  const { blocks, errors } = parseOverrideBlocks(frameworkContent);
+  if (errors.length > 0) {
+    return { result: frameworkContent, frameworkBlockNames: [], orphanedConsumerNames: [], errors };
+  }
+  const frameworkBlockNames = Array.from(blocks.keys());
+  const orphanedConsumerNames = Array.from(consumerOverrides.keys()).filter(n => !blocks.has(n));
+
+  // Rewrite in reverse order so earlier offsets stay valid as we mutate the string.
+  const ordered = Array.from(blocks.entries()).sort((a, b) => b[1].contentStart - a[1].contentStart);
+  let result = frameworkContent;
+  for (const [name, b] of ordered) {
+    if (!consumerOverrides.has(name)) continue;
+    const consumerSlot = consumerOverrides.get(name) || '';
+    result = result.slice(0, b.contentStart) + consumerSlot + result.slice(b.contentEnd);
+  }
+  return { result, frameworkBlockNames, orphanedConsumerNames, errors: [] };
+}
+
+/**
+ * Convenience: given framework content + consumer file path, compute the "what should
+ * land on disk" content with consumer's overrides preserved. Returns the framework content
+ * unchanged when no override blocks are present or consumer file is missing/malformed.
+ *
+ * @param {string} frameworkContent
+ * @param {string} consumerPath  Absolute path to consumer's existing file (may not exist).
+ * @returns {{ injected: string, frameworkBlockNames: string[], orphanedConsumerNames: string[], malformed: boolean }}
+ */
+function injectConsumerOverrides(frameworkContent, consumerPath) {
+  const { blocks: fwBlocks, errors: fwErrors } = parseOverrideBlocks(frameworkContent);
+  if (fwErrors.length > 0) {
+    // Framework itself has malformed override markers — leave as-is, surface via caller log.
+    return { injected: frameworkContent, frameworkBlockNames: [], orphanedConsumerNames: [], malformed: true };
+  }
+  if (fwBlocks.size === 0) {
+    return { injected: frameworkContent, frameworkBlockNames: [], orphanedConsumerNames: [], malformed: false };
+  }
+  let consumerContent;
+  try {
+    consumerContent = fsSync.readFileSync(consumerPath, 'utf8');
+  } catch {
+    // Consumer file missing — framework defaults stand.
+    return { injected: frameworkContent, frameworkBlockNames: Array.from(fwBlocks.keys()), orphanedConsumerNames: [], malformed: false };
+  }
+  const consumerOverrides = extractOverrideContents(consumerContent);
+  if (!consumerOverrides) {
+    // Consumer's override markers are malformed; treat as no overrides (framework defaults stand).
+    return { injected: frameworkContent, frameworkBlockNames: Array.from(fwBlocks.keys()), orphanedConsumerNames: [], malformed: false };
+  }
+  const r = injectOverrides(frameworkContent, consumerOverrides);
+  return { injected: r.result, frameworkBlockNames: r.frameworkBlockNames, orphanedConsumerNames: r.orphanedConsumerNames, malformed: false };
+}
+
+// ---------------------------------------------------------------------------
 // Writer stubs (implemented in Chunks 5 and 6)
 // ---------------------------------------------------------------------------
 
@@ -616,11 +827,27 @@ async function writeUpdated(ctx, entry, relativePath) {
   if (entry.substituteAt !== 'never') {
     content = applySubstitutions(content, ctx.state ? ctx.state.substitutions : {});
   }
-  const normalisedContent = normaliseContent(content);
+  const targetPath = path.join(targetRoot, relativePath);
+  // Apply LOCAL-OVERRIDE blocks: if the framework declares override slots and the consumer
+  // has filled them, preserve the consumer's content between the markers.
+  const inj = injectConsumerOverrides(content, targetPath);
+  const finalContent = inj.injected;
+  const normalisedContent = normaliseContent(finalContent);
   const newHash = hashContent(normalisedContent);
 
+  /** @type {Record<string, string>} */
+  const extra = {};
+  if (inj.frameworkBlockNames.length > 0) extra.override_slots = String(inj.frameworkBlockNames.length);
+  if (inj.orphanedConsumerNames.length > 0) {
+    process.stderr.write(
+      `WARN: ${relativePath} — consumer has LOCAL-OVERRIDE block(s) not declared by framework: ${inj.orphanedConsumerNames.join(', ')}. ` +
+      `Content dropped; remove the orphan block from your local copy or re-add the slot in framework.\n`
+    );
+    extra.orphan_overrides = inj.orphanedConsumerNames.join(',');
+  }
+  if (inj.malformed) extra.framework_overrides_malformed = 'true';
+
   if (!flags.dryRun) {
-    const targetPath = path.join(targetRoot, relativePath);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await fs.writeFile(targetPath, normalisedContent, 'utf8');
     // Update state
@@ -636,7 +863,7 @@ async function writeUpdated(ctx, entry, relativePath) {
     }
   }
 
-  const extra = flags.dryRun ? { dry_run: 'true' } : {};
+  if (flags.dryRun) extra.dry_run = 'true';
   logFileOp(relativePath, 'updated', extra);
 }
 
@@ -650,9 +877,12 @@ async function writeFrameworkNew(ctx, entry, relativePath) {
   if (entry.substituteAt !== 'never') {
     content = applySubstitutions(content, ctx.state ? ctx.state.substitutions : {});
   }
-  const normalisedContent = normaliseContent(content);
-
   const targetPath = path.join(targetRoot, relativePath);
+  // Inject consumer's LOCAL-OVERRIDE block contents into .framework-new too, so the
+  // operator's manual merge diff only shows the actually-customised-outside-blocks lines.
+  const injNew = injectConsumerOverrides(content, targetPath);
+  const normalisedContent = normaliseContent(injNew.injected);
+
   const newFilePath = `${targetPath}.framework-new`;
 
   /** @type {Record<string, string>} */
@@ -746,10 +976,14 @@ async function writeNewFile(ctx, entry, relativePath) {
       logFileOp(relativePath, 'new', extra);
     } else {
       // Non-adopt mode: file exists but not in state — write .framework-new
+      // Preserve consumer's LOCAL-OVERRIDE block contents in the .framework-new so the
+      // operator's merge view focuses on out-of-block divergence only.
+      const injOrphan = injectConsumerOverrides(content, targetPath);
+      const orphanFinal = normaliseContent(injOrphan.injected);
       if (!flags.dryRun) {
         const newFilePath = `${targetPath}.framework-new`;
         await fs.mkdir(path.dirname(newFilePath), { recursive: true });
-        await fs.writeFile(newFilePath, normalisedContent, 'utf8');
+        await fs.writeFile(newFilePath, orphanFinal, 'utf8');
         if (ctx.state) {
           if (!ctx.state.files) ctx.state.files = {};
           ctx.state.files[relativePath] = {
@@ -1419,4 +1653,8 @@ module.exports = {
   mergeSettingsHooksBlock,
   mergeSettings,
   extractChangelogExcerpt,
+  parseOverrideBlocks,
+  extractOverrideContents,
+  injectOverrides,
+  injectConsumerOverrides,
 };

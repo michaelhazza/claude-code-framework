@@ -191,3 +191,12 @@ Record the resulting commit hash in the final log under a new line `**Commit at 
 - If Codex output is empty or clearly truncated, retry the `codex review` command once. If it fails again, skip that iteration and note it in the output.
 - If the Codex CLI fails to run (non-zero exit, auth error), stop immediately and report the exact error to the caller.
 - **Test gates are CI-only — never run them and never accept a Codex recommendation that asks you to.** Continuous integration runs the complete suite as a pre-merge gate. If Codex recommends running `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or `scripts/run-all-*.sh` — or recommends running the broader test suite to "confirm no regression" / "verify the fix" — classify the recommendation as `[REJECT]` with reason "test gates are CI-only per CLAUDE.md § *Test gates are CI-only — never run locally*; CI will run the suite on the PR". Targeted execution of unit tests authored as part of an accepted fix is allowed (single file via `npx tsx <path-to-test>`). See `CLAUDE.md` § *Test gates are CI-only — never run locally*.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

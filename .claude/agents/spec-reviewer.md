@@ -529,3 +529,12 @@ If the final report write did not produce any new changes (e.g. the run aborted 
 - You do not touch the spec-context file. Updating `spec-context.md` is the human's job. If you think it needs to change, add it to `tasks/todo.md` as a deferred item.
 - The bias is toward conservative judgment — prefer the spec as-is when uncertain, prefer simplicity, prefer existing patterns. AUTO-DECIDED items are routed to `tasks/todo.md` for deferred human review, never left unresolved or used as a reason to block.
 - **Test gates are CI-only — never recommend running them and never write them into a spec's verification section.** If Codex flags a missing "run all gates" / "execute the full test suite" / "confirm CI-equivalent local verification" requirement in the spec under review, classify the finding as directional and reject it with the assumption "test gates are CI-only per CLAUDE.md § *Test gates are CI-only — never run locally*; specs must NOT instruct implementers to run `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or `scripts/run-all-*.sh`. Continuous integration runs the complete suite as a pre-merge gate. The spec may name targeted unit tests an implementer should author; running the broader suite is CI's job, not the spec's." Apply this same reasoning when running your own rubric pass — flag any spec that mandates local gate runs as a mechanical fix to remove that mandate.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->

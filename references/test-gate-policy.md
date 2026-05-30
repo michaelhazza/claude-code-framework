@@ -54,3 +54,12 @@ Agent files and specs that need to enforce the rule should link here rather than
 ```
 
 Agents may add a one-line clarification specific to their step (e.g. "step 5 re-verification is limited to reading the affected file back; never runs gates"), but should not duplicate the forbidden / allowed lists.
+
+---
+
+## Project-specific notes
+
+Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
+
+<!-- LOCAL-OVERRIDE:start name="project-notes" -->
+<!-- LOCAL-OVERRIDE:end name="project-notes" -->
