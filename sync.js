@@ -20,7 +20,7 @@ const { spawnSync } = require('child_process');
  * @typedef {{ frameworkVersion: string, managedFiles: ManifestEntry[], removedFiles: RemovedFile[], doNotTouch: string[] }} Manifest
  * @typedef {Record<string, string>} Substitutions
  * @typedef {{ lastAppliedHash: string, lastAppliedFrameworkVersion: string, lastAppliedFrameworkCommit: string|null, lastAppliedSourcePath: string, customisedLocally: boolean, adoptedOwnership?: boolean }} FileStateEntry
- * @typedef {{ frameworkVersion: string, adoptedAt: string, adoptedFromCommit: string|null, profile: 'MINIMAL'|'STANDARD'|'FULL', substitutions: Substitutions, lastSubstitutionHash?: string, files: Record<string, FileStateEntry>, syncIgnore: string[] }} FrameworkState
+ * @typedef {{ frameworkVersion: string, adoptedAt: string, adoptedFromCommit: string|null, profile: 'MINIMAL'|'STANDARD'|'FULL', substitutions: Substitutions, lastSubstitutionHash?: string, files: Record<string, FileStateEntry>, syncIgnore: string[], appliedMigrations?: string[] }} FrameworkState
  * @typedef {'skipped'|'new'|'customised'|'updated'|'removed-warn'|'ownership-transferred'} FileOpStatus
  * @typedef {{ targetRoot: string, frameworkRoot: string, manifest: Manifest, state: FrameworkState|null, frameworkVersion: string, frameworkCommit: string|null, flags: SyncFlags }} SyncContext
  * @typedef {{ adopt: boolean, dryRun: boolean, check: boolean, strict: boolean, doctor: boolean, force: boolean }} SyncFlags
@@ -1276,6 +1276,7 @@ async function main() {
         substitutions: {},
         files: {},
         syncIgnore: [],
+        appliedMigrations: [],
       };
     } else {
       process.stdout.write(`INFO: --adopt rebaseline mode (substitution map changed; clean files will be rewritten, customised files get .framework-new)\n`);
