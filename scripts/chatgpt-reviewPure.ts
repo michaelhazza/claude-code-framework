@@ -788,6 +788,101 @@ Hunt targets:
   Flag any chunk that exceeds the convention, even when its prose justifies
   the size; convention justifications belong to the plan-review tier, not
   the spec review. Cite the chunk id and file count in source_refs.
+- Producer/consumer fencing-column pairs. When the spec adds or touches a
+  fencing/generation/version/claim-token column on a write path (e.g.
+  retry_generation, version, epoch, claim_token, sequence), the consumer-side
+  reader/dispatcher/worker must declare the matching equality check and zero-
+  row-abort behaviour. A producer-side bump with no consumer-side equality
+  predicate is a silent double-dispatch hazard — the producer's intent (stale
+  reader skips) is not enforced anywhere. Flag any new fencing column whose
+  matching consumer-side WHERE clause + zero-row-affected behaviour
+  (no-op / abort / fail-closed) is not specified. The fix sketch should name
+  both the producer's bump site AND the consumer's predicate site.
+- Dedupe-key canonicalisation for user-supplied strings. When the spec
+  specifies an idempotency key, suppression-lookup key, or uniqueness key
+  that includes a user-supplied identifier (email address, URL, slug, name,
+  domain, identifier, free-text label), flag any case where the spec does
+  not name (a) the canonicalisation function applied at both write-time and
+  lookup-time (lowercasing, trimming, IDNA / punycode normalisation,
+  Unicode NFC, percent-decoding for URLs, or other canonicalisation
+  declared in PROJECT_CONTEXT), AND (b) the rule that display values may
+  preserve original casing only when the canonical form is used for all
+  comparisons. Literal-string keys without canonicalisation rules create
+  duplicate-delivery / duplicate-row / suppression-bypass hazards on
+  case / whitespace / Unicode variants. The fix sketch should name the
+  existing canonicaliser if one exists in PROJECT_CONTEXT, or require a new
+  one be named.
+- Content-boundary ACs must enumerate non-visible carriers. When the spec
+  asserts a boundary like "X contains only visible text" / "X never leaks
+  secrets / hidden tokens / raw HTML" / "X is bounded to user-visible
+  content", the acceptance test must enumerate all the non-visible carriers
+  explicitly, not rely on a single implementation hint (e.g. "use
+  innerText"). For HTML / DOM / UI-text boundaries, the carrier set the AC
+  must enumerate includes at minimum (a spec may exclude items with
+  explicit rationale, but silence is a defect): \`<script>\`, \`<style>\`,
+  \`<meta>\`, \`<link>\`, \`<template>\`, comment nodes; \`aria-*\` and
+  \`data-*\` attribute values; \`aria-hidden="true"\` subtrees and hidden
+  CSS (display:none, visibility:hidden); off-viewport absolutely / fixedly
+  positioned elements; hidden form inputs (type="hidden"). For non-DOM
+  content boundaries (log redaction, telemetry sanitisation, audit-trail
+  scrubbing, server-side prompt-injection scrubbing on user content), apply
+  the analogous principle: the AC must enumerate every metadata field,
+  nested object, header, stack-trace surface, structured-logging attribute,
+  and serialised-payload field the boundary must scrub. Flag any
+  content-boundary AC whose assertion text names only one carrier (or only
+  the helper, with no carriers enumerated). The fix sketch should expand
+  the AC to enumerate the carrier set the implementation must scrub. If
+  the helper itself is the boundary, require a separate AC that names the
+  helper's contract explicitly so a future shape change cannot silently
+  regress the boundary.
+- Hostname allowlists must specify IP-literal handling. When the spec
+  defines hostname pinning, suffix allowlisting, or any URL-host
+  validation, flag any case where IP literals (IPv4 numeric / octal / hex
+  forms; bracketed IPv6 including mapped / zero-compressed / embedded-IPv4
+  forms) are not explicitly classified as either rejected or allowed. A
+  hostname-only allowlist that does not address IP literals is a common
+  bypass vector — e.g. an attacker substituting the underlying IP for the
+  allowlisted hostname. Require the spec to either (a) state that IP
+  literals are rejected for managed URLs with an explicit failure mode, or
+  (b) state that IP literals are explicitly allowed (typically via a
+  self-host override or internal-loopback exception). The acceptance
+  matrix must include at least one IP-literal negative case (or positive
+  case when allowed) per IP family.
+- Denormalised tenant columns need integrity triggers, not just RLS. When
+  the spec introduces a new table that carries a denormalised tenant
+  column (organisation_id, org_id, tenant_id, subaccount_id, account_id,
+  etc.) alongside a parent foreign key to another table with its own
+  tenant column, RLS protects the value-as-stored but not its consistency
+  with the parent. A row whose denormalised tenant column does not match
+  its parent's tenant column is invisible to RLS (both columns are checked
+  against the same tx context) but corrupts every parent-join and every
+  tenant-scoped audit. Flag any new table whose denormalised tenant column
+  is not backed by an explicit parent-tenant integrity mechanism
+  appropriate to the project's data store: in Postgres + RLS deployments
+  this is a BEFORE INSERT OR UPDATE row-level integrity trigger comparing
+  the column against the parent's tenant column; in document stores or
+  non-RDBMS deployments this is typically an application-layer guard with
+  audit-log evidence and a deterministic test that proves the guard
+  fires. Required in all cases: a negative-path test (insert with
+  mismatched tenant id → rejected) and a post-test audit query. The fix
+  sketch should name both the integrity-mechanism contract and the AC
+  enumerating the rejection path.
+- Deploy-boundary cutover for new idempotency arbiters. When the spec
+  introduces a new table, column, or state that becomes the idempotency
+  arbiter for a flow that has in-flight events at deploy time (queued
+  jobs, retries scheduled by the outgoing implementation, persistent
+  webhooks retrying from external providers), flag any case where the
+  spec does not specify the cutover discipline. Acceptable cutover
+  options are: (a) a backfill from the existing state into the new
+  arbiter, with a fixed pre-deploy SQL migration; (b) a pre-deploy
+  queue-drain checklist step with a verification query; (c) explicit
+  scope of the new guarantee to post-deploy events only, with a
+  customer-visible note about pre-deploy-event behaviour. The fix sketch
+  should name which option applies + its operator-facing artefact
+  (migration body, checklist step in the operator runbook,
+  customer-visible note in the guarantee section). Without an explicit
+  cutover discipline, the new idempotency guarantee is silently false
+  for events spanning the deploy boundary.
 
 Process:
 Pass 1 Inventory. Pass 2 Evidence. Pass 3 Implementation simulation on the top
