@@ -1,0 +1,55 @@
+{
+  "mode": "spec",
+  "model": "gpt-5.5",
+  "requested_model": "gpt-5.5",
+  "served_model": "gpt-5.5-2026-04-23",
+  "model_match": true,
+  "input_summary": {
+    "branch": "chatgpt-prompt-tuning-v1-freeze-final-hardening-2026-05-31",
+    "spec_path": "tasks/builds/chatgpt-prompt-tuning-v1-freeze-final-hardening-2026-05-31/brief.md",
+    "files_changed": null
+  },
+  "findings": [
+    {
+      "id": "OAI-SPEC-001",
+      "title": "The required smoke check depends on an undefined reverted spec and non-repeatable LLM evidence",
+      "severity": "medium",
+      "category": "bug",
+      "finding_type": "test_coverage",
+      "risk_domain": "none",
+      "scope_signal": "local",
+      "triage_hint": "technical",
+      "source_refs": [
+        {
+          "type": "section_name",
+          "value": "6.1 Apply path"
+        },
+        {
+          "type": "quote",
+          "value": "Run a smoke check on the spec used as the source for this brief (`tasks/builds/v1-freeze-final-hardening/spec.md` in the consuming repo). Success criterion: at least 4 of 6 new Hunt Targets fire on their source finding when invoked against an artificially-reverted version of the spec that still contains the original gaps"
+        },
+        {
+          "type": "quote",
+          "value": "Any new Hunt Target that does NOT surface its source finding on the reverted-spec smoke check is logged in §8 Decision log and reviewed before the apply lands."
+        }
+      ],
+      "rationale": "The rollout gate is normative, but it does not identify the exact reverted artifact, command, model/mode invocation, or expected machine-readable output. Implementers in the framework repo can neither reproduce the same reverted source spec nor prove the 4-of-6 criterion deterministically, especially because the named source file lives in a consuming repo. This can either block the PR for lack of evidence or let different operators accept incompatible smoke results.",
+      "recommendation": "implement",
+      "acceptance_check": "Add a committed fixture such as `scripts/__fixtures__/chatgpt-spec-review/v1-freeze-final-hardening-reverted.spec.md` plus an exact smoke command in §6.1 step 7; verify with `test -f scripts/__fixtures__/chatgpt-spec-review/v1-freeze-final-hardening-reverted.spec.md` and `grep -n \"v1-freeze-final-hardening-reverted.spec.md\" <brief-file>`.",
+      "auto_apply_eligible": false,
+      "auto_apply_reason": "ambiguous_fix",
+      "affected_files": [
+        "scripts/__fixtures__/chatgpt-spec-review/v1-freeze-final-hardening-reverted.spec.md",
+        "scripts/chatgpt-reviewPure.ts",
+        "scripts/__tests__/chatgpt-reviewPure.test.ts"
+      ]
+    }
+  ],
+  "verdict": "CHANGES_REQUESTED",
+  "raw_response": "{\n  \"contract_version\": \"review-result.v2\",\n  \"prompt_version\": \"openai-spec-review.v2\",\n  \"project_context_version\": \"unknown\",\n  \"source_artifact_sha\": \"unknown\",\n  \"verdict\": \"CHANGES_REQUESTED\",\n  \"integrity_check\": \"Round 1 review completed; no prior findings to suppress, and the main issue is the rollout smoke gate's repeatability rather than the proposed hunt-target wording itself.\",\n  \"findings\": [\n    {\n      \"id\": \"OAI-SPEC-001\",\n      \"title\": \"The required smoke check depends on an undefined reverted spec and non-repeatable LLM evidence\",\n      \"severity\": \"medium\",\n      \"category\": \"bug\",\n      \"finding_type\": \"test_coverage\",\n      \"risk_domain\": \"none\",\n      \"scope_signal\": \"local\",\n      \"triage_hint\": \"technical\",\n      \"source_refs\": [\n        {\n          \"type\": \"section_name\",\n          \"value\": \"6.1 Apply path\"\n        },\n        {\n          \"type\": \"quote\",\n          \"value\": \"Run a smoke check on the spec used as the source for this brief (`tasks/builds/v1-freeze-final-hardening/spec.md` in the consuming repo). Success criterion: at least 4 of 6 new Hunt Targets fire on their source finding when invoked against an artificially-reverted version of the spec that still contains the original gaps\"\n        },\n        {\n          \"type\": \"quote\",\n          \"value\": \"Any new Hunt Target that does NOT surface its source finding on the reverted-spec smoke check is logged in §8 Decision log and reviewed before the apply lands.\"\n        }\n      ],\n      \"rationale\": \"The rollout gate is normative, but it does not identify the exact reverted artifact, command, model/mode invocation, or expected machine-readable output. Implementers in the framework repo can neither reproduce the same reverted source spec nor prove the 4-of-6 criterion deterministically, especially because the named source file lives in a consuming repo. This can either block the PR for lack of evidence or let different operators accept incompatible smoke results.\",\n      \"recommendation\": \"implement\",\n      \"acceptance_check\": \"Add a committed fixture such as `scripts/__fixtures__/chatgpt-spec-review/v1-freeze-final-hardening-reverted.spec.md` plus an exact smoke command in §6.1 step 7; verify with `test -f scripts/__fixtures__/chatgpt-spec-review/v1-freeze-final-hardening-reverted.spec.md` and `grep -n \\\"v1-freeze-final-hardening-reverted.spec.md\\\" <brief-file>`.\",\n      \"auto_apply_eligible\": false,\n      \"auto_apply_reason\": \"ambiguous_fix\",\n      \"affected_files\": [\n        \"scripts/__fixtures__/chatgpt-spec-review/v1-freeze-final-hardening-reverted.spec.md\",\n        \"scripts/chatgpt-reviewPure.ts\",\n        \"scripts/__tests__/chatgpt-reviewPure.test.ts\"\n      ]\n    }\n  ]\n}",
+  "contract_version": "review-result.v2",
+  "prompt_version": "openai-spec-review.v2",
+  "project_context_version": "unknown",
+  "source_artifact_sha": "unknown",
+  "integrity_check": "Round 1 review completed; no prior findings to suppress, and the main issue is the rollout smoke gate's repeatability rather than the proposed hunt-target wording itself."
+}

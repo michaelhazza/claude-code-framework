@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.10.2",
+  "frameworkVersion": "2.10.3",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
