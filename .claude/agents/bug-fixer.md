@@ -87,10 +87,10 @@ Resolution algorithm (run at the start of fix mode AND again at the start of fin
    - If the ref does NOT exist → STOP with: `error: issue #<N> labelled with <release-label>, but origin/<base-branch> does not exist. Either the release branch hasn't been cut yet (cut it via Release Control before fixing) or the label is wrong.`
 5. **Staging fallback** (no release label found): use `repo.staging_branch` from `.release-control.yml` if set, else the repository default branch. This path is for general dev fixes not tied to a specific release.
 
-The resolved base branch is used in three places:
+Run order — fix mode runs this resolution in **Step 2a, BEFORE Step 3 applies any labels**, so a resolution failure cannot leave the issue stuck as `status:in-progress`. The resolved value is then used in:
 - Fix-mode Step 4 — `git checkout -b fix/issue-<N>-<slug> origin/<base-branch>`.
-- Fix-mode Step 8 — `gh pr create --base <base-branch> --head fix/issue-<N>-<slug> ...`.
-- Finalise-mode Step 11a (NEW) — re-resolve and verify the PR's actual base matches; refuse to merge if they disagree.
+- Fix-mode Step 8 — `gh pr create --base <base-branch> --head fix/issue-<N>-<slug> ...` and the structured `Base branch:` lines in the commit + PR body.
+- Finalise-mode Step 11a — re-resolve and verify the PR's actual base matches; refuse to merge if they disagree.
 
 ## Linked PR detection
 
@@ -122,15 +122,16 @@ If `<mode>` is absent, do nothing here — the state file (if present from an ea
 Emit a TodoWrite with this list:
 
 1. Read issue and confirm it is actionable
-2. Apply `status:in-progress` label; remove `status:open` if present
-3. Create the fix branch
-4. Reproduce / understand the failure
-5. Identify root cause (file:line + why)
-6. Apply surgical fix in code
-7. Run lint + typecheck + targeted test
-8. Commit, push, open the fix PR with `Refs #<N>`
-9. Comment on the issue with the PR link
-10. Print handoff summary and stop
+2. Resolve PR base branch (release-label-driven; fail fast with no state change)
+3. Apply `status:in-progress` label; remove `status:open` if present
+4. Create the fix branch
+5. Reproduce / understand the failure
+6. Identify root cause (file:line + why)
+7. Apply surgical fix in code
+8. Run lint + typecheck + targeted test
+9. Commit, push, open the fix PR with `Refs #<N>`
+10. Comment on the issue with the PR link
+11. Print handoff summary and stop
 
 Update items in real time. Mark `in_progress` BEFORE starting each step. Mark `completed` IMMEDIATELY when done.
 
@@ -145,6 +146,19 @@ The issue is actionable if ALL of:
 
 If the issue is too thin, comment on the issue with the missing items, do NOT label `status:in-progress`, and stop. Never invent a repro. Never close the issue.
 
+### Step 2a — Resolve PR base branch
+
+Resolve `<base-branch>` per § Base branch resolution. **This runs BEFORE any label mutation in Step 3** so a base-resolution failure cannot leave the issue stuck in `status:in-progress` with no branch and no PR.
+
+The resolution algorithm may stop with one of three errors:
+- Multiple `release:*` labels on the issue.
+- A `release:*` label is present but the corresponding `origin/release/<version>` branch does not exist.
+- (Edge case) `.release-control.yml` is malformed or unreadable.
+
+In every stop case: do NOT call `gh issue edit` (no labels change), do NOT call `gh issue assign`, do NOT branch, do NOT comment with operational error text (the error printed to the operator is sufficient — adding a comment per failed run would noise-pollute the issue thread). The agent simply stops with the resolution error.
+
+On success, capture `<base-branch>` for use in Step 4 (branch creation) and Step 8 (PR open + commit body + PR body). The value MUST be identical in both places.
+
 ### Step 3 — Label and assign
 
 In one `gh` call set:
@@ -157,9 +171,9 @@ If the issue lacks a severity label (`P0`/`P1`/`P2`/`P3`), comment a single-line
 
 ### Step 4 — Create the fix branch
 
-First, resolve `<base-branch>` per § Base branch resolution. If resolution stops with an error (multiple `release:*` labels, or missing `origin/release/*` branch), the agent stops here too — no labels are changed, no branch is created, no comments are posted. The resolution error is printed to the operator verbatim.
+`<base-branch>` was resolved in Step 2a (before any label mutation). This step uses that value.
 
-Then derive a slug: `fix/issue-<N>-<3-word-summary>`.
+Derive a slug: `fix/issue-<N>-<3-word-summary>`.
 
 Normalisation rules for `<3-word-summary>`:
 

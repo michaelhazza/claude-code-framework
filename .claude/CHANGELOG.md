@@ -52,8 +52,8 @@ Minor-class change — additive agent + resolution tier + branch-resolution algo
 - Finalise-mode Step 13 comment no longer claims staging redeploys automatically or that downstream verification fires without operator action. Comment now lists the explicit manual next steps (create/refresh RC, deploy, run UI suite) that the operator drives from Release Control.
 
 **Consumer migration after v2.12.0 lands:**
-- Run `/claudeupdate` (or `git submodule update --remote .claude-framework && node .claude-framework/sync.js`) to pick up the new bug-fixer + patched chatgpt-* agents.
-- Add `.claude/session-state/` to `.gitignore` — the directory holds per-session ephemeral state.
+- Run `/claudeupdate` (or `git submodule update --remote .claude-framework && node .claude-framework/sync.js && node .claude-framework/scripts/run-migrations.js . 2.11.0 2.12.0`) to pick up the new bug-fixer + patched chatgpt-* agents.
+- The `migrations/v2.12.0.js` migration auto-adopts `.claude/agents/bug-fixer.md` for repos that already had a local copy (hash match → state entry; mismatch → `.framework-new` for manual merge) AND idempotently appends `.claude/session-state/` to the consumer `.gitignore`. No manual `.gitignore` edit needed if you run the migration.
 - Ensure `.release-control.yml` has the three fields the new base-resolution algorithm reads: `repo.staging_branch`, `repo.release_branch_pattern` (defaults to `release/*`), `github.release_label_prefix` (defaults to `release:`).
 - Make sure Codex (or whoever files defects against a release candidate) tags the issue with a `release:<version>` label that matches the existing release branch on origin — otherwise the agent will stop with a clear error.
 - Existing trigger phrases (`bug-fixer: <N>`, `bug-fixer: done <N>`, `chatgpt-pr-review: parallel`, etc.) are unchanged and continue to work. `CHATGPT_REVIEW_DEFAULT_MODE` still works as before; the state file just takes priority when present.

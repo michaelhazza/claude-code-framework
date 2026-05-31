@@ -1,0 +1,8 @@
+# Per-session ephemeral state written by bug-fixer + chatgpt-* agents
+# (review-mode keyword propagation across sub-agent dispatches).
+# Must never be committed.
+.claude/session-state/
+
+# Node + tooling artefacts when developing inside the framework repo itself.
+node_modules/
+*.log
