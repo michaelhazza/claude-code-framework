@@ -1403,6 +1403,89 @@ Hunt targets:
   and cache effectiveness — diff size alone is a weak predictor. Operator
   decides whether to bump NODE_OPTIONS pre-emptively or let the CI
   fix-loop catch it on first failure.
+- Completeness sweep on the diff. Beyond per-file correctness, the diff
+  is incomplete if any of the following is missed. Apply each as a
+  separate grep + cross-reference: (a) Router wiring — every new page
+  component imported in App.tsx (or equivalent router file) has a
+  matching <Route> entry; conversely every <Route> references a real
+  imported component; (b) Dead affordance — every rendered <button>,
+  <a>, <Menu.Item> has an onClick / href / action handler; reject
+  mid-button content with no handler; (c) Endpoint existence trace —
+  every frontend api.{get,post,patch,delete} call introduced in the
+  diff has the matching server route in the diff (server/src/routes/*),
+  a 404-at-runtime is a Blocking finding; (d) Cross-tab state freshness
+  — when a child triggers a mutation that changes data the parent's
+  already-fetched payload exposes, the parent must re-fetch, or the
+  stale-on-tab-switch limitation must be explicitly accepted; (e)
+  Storage-unit-in-display hygiene — any CSV / JSON / clipboard export
+  of numeric fields the UI displays in a different unit (cents↔USDT,
+  bytes↔KB) must export the display unit, or label the column with the
+  storage-unit suffix unambiguously; (f) Extend-type-then-plumb —
+  when a discriminated union or interface gains an optional field, every
+  caller that constructs that variant must populate the field where the
+  architectural reason applies, or the partial-rollout must be documented
+  in the chunk's deferred-work block. Source: 9-round parallel-mode loop
+  on an admin/partner console build, May 2026; all 6 of these patterns
+  showed up as Blocking or Should-fix findings in R1-R5.
+- Class-of-bug discipline. When you find a bug that has a recognisable
+  pattern (oracle, TOCTOU, race window, audit duplication, unit-conversion
+  mismatch), do NOT stop at the first instance. Sweep the diff for
+  analogous sites: (a) grep the literal pattern (the function shape, the
+  error code, the predicate structure); (b) for each analogous site,
+  verify the same fix is present OR explain why the pattern is acceptable
+  there; (c) report all sites in ONE finding — do not split a class into
+  N findings. A first instance found and a class missed is a Blocking-
+  level review failure. Source: in the same 9-round loop, R3 found a
+  tenant-isolation oracle CLASS spanning 8 mutation sites that R2 had
+  caught at 2 sites only; R6 found a TOCTOU CLASS spanning 6 sites that
+  R5 had caught at 2 sites only. Treating a pattern as a class drives
+  the right scope of fix.
+- Negative-claim audit with quoted search results. For every NEGATIVE
+  claim ("I could not find X", "the diff appears to be missing Y"),
+  report three things: (a) the literal search string you used (e.g.
+  \`grep -n withPartnerScope server/src/services/accountService.ts\`); (b)
+  the result count; (c) a representative match line (or "(none — confirms
+  absence)"). A negative claim without a quoted search result is
+  downgraded to Consider regardless of the claimed severity. Source:
+  round 8 of the same loop, the only false positive in a 7-round
+  zero-false-positive streak came from listing the right search strings
+  without actually running them; \`withPartnerScope\` was alleged absent
+  but was present at 5 sites in the same file.
+- Round-N+ fresh-angle expectations (when PRIOR_ROUNDS is supplied). If
+  this is round N where N >= 2, assume the obvious single-site bugs were
+  caught in earlier rounds. Concentrate the hunt on: (a) second-order
+  consequences of prior fixes — if round N-1 fixed an oracle with a
+  scoped predicate, check the corresponding UPDATE / FOR UPDATE for the
+  same scope (TOCTOU after oracle fix); (b) architectural backstops
+  preserved at the predicate layer but lost at the transaction layer
+  (scoped WHERE without withPartnerScope wrap means RLS layer is
+  missing); (c) consistency between projection and enforcement — if the
+  server enforces a rule via DB-clock UPDATE, check whether the list/UI
+  projection of the same rule uses Node clock or stored boolean; (d)
+  catalogued patterns from KNOWLEDGE.md as hunt targets, not just
+  retrospective documentation. These are finding shapes the OpenAI tier
+  is statistically more likely to catch than the manual-paste tier;
+  lean into them in round 2+.
+
+Output extras (apply after enumerating findings, before the JSON envelope):
+
+- Convergence assessment. After enumerating findings, add a
+  one-paragraph convergence block: (a) Total findings: N (Blocking M,
+  Should-fix P, Consider Q); (b) Highest severity present; (c) Class of
+  finding(s) — correctness bug | architectural backstop | consistency
+  polish | UX inconsistency | spec-doc cleanup; (d) Recommendation —
+  continue rounds | merge now with deferred follow-ups | spec amendment
+  needed. If all findings this round are "consistency polish" or
+  "spec-doc cleanup" and no findings are Blocking, recommend "merge now
+  with deferred follow-ups". This block is for the operator's stopping
+  decision; it does not affect the JSON envelope.
+- Acknowledged false-positive recovery. If PRIOR_ROUNDS contains a
+  finding the coordinator marked FALSE POSITIVE with a reason, you
+  must: (a) NOT re-raise that finding; (b) in your verified-clean notes
+  briefly confirm you re-verified the alleged gap (e.g. "R8 CW8-1
+  alleged gap was verified absent in this diff"); (c) treat the
+  false-positive disposition as canonical unless your evidence
+  contradicts it with quoted search results.
 
 Process:
 Pass 1 Inventory. Pass 2 Evidence (the diff is the source of truth; claims about

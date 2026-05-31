@@ -32,6 +32,32 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.11.0 — 2026-05-31 — 9-round chatgpt-pr-review parallel-mode learning from admin-partner-console (`SYSTEM_PROMPT_PR_V2` + pr-reviewer + builder + parallel-mode)
+
+**Highlights:** distilled from a 9-round `chatgpt-pr-review` parallel-mode loop on a multi-tenant admin/partner console build in `altessa` (PR #19, 39 distinct real bugs fixed, 6 HIGH-severity, 3 false positives, server tests 311 → 347). Adds 6 new hunt targets + output extras to `SYSTEM_PROMPT_PR_V2`, a `Diff completeness hunts` block + class-of-bug discipline note to the canonical `pr-reviewer` agent, an extend-type-then-plumb minimal-change check to the canonical `builder` agent, and four reviewer-discipline rules (L2 / L4 / L5 / L6) to the `parallel-mode` operator-paste prompt template. All additions are scope-neutral and apply across multi-tenant SaaS, single-tenant apps, internal tools, and operator-facing repos. Minor-class change — additive prompt + agent-doc content, no schema or envelope contract change.
+
+**Added:**
+- `scripts/chatgpt-reviewPure.ts` — six new hunt targets appended to `SYSTEM_PROMPT_PR_V2` ("Completeness sweep on the diff" with 6 sub-shapes; "Class-of-bug discipline"; "Negative-claim audit with quoted search results"; "Round-N+ fresh-angle expectations"), plus an "Output extras" section ("Convergence assessment"; "Acknowledged false-positive recovery"). No other prompt section changed.
+- `.claude/agents/pr-reviewer.md` — new "Diff completeness hunts (project-agnostic)" section before "Specific Things to Check". 6 hunt items (router wiring, dead affordance, endpoint existence trace, cross-tab state freshness, storage-unit hygiene, extend-type-then-plumb) plus a class-of-bug discipline note. Cites the 9-round source for provenance.
+- `.claude/agents/builder.md` — new check #4 in "Minimal-change checks": "Extend-type-then-plumb" requiring `git grep` of every `kind: '<variant-name>'` call site before returning SUCCESS when a discriminated union or interface gains an optional field for an architectural reason.
+- `docs/review-pipeline/parallel-mode.md` — four reviewer-discipline rules (L2 negative-claim citation; L5 quoted search-result refinement; L4 diff-size discipline ≥5,000 lines or ≥200 KB; L6 acknowledged false-positive recovery) inserted into the operator-paste prompt template that gets handed to ChatGPT-web every round.
+
+**Source provenance:** the consumer-side rollup that fed this PR lives at `docs/review-pipeline/openai-pr-prompt-improvements.md` in `altessa` (committed to main as part of the merged PR #19). It catalogues the per-round findings, false positives, and trajectory that justified each addition.
+
+**Consumer migration after v2.11.0 lands:** run `/claudeupdate` (or `git submodule update --remote .claude-framework && node .claude-framework/sync.js`) to pick up the updates. No file conflicts expected — `scripts/chatgpt-reviewPure.ts`, `.claude/agents/pr-reviewer.md`, `.claude/agents/builder.md`, and `docs/review-pipeline/parallel-mode.md` are all managed files with no LOCAL-OVERRIDE blocks. The PR_CONTEXT contract is unchanged; existing `scripts/__tests__/chatgpt-reviewPure.test.ts` assertions are on `prompt_version` (unchanged — additive prompt content only) and envelope skeleton shape (unchanged), so the new content does not require test updates. Projects that consume the canonical `pr-reviewer.md` overlay-pattern unchanged will gain the completeness-hunt block automatically on next sync; projects that maintain a project-specific overlay should re-merge.
+
+**Trade-off note:** the four reviewer-discipline rules in the operator-paste prompt are intentionally redundant with the SYSTEM_PROMPT_PR_V2 additions — both tiers see the same calibration so the compare-panel mean-|Δ| stays low. The cost is a slightly longer operator paste; the benefit is the false-positive class that emerged in round 8 of the source loop is closed at both tiers simultaneously.
+
+**Quantitative grounding from the source loop** (for any future framework discussion):
+- Rounds run: 9
+- Findings per round: 5 → 6 → 6 → 5 → 5 → 4 → 4 → 2 → 2 (declining trajectory)
+- HIGH-severity findings: 2 oracles (R2), 1 oracle class × 8 sites (R3), 1 TOCTOU (R5), 1 TOCTOU class × 6 sites (R6), 1 RLS-backstop (R7) — 6 total HIGH
+- ChatGPT-web verdicts: 6× CHANGES_REQUESTED, 2× APPROVED (R7 and R9; R9 voluntarily applied the L5 quoted-search-result format)
+- False positives: 3 total — 2 in R1 (under-scanned negative claims), 1 in R8 (negative-claim citation without running the search). L5 refinement above addresses both classes.
+- Two `KNOWLEDGE.md` pattern invariants codified in the consumer repo (tenant-isolation oracle from R3; TOCTOU-after-oracle-fix from R5) — both became load-bearing reviewer hunt tools from R6 onwards.
+
+---
+
 ## 2.10.3 — 2026-05-31 — six new SYSTEM_PROMPT_SPEC_V2 hunt targets from v1-freeze-final-hardening parallel-mode learning
 
 **Highlights:** sourced from the 3-round `chatgpt-spec-review` parallel-mode session on the v1-freeze-final-hardening spec in automation-v1 (PR #450, verdict APPROVED, 24 findings). Adds six new Hunt Targets to `scripts/chatgpt-reviewPure.ts` `SYSTEM_PROMPT_SPEC_V2` covering recurring spec defects the prior prompt did not pin: producer/consumer fencing-column pairs, dedupe-key canonicalisation for user-supplied strings, content-boundary AC carrier enumeration (DOM + non-DOM tracks), hostname-allowlist IP-literal handling, denormalised scope-column parent-scope integrity, and deploy-boundary cutover for new idempotency arbiters. SPEC-NEW-8 and SPEC-NEW-9 use scope-neutral / audience-neutral language so the Hunt Targets apply across multi-tenant SaaS, internal automation tools, single-tenant apps, non-Postgres products, and operator-facing repos. Trivial-class change — additive prompt content only, no runtime / schema / envelope contract change. OpenAI envelope `prompt_version` is NOT bumped (additive Hunt-Target additions do not break the output contract).

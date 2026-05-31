@@ -235,6 +235,23 @@ and cite the changed code.
 
 ---
 
+## Diff completeness hunts (project-agnostic)
+
+These hunt targets catch a class of bug that diff-focused reviewers systematically under-weight: completeness across the full integration, not just per-file correctness. Apply each as an explicit grep + cross-reference.
+
+- **Router wiring**: every new page component imported in `App.tsx` (or equivalent router file) has a matching `<Route>` entry. Conversely, every `<Route>` references a real imported component. Grep both ways.
+- **Dead affordance**: every rendered `<button>`, `<a>`, `<Menu.Item>` has an `onClick` / `href` / action handler. Reject mid-button content with no handler. Flag visible UX breakage where permission-derived buttons render as enabled but perform no mutation.
+- **Endpoint existence trace**: for every frontend `api.{get,post,patch,delete}` call introduced in the diff, confirm the matching route exists in the server diff (`server/src/routes/*.ts`). 404-at-runtime is a Blocking finding.
+- **Cross-tab state freshness**: when a child component triggers a mutation that changes data exposed by the parent's already-fetched payload, the parent must re-fetch OR the stale-on-tab-switch limitation must be explicitly accepted.
+- **Storage-unit-in-display hygiene**: any CSV / JSON / clipboard export of numeric fields the UI also displays in a different unit (cents↔USDT, bytes↔KB) must export the display unit OR label the column with the storage-unit suffix unambiguously.
+- **Extend-type-then-plumb**: when a discriminated union or interface gains an optional field, every caller that constructs that variant must populate the field where the architectural reason applies, OR the partial-rollout must be documented in the chunk's deferred-work block. Grep all `kind: '<variant-name>'` call sites when reviewing a type extension.
+
+**Class-of-bug discipline**: when a bug has a recognisable pattern (oracle, TOCTOU, race window, audit duplication, unit-conversion mismatch), do NOT stop at the first instance. Sweep the diff for analogous sites; report all sites in ONE finding rather than splitting a class into N findings. A first instance found and a class missed is a Blocking-level review failure.
+
+**Source**: distilled from a 9-round chatgpt-pr-review parallel-mode loop on a multi-tenant admin/partner console build (May 2026). Each pattern above showed up as a Blocking or Should-fix finding across R1-R7 of that loop; the per-pattern hunt block catches the gap one round earlier.
+
+---
+
 ## Specific Things to Check
 
 **Route files:**
