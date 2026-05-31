@@ -45,7 +45,7 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 **Deferred to follow-up brief (slug: `chatgpt-spec-prompt-followup-tracking`):** tracking infrastructure for false-positive / true-positive measurement across SPEC-NEW-4 through SPEC-NEW-8 (SPEC-NEW-9 already has its own tracking commitment in §6.3 of the brief). Will be authored after the next 10–20 spec reviews provide invocation evidence to size the tracking surface appropriately. External-reviewer endorsed this deferral as non-merge-blocking.
 
-**Full brief (Revision 4, APPROVED post external-reviewer wording tweaks):** `tasks/builds/chatgpt-prompt-tuning-v1-freeze-final-hardening-2026-05-31/brief.md`
+**Full brief (Revision 5, APPROVED post external-reviewer wording tweaks and framework semver clarification):** `tasks/builds/chatgpt-prompt-tuning-v1-freeze-final-hardening-2026-05-31/brief.md`
 
 ---
 
