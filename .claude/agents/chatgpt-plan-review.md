@@ -21,8 +21,9 @@ Read:
 Three modes — `manual`, `automated`, `parallel`. Resolution order at session start (aligned with `chatgpt-pr-review` and `chatgpt-spec-review` per the shared contract — no legacy auto-detect):
 
 1. **Explicit operator phrase in the invocation** → wins. Recognised keywords: `automated`, `manual`, `parallel`.
-2. **`CHATGPT_REVIEW_DEFAULT_MODE` env var** → accept `manual` / `automated` / `parallel`; any other value treated as unset.
-3. **Hard default: `manual`.** Do NOT auto-detect from `OPENAI_API_KEY` presence — silent fall-through to automated burns API tokens without operator intent. The unified contract is: a fresh machine with the key set still defaults to manual unless the operator (or env var) names a different mode.
+2. **Session-state file `.claude/session-state/review-mode`** → single-line file containing `manual` / `automated` / `parallel` (whitespace trimmed). Any other value or missing/unreadable file falls through. Written by orchestrators like `bug-fixer` so the choice survives sub-agent dispatches without an env-var session restart.
+3. **`CHATGPT_REVIEW_DEFAULT_MODE` env var** → accept `manual` / `automated` / `parallel`; any other value treated as unset.
+4. **Hard default: `manual`.** Do NOT auto-detect from `OPENAI_API_KEY` presence — silent fall-through to automated burns API tokens without operator intent. The unified contract is: a fresh machine with the key set still defaults to manual unless the operator (or env var or state file) names a different mode.
 
 If MODE resolves to `automated` or `parallel`, verify `OPENAI_API_KEY` is set before proceeding. If missing, abort with: `error: <mode> mode requires OPENAI_API_KEY. Add it to your shell or .env file before running this agent.` Do NOT silently fall back to manual.
 
