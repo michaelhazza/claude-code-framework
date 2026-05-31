@@ -1466,6 +1466,58 @@ Hunt targets:
   retrospective documentation. These are finding shapes the OpenAI tier
   is statistically more likely to catch than the manual-paste tier;
   lean into them in round 2+.
+- State-based idempotency: "exists" without content verification. When
+  the diff handles an idempotent retry against existing external state —
+  an existing branch, PR, release, secret, queue entry, or row — flag any
+  path that records \`exists\` / \`already done\` from the existence check
+  alone without reading the existing object's content and comparing it
+  to the expected canonical content. A prior partial run leaves
+  half-built state; reporting \`exists\` then surfaces success while the
+  resource is still wrong. "exists" without content verification is a
+  state lie. The fix branches three ways: content matches → record
+  \`exists\`; drift detected → repair then record success only on repair
+  success; repair fails → typed errorCode + \`partial\` audit.
+- External-API parameter-format literals. When the diff touches an
+  external-API client (GitHub, Slack, Stripe, GCP, IdP, etc.) or
+  workflow code, verify contract-level string formats against the
+  documented parameter shapes — the GitHub PR list \`head\` filter must
+  be \`\${owner}:\${branch}\` (owner-qualified), ref names follow
+  \`heads/<branch>\` / \`tags/<tag>\`, sha fields are full 40-char SHAs
+  where the API demands them, \`owner\`/\`repo\` are split, not a single
+  \`owner/repo\` slug. Flag any literal whose shape does not match the
+  API contract even when it "looks" plausible.
+- Symmetry-with-new-code on fix application. When a fix is applied in
+  one place, scan ALL sibling code for the same anti-pattern —
+  INCLUDING new code introduced by the same fix/diff. The canonical
+  miss: an error-masking fix in one consumer while a second consumer
+  added in the same change repeats the original anti-pattern. After
+  confirming a fix, grep the diff for the pre-fix shape and flag every
+  unfixed sibling (both pre-existing and newly added). This extends
+  Class-of-bug discipline to cover the within-PR-addition case.
+- Reusable-workflow defaults precedence. For any caller workflow that
+  references a reusable workflow via \`uses:\` and supplies a \`with:\`
+  block, verify each \`with:\` value does not shadow a more-specific
+  reusable default. A caller value ALWAYS shadows the reusable's
+  \`inputs.<key>.default\` — the reusable default never applies when the
+  caller passes any value. Flag any caller key whose value differs from
+  the environment-correct reusable default (canonical bug: a staging
+  caller passing \`config: fly.toml\`, shadowing the reusable's
+  \`fly.staging.toml\` default → production config in staging). The fix
+  is to omit the key or hard-code the environment-correct literal.
+- Doc/code drift. Scan referenced docs (especially onboarding /
+  runbook / README / setup docs such as \`docs/onboarding/*.md\`) for
+  code-level symbols — route paths, env vars, column names, field
+  names, command names — that the diff renames, removes, or
+  contradicts. A code change that invalidates a doc example is a
+  doc-sync finding even when the code is correct; surface it with the
+  doc location and the stale symbol.
+- Prototype / spec drift. Scan \`prototypes/*\` (mockups, clickable
+  prototypes) and spec files for copy that names implementation-level
+  decisions — "parses as YAML", "validates the schema", "retries up to
+  N times" — and flag drift between the prototype/spec claim and what
+  the implementation in the diff actually does. The prototype/spec is a
+  contract surface; stale implementation claims in it mislead the next
+  builder.
 
 JSON-only output discipline (overrides any tendency to add narrative):
 
