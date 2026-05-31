@@ -56,6 +56,38 @@ The agent runs both halves of the round in interleaved order so the operator's w
      2> <openai-stderr-file> &
    ```
 3. **Print the operator instructions:** show the diff/spec/plan upload link AND a note that the OpenAI call is running in the background. Phrasing: `OpenAI call started (background). Upload the diff to ChatGPT, then paste the response back; the agent will assemble the compare panel once both are in.`
+
+   **Include in the operator-paste prompt template the following 4 reviewer-discipline rules** (L2 + L4 + L5 + L6 from the 9-round admin-partner-console learning, May 2026; codified to address the 3 false positives that emerged across rounds R1 and R8):
+
+   ```
+   HARD RULES for ChatGPT-web review:
+
+   L2 — Negative-claim citation. For every NEGATIVE claim ("I could not find X",
+        "the diff appears to be missing Y"), quote the literal search string you
+        used and the file path you'd expect it in.
+
+   L5 — Quoted search RESULTS (refinement of L2). The Negative-claim audit must
+        also quote the result count + a representative match line (or the
+        explicit empty-result acknowledgement). Pattern:
+          > Searched: `grep -n withPartnerScope server/src/services/accountService.ts`
+          > Result count: 0
+          > Representative match: (none — confirms absence)
+        A negative claim without a quoted search result is downgraded to Consider
+        regardless of the claimed severity.
+
+   L4 — Diff size discipline. If the diff exceeds ~5,000 lines or ~200 KB,
+        split the operator paste into two messages (server-only and
+        frontend-only) sharing the same PR_CONTEXT, rather than risking
+        under-scanning a single large message.
+
+   L6 — Acknowledged false-positive recovery. If PRIOR_ROUNDS contains a finding
+        the coordinator marked FALSE POSITIVE: (a) do NOT re-raise; (b) confirm
+        you re-verified the alleged gap in your verified-clean notes; (c) treat
+        the false-positive disposition as canonical unless your evidence
+        contradicts it with quoted search results.
+   ```
+
+   These rules also apply to the OpenAI side via SYSTEM_PROMPT_PR_V2 / SYSTEM_PROMPT_PLAN_V2 / SYSTEM_PROMPT_SPEC_V2; including them in the operator paste keeps the two tiers calibrated.
 4. **Wait for the operator paste.** When the operator pastes the ChatGPT-web response, the agent:
    - Extracts findings from the pasted text using the agent's existing manual-mode extraction logic (NL parsing of the numbered list — same as today's manual flow).
    - Polls the background CLI; if not yet complete, waits for it (do NOT prompt the operator again — the wait is silent).
