@@ -32,6 +32,23 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.10.3 — 2026-05-31 — six new SYSTEM_PROMPT_SPEC_V2 hunt targets from v1-freeze-final-hardening parallel-mode learning
+
+**Highlights:** sourced from the 3-round `chatgpt-spec-review` parallel-mode session on the v1-freeze-final-hardening spec in automation-v1 (PR #450, verdict APPROVED, 24 findings). Adds six new Hunt Targets to `scripts/chatgpt-reviewPure.ts` `SYSTEM_PROMPT_SPEC_V2` covering recurring spec defects the prior prompt did not pin: producer/consumer fencing-column pairs, dedupe-key canonicalisation for user-supplied strings, content-boundary AC carrier enumeration (DOM + non-DOM tracks), hostname-allowlist IP-literal handling, denormalised scope-column parent-scope integrity, and deploy-boundary cutover for new idempotency arbiters. SPEC-NEW-8 and SPEC-NEW-9 use scope-neutral / audience-neutral language so the Hunt Targets apply across multi-tenant SaaS, internal automation tools, single-tenant apps, non-Postgres products, and operator-facing repos. Trivial-class change — additive prompt content only, no runtime / schema / envelope contract change. OpenAI envelope `prompt_version` is NOT bumped (additive Hunt-Target additions do not break the output contract).
+
+**Added:**
+- `scripts/chatgpt-reviewPure.ts` — six new Hunt Targets appended to `SYSTEM_PROMPT_SPEC_V2` (SPEC-NEW-4 → SPEC-NEW-9). +95 lines, no other prompt section changed.
+- `tasks/builds/chatgpt-prompt-tuning-v1-freeze-final-hardening-2026-05-31/brief.md` — full brief covering source attribution, per-Hunt-Target false-positive risk profile, four review rounds (Revision 1 → 4), and Decision log (10 decisions).
+- `tasks/review-logs/chatgpt-spec-review-prompt-tuning-v1-freeze-final-hardening-2026-05-31.md` — session log for the OpenAI-tier adversarial review of the brief itself.
+
+**Consumer migration after v2.10.3 lands:** run `/claudeupdate` (or `git submodule update --remote .claude-framework && node .claude-framework/sync.js`) to pick up the new prompt. No file conflicts expected — `scripts/chatgpt-reviewPure.ts` is a managed file with no LOCAL-OVERRIDE blocks in consuming repos. Existing `scripts/__tests__/chatgpt-reviewPure.test.ts` assertions are on `prompt_version` (unchanged) and envelope skeleton shape (unchanged), so the new prompt content does not require test updates.
+
+**Deferred to follow-up brief (slug: `chatgpt-spec-prompt-followup-tracking`):** tracking infrastructure for false-positive / true-positive measurement across SPEC-NEW-4 through SPEC-NEW-8 (SPEC-NEW-9 already has its own tracking commitment in §6.3 of the brief). Will be authored after the next 10–20 spec reviews provide invocation evidence to size the tracking surface appropriately. External-reviewer endorsed this deferral as non-merge-blocking.
+
+**Full brief (Revision 4, APPROVED post external-reviewer wording tweaks):** `tasks/builds/chatgpt-prompt-tuning-v1-freeze-final-hardening-2026-05-31/brief.md`
+
+---
+
 ## 2.10.2 — 2026-05-30 — lint fix for e2e smoke test
 
 **Fixed:** `scripts/__tests__/local-override-e2e.js:110` had `catch (err)` where `err` was unused, tripping `@typescript-eslint/no-unused-vars` in consuming repos that lint `.js` files under `scripts/`. Changed to optional catch binding (`catch {`). Smoke tests still 4/4 pass.
