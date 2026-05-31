@@ -55,13 +55,42 @@ Before any action, read in this order:
 
 | Setting | Default | Override |
 |---------|---------|----------|
-| PR base branch | `staging` if `.release-control.yml` `repo.staging_branch` is set, else the repository default branch (resolved via `gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`) | `.release-control.yml` `repo.staging_branch` |
+| PR base branch | Resolved per § Base branch resolution: release branch derived from the issue's `release:*` label when present; else `staging_branch` from `.release-control.yml`; else the repository default branch (`gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'`) | `.release-control.yml` `repo.staging_branch`, `repo.release_branch_pattern`, `github.release_label_prefix`; the issue's `release:*` label |
 | Issue blocking labels | `P0`, `P1` | `.release-control.yml` `github.blocking_severity_labels` |
 | Awaiting-verify label | `status:awaiting-ui-verification` | `.release-control.yml` `github.verification_labels.awaiting` |
 | Verified label | `status:verified` (the agent never sets this; downstream owns it) | `.release-control.yml` `github.verification_labels.verified` |
 | In-progress label | `status:in-progress` | hardcoded |
 | Open label | `status:open` | hardcoded |
 | PR reference style | `Refs #<N>` (no closing keyword) | hardcoded — a merge MUST NOT auto-close the issue |
+
+## Base branch resolution
+
+A fix that targets a specific release candidate must land on the release branch for that release — never on staging, and never on a tag. Tags are immutable git references and are never merge targets. The release branch is the stabilization workspace; new commits on it produce new RC builds.
+
+Resolution algorithm (run at the start of fix mode AND again at the start of finalise mode for the pre-merge verification step):
+
+1. Read `.release-control.yml` from the repo root. Extract:
+   - `github.release_label_prefix` (default `release:` if missing)
+   - `repo.release_branch_pattern` (default `release/*` if missing; the `*` is the version substitution slot)
+   - `repo.staging_branch` (no default — if missing AND no release label present, fall through to step 5)
+2. Read the issue's labels: `gh issue view <N> --json labels -q '.labels[].name'`.
+3. Filter for labels starting with `release_label_prefix`. Call this set `<release-labels>`.
+   - **Zero release labels** → skip to step 5 (staging fallback).
+   - **Exactly one release label** → derive `<version>` by stripping the prefix (e.g. `release:v1.0.0` → `v1.0.0`). Continue to step 4.
+   - **More than one release label** → STOP with: `error: issue #<N> has multiple release:* labels (<list>). A fix targets a single release branch. Resolve by removing the labels that don't apply, then re-run.` Do NOT proceed. Do NOT change other labels.
+4. Substitute `<version>` into `release_branch_pattern` by replacing the literal `*`. Result is the candidate base branch, e.g. `release/v1.0.0`. Verify the branch exists on origin:
+   ```bash
+   git fetch origin
+   git rev-parse --verify --quiet "refs/remotes/origin/<base-branch>"
+   ```
+   - If the ref exists → use `<base-branch>` as the PR base.
+   - If the ref does NOT exist → STOP with: `error: issue #<N> labelled with <release-label>, but origin/<base-branch> does not exist. Either the release branch hasn't been cut yet (cut it via Release Control before fixing) or the label is wrong.`
+5. **Staging fallback** (no release label found): use `repo.staging_branch` from `.release-control.yml` if set, else the repository default branch. This path is for general dev fixes not tied to a specific release.
+
+The resolved base branch is used in three places:
+- Fix-mode Step 4 — `git checkout -b fix/issue-<N>-<slug> origin/<base-branch>`.
+- Fix-mode Step 8 — `gh pr create --base <base-branch> --head fix/issue-<N>-<slug> ...`.
+- Finalise-mode Step 11a (NEW) — re-resolve and verify the PR's actual base matches; refuse to merge if they disagree.
 
 ## Linked PR detection
 
@@ -128,7 +157,9 @@ If the issue lacks a severity label (`P0`/`P1`/`P2`/`P3`), comment a single-line
 
 ### Step 4 — Create the fix branch
 
-Derive a slug: `fix/issue-<N>-<3-word-summary>`.
+First, resolve `<base-branch>` per § Base branch resolution. If resolution stops with an error (multiple `release:*` labels, or missing `origin/release/*` branch), the agent stops here too — no labels are changed, no branch is created, no comments are posted. The resolution error is printed to the operator verbatim.
+
+Then derive a slug: `fix/issue-<N>-<3-word-summary>`.
 
 Normalisation rules for `<3-word-summary>`:
 
@@ -137,7 +168,7 @@ Normalisation rules for `<3-word-summary>`:
 - no spaces, no underscores, no duplicate hyphens.
 - cap the summary at 40 characters; truncate at the last full word if longer.
 
-Branch off the PR base branch (see § Defaults):
+Branch off the resolved base:
 
 ```
 git fetch origin
@@ -145,6 +176,8 @@ git checkout -b fix/issue-<N>-<slug> origin/<base-branch>
 ```
 
 If a branch with the same name already exists locally OR on origin, suffix `-2` and re-check. Continue incrementing on collision.
+
+Record `<base-branch>` for use in Step 8 (PR open) — the same value must be passed as `--base`. The PR body's "Summary" section also notes the base branch explicitly so the operator (and finalise mode) can confirm at a glance.
 
 ### Step 5 — Reproduce + root cause
 
@@ -188,14 +221,15 @@ fix(ui): <issue title>
 
 Refs #<N>
 Severity: <P0|P1|P2|P3 from issue labels, or 'unlabelled'>
+Base branch: <base-branch>
 Root cause: <file:line + one-sentence why>
 Fix: <one-sentence what changed>
-Verify: pending Codex browser re-test against staging
+Verify: pending Codex browser re-test against the release candidate
 ```
 
 The reference MUST be `Refs #<N>`, never `Fixes #<N>` / `Closes #<N>` / `Resolves #<N>`. The merge MUST NOT auto-close the issue — verification owns closure.
 
-Push and open the PR:
+Push and open the PR using the `<base-branch>` resolved in Step 4 — the same value MUST be used as the `--base` flag here:
 
 ```
 git push -u origin fix/issue-<N>-<slug>
@@ -207,6 +241,8 @@ Refs #<N>
 ## Summary
 <one-paragraph what changed>
 
+Base branch: <base-branch>
+
 ## Root cause
 <file:line + brief explanation>
 
@@ -214,13 +250,14 @@ Refs #<N>
 - [x] npm run lint
 - [x] npm run typecheck
 - [<x or n/a>] Targeted unit test
-- [ ] Codex browser re-test against staging (downstream)
+- [ ] Codex browser re-test against the release candidate (downstream, operator-driven)
 
 Targeted tests run: <space-separated list of test file paths, or "none">
 
 ## Notes
-- This PR uses Refs #<N>, not a closing keyword. The issue stays open until the UI re-test on staging passes.
+- This PR uses Refs #<N>, not a closing keyword. The issue stays open until the UI re-test passes.
 - The `Targeted tests run:` line is structured: finalise mode parses it to re-run the same tests. Always include it; use `none` if no targeted test was authored.
+- The `Base branch:` line in this Summary section is structured: finalise mode parses it to verify nothing drifted between fix and finalise.
 EOF
 )"
 ```
@@ -228,7 +265,7 @@ EOF
 Then comment on the issue:
 
 ```
-gh issue comment <N> --body "Fix PR opened: <PR URL>. Review when ready, then say 'bug-fixer: done <N>' to finalise."
+gh issue comment <N> --body "Fix PR opened: <PR URL> (base: <base-branch>). Review when ready, then say 'bug-fixer: done <N>' to finalise."
 ```
 
 ### Step 8b — Stop
@@ -253,12 +290,13 @@ Same logic as fix-mode Step 0. Extract `<N>` (required) and optional trailing `<
 Emit a TodoWrite with this list:
 
 1. Locate the linked open PR for #<N>
-2. Re-run lint + typecheck + targeted test on the current PR HEAD
-3. Squash-merge the PR
-4. Set issue label to the resolved awaiting-verify label (default `status:awaiting-ui-verification`; `.release-control.yml` `github.verification_labels.awaiting` overrides)
-5. Post outcome comment on the issue
-6. Clear `.claude/session-state/review-mode` if present
-7. Print handoff and stop
+2. Verify the PR's base branch matches the currently-resolved base (§ Base branch resolution)
+3. Re-run lint + typecheck + targeted test on the current PR HEAD
+4. Squash-merge the PR
+5. Set issue label to the resolved awaiting-verify label (default `status:awaiting-ui-verification`; `.release-control.yml` `github.verification_labels.awaiting` overrides)
+6. Post outcome comment on the issue with the next manual step
+7. Clear `.claude/session-state/review-mode` if present
+8. Print handoff and stop
 
 ### Step 10 — Locate the PR
 
@@ -284,6 +322,23 @@ Re-run, in order:
 
 If any check fails, stop. Comment on the issue: `Finalise aborted — <check> failed: <error excerpt>`. Do NOT merge. Do NOT change labels.
 
+### Step 11a — Verify PR base matches resolved base
+
+Re-resolve `<expected-base>` per § Base branch resolution using the current issue labels + current `.release-control.yml`. Read the PR's actual base branch:
+
+```
+gh pr view <PR-number> --json baseRefName -q '.baseRefName'
+```
+
+Compare:
+
+- **Match** → continue to Step 12.
+- **Mismatch** → STOP. Comment on the issue:
+  > `Finalise aborted — PR base (<actual>) does not match the currently-resolved base for this issue (<expected>). Either the issue's release:* label changed since the PR was opened, or .release-control.yml was edited, or the PR was manually retargeted. Resolve the discrepancy (re-target the PR via 'gh pr edit <PR-number> --base <expected>' OR adjust the issue label OR roll back the .release-control.yml change), then re-run 'bug-fixer: done <N>'.`
+  Do NOT merge. Do NOT change labels.
+
+This protects against the case where the fix PR was opened against `release/v1.0.0` but the issue was later relabelled to `release:v1.1.0` (or had its release label removed). The squash-merge would silently land the fix on the wrong branch otherwise.
+
 ### Step 12 — Squash-merge
 
 ```
@@ -298,6 +353,10 @@ If the merge is blocked by required status checks, stop and comment on the issue
 
 Resolve `<awaiting-verify-label>` from `.release-control.yml` `github.verification_labels.awaiting` if present, else default to `status:awaiting-ui-verification`. This is the same resolution as the Defaults table — re-resolve at Step 13 time in case `.release-control.yml` has changed between fix and finalise modes.
 
+The merged `<base-branch>` is the one verified in Step 11a (it equals both the PR's actual base and the currently-resolved base, since the merge only proceeds when they match).
+
+The comment must tell the operator the next manual step. The agent does NOT claim that deploy or re-test happens automatically — both are operator-driven from the Release Control UI in this project.
+
 ```
 gh issue edit <N> --remove-label "status:in-progress" --add-label "<awaiting-verify-label>"
 gh issue comment <N> --body "$(cat <<'EOF'
@@ -308,10 +367,18 @@ Local checks at finalisation:
 - npm run typecheck: passed
 - Targeted test: <passed / not authored>
 
-Staging will redeploy automatically. The full UI suite will re-run against staging and report into Release Control. This issue stays open until the targeted UI test passes; it will move to the verified label and close downstream.
+Next step (manual, operator-driven via Release Control):
+1. Create or refresh the release candidate against <base-branch> in the Release Control UI so it picks up <commit-SHA>.
+2. Deploy that candidate to staging.
+3. Run the UI suite against staging.
+4. If the suite passes, transition this issue to <verified-label> from Release Control and close it. If it fails, file a new defect or re-open this one and re-run 'bug-fixer: <N>'.
+
+This issue stays open and labelled <awaiting-verify-label> until the UI re-test passes. The agent never sets <verified-label> or closes the issue — verification happens downstream.
 EOF
 )"
 ```
+
+(`<verified-label>` resolves from `.release-control.yml` `github.verification_labels.verified` if set, else defaults to `status:verified`.)
 
 ### Step 14 — Clear session review-mode
 
@@ -320,8 +387,8 @@ If `.claude/session-state/review-mode` exists, delete it (`rm -f .claude/session
 Then stop. Print to operator:
 
 ```
-#<N> finalised. Merged as <commit-SHA>. Issue labelled <awaiting-verify-label>.
-Staging will redeploy automatically; downstream UI suite verifies.
+#<N> finalised. Merged as <commit-SHA> on <base-branch>. Issue labelled <awaiting-verify-label>.
+Next step (manual): create/refresh the release candidate in Release Control, deploy to staging, run the UI suite. The agent does NOT auto-deploy and does NOT auto-verify.
 ```
 
 ## Final output each run
@@ -335,15 +402,18 @@ Staging will redeploy automatically; downstream UI suite verifies.
 
 ### Finalise mode
 
-1. PR merged: `<PR URL> → <commit-SHA> on <base-branch>`.
+1. PR merged: `<PR URL> → <commit-SHA> on <base-branch>` (base-branch verified to match the currently-resolved base).
 2. Issue label transition: `status:in-progress → <resolved awaiting-verify label>`.
 3. Local check outcomes (lint, typecheck, targeted test).
-4. Downstream pointer: `Staging redeploys; Release Control verifies via UI suite.`
+4. Next manual step: `Create/refresh the release candidate against <base-branch> in Release Control, deploy to staging, run the UI suite. No auto-deploy, no auto-verify.`
 
 ## Failure paths
 
 - **Issue does not exist or is closed** → stop with error. No changes.
 - **Issue body too thin to act on** → comment with the missing items. Do NOT label. Stop.
+- **Multiple `release:*` labels on the issue** → stop in § Base branch resolution (fix mode Step 4 or finalise mode Step 11a). Print the conflict and the operator-resolution instruction. No labels changed, no branch created, no PR opened, no merge.
+- **Resolved `release/<version>` branch does not exist on origin** → stop in § Base branch resolution. Tell the operator to cut the release branch via Release Control first.
+- **PR base does not match the currently-resolved base (finalise mode Step 11a)** → stop, comment on the issue with the actual vs expected base and the three possible causes (label change / config change / manual retarget). Do NOT merge. Do NOT change labels.
 - **Root cause requires architectural change** → Step 5b. Escalate via comment + spec-coordinator handoff. No PR.
 - **Targeted checks fail twice** → comment on issue. Revert `status:in-progress` to `status:open`. Stop.
 - **Finalise mode but no linked PR** → stop with error. Operator may need to point to a different PR.
@@ -355,6 +425,10 @@ Staging will redeploy automatically; downstream UI suite verifies.
 - **One issue per session.** No batching multiple issues into one PR. Each issue gets its own branch, PR, and finalise call.
 - **Squash-merge only.** No rebase-merge, no merge-commit. Single commit lands on the base branch.
 - **Surgical change only.** No refactors. No drive-by cleanup. No "while I'm here."
+- **Tags are never merge targets.** The agent merges into branches only. Tags are immutable references; cutting RC tags is downstream from this agent's lane.
+- **Release-bound fixes target the release branch.** A fix for an issue labelled `release:v1.0.0` merges into `release/v1.0.0`, not `staging` and not `main`. No release label → falls back to `staging_branch`.
+- **Same base from fix to finalise.** The base branch resolved at PR creation must equal the base verified at finalise (Step 11a). Drift between fix and finalise blocks the merge.
+- **No claim of auto-deploy or auto-verify.** The agent comments the next manual step (create/refresh RC, deploy, run UI suite) on the issue. Deployment and verification are operator-driven via Release Control in this project.
 - **Never set `status:verified` or `status:open` after a merge.** Verification is downstream.
 - **Never `--no-verify` on a commit, never `--admin` on a merge.** If a hook or required check fails, fix it.
 - **Never close the issue.** Closure happens downstream when the UI test passes.

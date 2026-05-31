@@ -32,24 +32,35 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
-## 2.12.0 — 2026-06-01 — bug-fixer promoted to framework + session-scoped review-mode propagation
+## 2.12.0 — 2026-06-01 — bug-fixer promoted to framework + session-scoped review-mode + release-branch targeting
 
-**Highlights:** the GitHub-issue-driven `bug-fixer` agent (previously local-only in `automation-v1`) is promoted into the framework so every consumer repo gets the same fix-mode → finalise-mode contract used by the Release Control v2.3 § 12 stage-one loop. Operator surface is widened with the `launch bugfixer <N>` / `launch bug-fixer <N>` invocation aliases. New: a trailing `manual` / `automated` / `parallel` keyword on any trigger phrase now propagates the ChatGPT review mode through any coordinator pass the bug-fix escalates into. The mechanism is a single-line plaintext file at `.claude/session-state/review-mode` that each `chatgpt-*` agent reads as a higher-priority resolution tier than `CHATGPT_REVIEW_DEFAULT_MODE` — so the operator can change mode mid-session without restarting Claude Code. Minor-class change — additive agent + resolution tier; no breaking change to existing trigger phrases or env-var behaviour.
+**Highlights:** the GitHub-issue-driven `bug-fixer` agent (previously local-only in `automation-v1`) is promoted into the framework so every consumer repo gets the same fix-mode → finalise-mode contract used by the Release Control v2.3 § 12 stage-one loop. Three operator-facing improvements ship together:
+1. Operator surface widened with the `launch bugfixer <N>` / `launch bug-fixer <N>` invocation aliases.
+2. A trailing `manual` / `automated` / `parallel` keyword on any trigger phrase now propagates the ChatGPT review mode through any coordinator pass the bug-fix escalates into — via a single-line plaintext file at `.claude/session-state/review-mode` that each `chatgpt-*` agent reads as a higher-priority resolution tier than `CHATGPT_REVIEW_DEFAULT_MODE`.
+3. **Release-bound fixes now target the correct release branch.** Bug-fixer reads the issue's `release:*` label and derives the PR base from `release_branch_pattern` (e.g. `release:v1.0.0` → `release/v1.0.0`). Falls back to `staging_branch` when no release label is present. Same base is re-resolved and verified at finalise to block silent drift.
+
+Minor-class change — additive agent + resolution tier + branch-resolution algorithm; no breaking change to existing trigger phrases or env-var behaviour.
 
 **Added:**
-- `.claude/agents/bug-fixer.md` — promoted from the source repo. Operator triggers cover both `bug-fixer: <N>` and `launch bugfixer <N>` shapes for fix and finalise modes. New § "Mode flag" documents the keyword + state-file mechanism. New Step 0 (fix mode) and Step 8c (finalise mode) parse the trigger phrase, validate the optional mode keyword, and write `.claude/session-state/review-mode`. New Step 14 (finalise) clears the state file on success.
+- `.claude/agents/bug-fixer.md` — promoted from the source repo. Operator triggers cover both `bug-fixer: <N>` and `launch bugfixer <N>` shapes for fix and finalise modes. New § "Mode flag" documents the keyword + state-file mechanism. New § "Base branch resolution" defines the release-label-driven branch derivation. New Step 0 (fix mode) and Step 8c (finalise mode) parse the trigger phrase, validate the optional mode keyword, and write `.claude/session-state/review-mode`. New Step 11a (finalise mode) re-resolves the base branch and refuses to merge if the PR's actual base has drifted. New Step 14 (finalise mode) clears the state file on success.
 - Resolution-tier-2 in all three chatgpt-* agents (`chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`): each agent now reads `.claude/session-state/review-mode` between the explicit operator phrase and the `CHATGPT_REVIEW_DEFAULT_MODE` env var. A missing or invalid file value falls through silently; the env-var and hard-default tiers are unchanged.
 
 **Changed:**
 - The MODE prose blocks in all three chatgpt-* agents now describe four resolution tiers instead of three (no behavioural change for repos that don't write the state file).
 - Escalation Step 5b in `bug-fixer.md` now reads the state file before printing the operator handoff. If a mode is set, the handoff includes a one-liner telling the operator the downstream pipeline will inherit it.
+- Fix-mode Step 4 (branch creation) and Step 8 (PR open) now use the base resolved per § Base branch resolution instead of unconditionally targeting `staging_branch`. The PR commit + body record the base explicitly so finalise-mode Step 11a can verify it hasn't drifted.
+- Finalise-mode Step 13 comment no longer claims staging redeploys automatically or that downstream verification fires without operator action. Comment now lists the explicit manual next steps (create/refresh RC, deploy, run UI suite) that the operator drives from Release Control.
 
 **Consumer migration after v2.12.0 lands:**
 - Run `/claudeupdate` (or `git submodule update --remote .claude-framework && node .claude-framework/sync.js`) to pick up the new bug-fixer + patched chatgpt-* agents.
 - Add `.claude/session-state/` to `.gitignore` — the directory holds per-session ephemeral state.
+- Ensure `.release-control.yml` has the three fields the new base-resolution algorithm reads: `repo.staging_branch`, `repo.release_branch_pattern` (defaults to `release/*`), `github.release_label_prefix` (defaults to `release:`).
+- Make sure Codex (or whoever files defects against a release candidate) tags the issue with a `release:<version>` label that matches the existing release branch on origin — otherwise the agent will stop with a clear error.
 - Existing trigger phrases (`bug-fixer: <N>`, `bug-fixer: done <N>`, `chatgpt-pr-review: parallel`, etc.) are unchanged and continue to work. `CHATGPT_REVIEW_DEFAULT_MODE` still works as before; the state file just takes priority when present.
 
 **Trade-off note:** the state-file mechanism intentionally avoids modifying agent dispatch semantics — every chatgpt-* agent independently reads the file at start, so a coordinator that dispatches multiple chatgpt-* sub-agents propagates the choice for free without needing to pass parameters through. The cost is a per-session disk file that must be cleaned up (handled by bug-fixer Step 14 on successful finalise, by manual `rm` otherwise, or by a future framework-level cleanup hook).
+
+**Release-branch resolution note:** the algorithm is intentionally label-driven (not branch-name-pattern-matching) because the source of truth for "which release is this defect against?" is the rc label that Codex set when filing the issue. The `release_branch_pattern` is a derivation template, not a discovery pattern. This keeps the agent decoupled from any specific RC numbering scheme — the label says it.
 
 ---
 
