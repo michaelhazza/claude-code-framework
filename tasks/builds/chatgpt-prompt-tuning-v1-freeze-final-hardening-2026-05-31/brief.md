@@ -2,7 +2,7 @@
 
 **Author:** Phase 1 spec-coordinator session, v1-freeze-final-hardening build (PR #450)
 **Date:** 2026-05-31
-**Status:** Revision 2 — applies the 8 findings from Round 1 of `claude-spec-review` (2 medium on prompt-version posture and SPEC-NEW-6 DOM scoping; 6 low on F22 attribution, SPEC-NEW-9 false-positive risk, SPEC-NEW-8 Postgres scoping, §6.1 step 7 acceptance criterion, SPEC-NEW-5 canonicaliser closure, plus the F22 cross-reference cleanup). Original Revision 1 — initial draft, 6 proposed SPEC-V2 Hunt Targets sourced from the 3-round `chatgpt-spec-review` session on the v1-freeze-final-hardening spec.
+**Status:** Revision 3 — applies findings from Round 1 of `chatgpt-spec-review` automated mode (1 OpenAI medium on §6.1 step 7 smoke-check reproducibility) plus 6 coordinator-adversarial findings on the brief itself (F18 over-attribution to SPEC-NEW-6, §6.3 FP-rating of SPEC-NEW-4 and SPEC-NEW-5, Decision 5 missing inverse-trigger criterion, SPEC-NEW-6 "full carrier set" wording, §3.3 phrasing inaccuracy on F20/F21 cadence). Revision 2 — applied the 8 findings from Round 1 of `claude-spec-review` (2 medium on prompt-version posture and SPEC-NEW-6 DOM scoping; 6 low on F22 attribution, SPEC-NEW-9 false-positive risk, SPEC-NEW-8 Postgres scoping, §6.1 step 7 acceptance criterion, SPEC-NEW-5 canonicaliser closure, plus the F22 cross-reference cleanup). Original Revision 1 — initial draft, 6 proposed SPEC-V2 Hunt Targets sourced from the 3-round `chatgpt-spec-review` session on the v1-freeze-final-hardening spec.
 **Target file:** `scripts/chatgpt-reviewPure.ts` — `SYSTEM_PROMPT_SPEC_V2` only
 **Branches affected:** new branch `chatgpt-prompt-tuning-v1-freeze-final-hardening-2026-05-31` against `main` (Trivial-class, no runtime behaviour change)
 **Estimated diff size:** ~60 lines additive
@@ -80,7 +80,7 @@ These are the findings ChatGPT-web caught that the OpenAI prompt did NOT catch i
 
 ### 3.3 OpenAI-only findings that pinned new patterns the prompt should make explicit
 
-These are findings OpenAI surfaced (one round late or twice in a row) that pin a pattern not yet listed as a Hunt Target. Adding the Hunt Target would catch the same class of finding earlier and more reliably on future spec reviews.
+These are findings OpenAI surfaced (in any round) that pin a pattern not yet listed as a Hunt Target. F20 and F21 each surfaced once, in Round 3 — late but caught. F19/F24 represent the "twice in a row" case (see §3.4) but that pattern is correctly cross-tier-deferred. Adding the Hunt Targets below would catch the same class of finding earlier on future spec reviews, even if the existing prompt already surfaces them late.
 
 | Finding | Round | Severity | Pattern | Maps to |
 |---|---|---|---|---|
@@ -158,7 +158,7 @@ Six new Hunt-Target bullets, appended to the existing Hunt-Targets list in `scri
 
 ### 4.3 SPEC-NEW-6 — Content-boundary ACs must enumerate non-visible carriers
 
-**Source:** F7 (Round 1, broaden hidden-token AC) and F18 (Round 2, `innerText` alone insufficient).
+**Source:** F7 (Round 1, broaden hidden-token AC). Note: F18 (Round 2, `innerText` alone insufficient) was previously co-attributed here in Revision 2; on second pass §3.4 correctly states F18 was caught by the existing "Testability" Hunt Target, so attributing SPEC-NEW-6 to F18 would double-count. SPEC-NEW-6 is sourced from F7 alone. F18 remains in §3.4 as evidence the existing "Testability" Hunt Target is working.
 
 ```
 - Content-boundary ACs must enumerate non-visible carriers. When the spec
@@ -167,7 +167,9 @@ Six new Hunt-Target bullets, appended to the existing Hunt-Targets list in `scri
   the acceptance test must enumerate all the non-visible carriers explicitly,
   not rely on a single implementation hint (e.g. "use innerText").
 
-  For HTML / DOM / UI-text boundaries, the full carrier set includes:
+  For HTML / DOM / UI-text boundaries, the carrier set the AC must enumerate
+  includes at minimum (a spec may exclude items with explicit rationale, but
+  silence is a defect):
     - <script>, <style>, <meta>, <link>, <template>, comment nodes
     - aria-* and data-* attribute values
     - aria-hidden="true" subtrees, hidden CSS (display:none, visibility:hidden)
@@ -188,7 +190,7 @@ Six new Hunt-Target bullets, appended to the existing Hunt-Targets list in `scri
   regress the boundary.
 ```
 
-**Why this Hunt Target is needed:** F7 (Round 1) and F18 (Round 2) are the same pattern at different specificity. The existing "Testability" Hunt Target says "acceptance criteria map to deterministic checks" but does not call out the specific class of bug where the AC silently relies on a single carrier-name (innerText, document.body.textContent) when the boundary contract is broader. This pattern recurs across any spec touching XSS, secret-leakage, log-redaction, telemetry-sanitisation, or DOM-to-text serialisation.
+**Why this Hunt Target is needed:** F7 (Round 1) surfaced a carrier-enumeration gap on a hidden-token AC. The existing "Testability" Hunt Target says "acceptance criteria map to deterministic checks" but does not call out the specific class of bug where the AC silently relies on a single carrier-name (innerText, document.body.textContent) when the boundary contract is broader. This pattern recurs across any spec touching XSS, secret-leakage, log-redaction, telemetry-sanitisation, or DOM-to-text serialisation. F18 (Round 2) raised an `innerText` AC concern but was correctly caught by the existing "Testability" Hunt Target — see §3.4. SPEC-NEW-6 sharpens the existing prompt on the carrier-enumeration sub-case without overlapping the existing Hunt Target's domain.
 
 ### 4.4 SPEC-NEW-7 — Hostname allowlists must specify IP-literal handling
 
@@ -284,7 +286,7 @@ The 6 new Hunt Targets follow the same shape as the existing bullets: one descri
 4. Do NOT bump `prompt_version`. Additive Hunt-Target additions do not change the output schema or the reviewer contract; the `openai-spec-review.v2` → `.v3` boundary is reserved for breaking changes to the output envelope. Precedent: the 2026-05-29 brief added 13 patterns across SPEC / PLAN / PR without bumping any of the three prompts. See §8 Decision 5.
 5. Add a CHANGELOG entry to `.claude/CHANGELOG.md` noting the v3 prompt-revision and citing this brief.
 6. Update `docs/review-pipeline/parallel-mode.md` if it documents the SPEC prompt's Hunt-Target list explicitly (likely a count or a hash). Otherwise no doc change required.
-7. Run a smoke check on the spec used as the source for this brief (`tasks/builds/v1-freeze-final-hardening/spec.md` in the consuming repo). Success criterion: at least 4 of 6 new Hunt Targets fire on their source finding when invoked against an artificially-reverted version of the spec that still contains the original gaps (since the live spec is already APPROVED, a 6/6 fire rate on the live spec is not expected — the spec text incorporates the fixes that closed the source findings). Any new Hunt Target that does NOT surface its source finding on the reverted-spec smoke check is logged in §8 Decision log and reviewed before the apply lands.
+7. Operator-time best-effort smoke check (NOT a merge gate). The source spec for this brief is `tasks/builds/v1-freeze-final-hardening/spec.md` in the consuming repo at commit `7a457794` (Revision 6 spec — see consuming-repo `git log --oneline -- tasks/builds/v1-freeze-final-hardening/spec.md`). The live spec is APPROVED and its text already incorporates the fixes that closed F1, F4, F7, F15, F20, F21 — so invoking the updated prompt against the LIVE spec is not expected to re-surface those findings. The smoke procedure: (a) on a throwaway branch, revert the consuming-repo spec to the round-0 baseline (the spec as it was BEFORE round 1 — commit log shows three review-round commits between original spec and current); (b) invoke `npx tsx scripts/chatgpt-review.ts --mode spec --file tasks/builds/v1-freeze-final-hardening/spec.md` in the consuming repo with the framework dependency built from this brief's branch; (c) inspect the findings array for surfaces matching the six new Hunt Targets. Target signal: at least 4 of the 6 new Hunt Targets fire on their source finding. The result is logged in this brief's §8 Decision log either way; smoke-check results DO NOT gate the apply because (i) LLM output is non-deterministic, (ii) the procedure depends on a consuming-repo artefact outside the framework PR, (iii) the change is additive and rollback-safe. If the smoke check is skipped (e.g. consuming-repo state has drifted), log "smoke check skipped — <reason>" in §8 and proceed.
 
 ### 6.2 Compatibility
 
@@ -294,7 +296,7 @@ The 6 new Hunt Targets are additive and reference only standard spec concepts (w
 
 Risk class: **Trivial**. The change is additive to a system prompt; no runtime code paths change; no schema changes; no PR-pipeline behaviour changes. The worst case is the new Hunt Targets surface false positives on future spec reviews. False positives are caught by the existing coordinator-side schema validation and the operator's per-finding triage; they do not auto-apply. The mitigation if false positives prove noisy is to tighten the Hunt Target wording in a follow-up Trivial PR.
 
-**Per-Hunt-Target false-positive risk profile.** SPEC-NEW-9 (deploy-boundary cutover) carries the highest false-positive risk of the six because it fires whenever an idempotency-mechanism spec touches a queue or webhook surface, regardless of whether in-flight events actually exist at deploy time — and at spec-intake stage, the operator typically does not yet know the answer. Operator: track the next three SPEC-NEW-9 invocations; if more than one is a false positive, tighten the Hunt Target to gate on explicit pre-deploy queue depth or in-flight-event evidence. SPEC-NEW-6 (content-boundary carriers) and SPEC-NEW-8 (denormalised tenant integrity) carry medium false-positive risk because their scope language is broad. SPEC-NEW-4, SPEC-NEW-5, and SPEC-NEW-7 carry low false-positive risk because their detection conditions are mechanically specific.
+**Per-Hunt-Target false-positive risk profile.** SPEC-NEW-9 (deploy-boundary cutover) carries the highest false-positive risk of the six because it fires whenever an idempotency-mechanism spec touches a queue or webhook surface, regardless of whether in-flight events actually exist at deploy time — and at spec-intake stage, the operator typically does not yet know the answer. Operator: track the next three SPEC-NEW-9 invocations; if more than one is a false positive, tighten the Hunt Target to gate on explicit pre-deploy queue depth or in-flight-event evidence. SPEC-NEW-4 (producer/consumer fencing), SPEC-NEW-5 (dedupe-key canonicalisation), SPEC-NEW-6 (content-boundary carriers), and SPEC-NEW-8 (denormalised tenant integrity) carry medium false-positive risk because their trigger sets are broad — SPEC-NEW-4 fires on common `version` / generation columns even when producer/consumer fencing is not the design intent; SPEC-NEW-5 fires on any dedupe key over any user-supplied identifier including generic `name` / `identifier` / free-text labels; SPEC-NEW-6 and SPEC-NEW-8 are flagged for scope-language breadth as noted in the original rating. SPEC-NEW-7 (hostname allowlists / IP-literal handling) is the only one of the six with low false-positive risk because its trigger ("hostname pinning / suffix allowlisting / URL-host validation") is narrow and mechanically specific.
 
 ### 6.4 Reviewer plan
 
@@ -323,7 +325,7 @@ Risk class: **Trivial**. The change is additive to a system prompt; no runtime c
 - **Decision 2:** do NOT fold architect-tier implementer notes (F25, F26, F27) into the spec prompt. Those are correctly plan-stage refinements; folding them into the spec prompt would create false positives on specs that defer those details to plan time by design.
 - **Decision 3:** the 6 new Hunt Targets are written to be portable across consuming repos. No repo-specific file paths or registry names are referenced. The 2026-05-29 brief's PROJECT_CONTEXT parameterisation pattern is not needed for these 6 because the patterns reference standard spec concepts, not project-specific manifests.
 - **Decision 4:** keep the existing Hunt Targets unchanged. F10, F17, F18, F22, F23 are evidence the existing prompt is doing real work — strengthening those Hunt Targets is out of scope for this revision.
-- **Decision 5 (Revision 2):** do NOT bump `prompt_version` on additive Hunt-Target changes. The `openai-spec-review.vN` versioning is reserved for breaking changes to the output envelope or the reviewer contract; additive detection patterns do not break either. Precedent: the 2026-05-29 brief added 13 patterns across all three prompts without bumping any of them.
+- **Decision 5 (Revision 2):** do NOT bump `prompt_version` on additive Hunt-Target changes. The `openai-spec-review.vN` versioning is reserved for breaking changes to the output envelope or the reviewer contract; additive detection patterns do not break either. Precedent: the 2026-05-29 brief added 13 patterns across all three prompts without bumping any of them. **Inverse trigger (Revision 3):** the `prompt_version` MUST be bumped when any of (a) the output JSON envelope schema changes shape (new required fields, removed fields, retyped fields); (b) a Hunt Target is removed or its detection contract is materially weakened in a way that could cause callers depending on the prior pattern to silently miss findings; (c) the Process passes (currently 1–7 plus second-order integrity pass) are renumbered, removed, or fundamentally re-scoped; (d) the recommendation enum, severity enum, or scope-signal enum changes values. Additive Hunt Targets and clarifying re-wordings do not qualify.
 - **Decision 6 (Revision 2):** SPEC-NEW-8 keeps both the Postgres-+-RLS guidance AND the document-store / application-layer alternative, rather than scoping to Postgres alone. Rationale: the framework's downstream consuming repos are not all on Postgres; the brief's §6.2 portability claim is preserved by naming both shapes inline. Trade-off accepted: reviewers will spend an extra sentence deciding which shape applies before fix-sketching.
 - **Decision 7 (Revision 2):** SPEC-NEW-6 keeps a single Hunt Target with two scope tracks (DOM + non-DOM), rather than splitting into two separate Hunt Targets. Rationale: the detection logic ("AC enumerates only one carrier, no carrier set") is the same across both tracks; only the carrier list differs. Splitting would duplicate the detection logic.
 
