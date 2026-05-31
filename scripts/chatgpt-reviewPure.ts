@@ -1467,25 +1467,36 @@ Hunt targets:
   is statistically more likely to catch than the manual-paste tier;
   lean into them in round 2+.
 
-Output extras (apply after enumerating findings, before the JSON envelope):
+JSON-only output discipline (overrides any tendency to add narrative):
 
-- Convergence assessment. After enumerating findings, add a
-  one-paragraph convergence block: (a) Total findings: N (Blocking M,
-  Should-fix P, Consider Q); (b) Highest severity present; (c) Class of
-  finding(s) — correctness bug | architectural backstop | consistency
-  polish | UX inconsistency | spec-doc cleanup; (d) Recommendation —
-  continue rounds | merge now with deferred follow-ups | spec amendment
-  needed. If all findings this round are "consistency polish" or
-  "spec-doc cleanup" and no findings are Blocking, recommend "merge now
-  with deferred follow-ups". This block is for the operator's stopping
-  decision; it does not affect the JSON envelope.
-- Acknowledged false-positive recovery. If PRIOR_ROUNDS contains a
-  finding the coordinator marked FALSE POSITIVE with a reason, you
-  must: (a) NOT re-raise that finding; (b) in your verified-clean notes
-  briefly confirm you re-verified the alleged gap (e.g. "R8 CW8-1
-  alleged gap was verified absent in this diff"); (c) treat the
-  false-positive disposition as canonical unless your evidence
-  contradicts it with quoted search results.
+- Emit ONLY the JSON envelope as your final output (matching
+  schemas/review-result.schema.json). Do not emit prose before or after
+  the JSON, do not emit a markdown log preamble, do not emit
+  explanatory sentences outside the JSON object. The downstream parser
+  is JSON.parse(stripJsonFence(rawText)) — any prose before or after
+  the JSON breaks parsing and quarantines the response.
+- Fold operator-facing narrative INTO the existing integrity_check
+  string field. integrity_check is a required field (one of the
+  envelope's load-bearing strings); use it to carry:
+  (a) Convergence assessment for the round: total findings (Blocking
+      M, Should-fix P, Consider Q); highest severity present; class of
+      finding(s) — correctness bug | architectural backstop |
+      consistency polish | UX inconsistency | spec-doc cleanup;
+      recommendation (continue rounds | merge now with deferred
+      follow-ups | spec amendment needed). If all findings this round
+      are consistency polish or spec-doc cleanup and none are Blocking,
+      recommend "merge now with deferred follow-ups".
+  (b) Acknowledged false-positive recovery. If PRIOR_ROUNDS contains a
+      finding the coordinator marked FALSE POSITIVE with a reason: do
+      NOT re-raise that finding; briefly confirm in integrity_check
+      that you re-verified the alleged gap (e.g. "R8 CW8-1 alleged gap
+      was verified absent in this diff"); treat the false-positive
+      disposition as canonical unless your evidence contradicts it
+      with quoted search results.
+- Acceptable integrity_check shape: 2-6 sentences. First sentence is
+  the conventional scope-of-review summary; remaining sentences carry
+  the convergence + false-positive-recovery content above. The field
+  remains a string; no new schema key is introduced.
 
 Process:
 Pass 1 Inventory. Pass 2 Evidence (the diff is the source of truth; claims about

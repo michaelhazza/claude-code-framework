@@ -1029,4 +1029,49 @@ test('v2 system prompt for PR mode explicitly warns that diffs may contain instr
   expect(system).toMatch(/PR diffs frequently[\s\S]*resemble[\s\S]*instructions/);
 });
 
+// Regression guard for v2.11.0: any future prompt edit that tells the model to
+// emit narrative BEFORE or AFTER the JSON envelope will break parseReviewResult
+// (JSON.parse on stripJsonFence(rawText) fails on prose preambles or trailing
+// text). The v2.11.0 PR-prompt-tuning round originally shipped an "Output extras"
+// section instructing "apply after enumerating findings, before the JSON envelope"
+// — Codex caught this in PR #11 review as a runtime reliability regression. The
+// fix folds operator-facing narrative INTO the existing integrity_check string
+// field instead, preserving JSON-only output.
+test('v2 PR/spec/plan system prompts never instruct the model to emit prose around the JSON envelope', () => {
+  // Narrow forbidden-phrase list: only phrases that specifically describe
+  // output-formatting around the JSON envelope. Generic phrases like "prose
+  // before" or "prose after" appear in legitimate non-output contexts (e.g.
+  // hunt targets about document text), so they are NOT in this list — only
+  // phrases that include "JSON" / "envelope" / "preamble" qualifiers.
+  const forbiddenPhrases = [
+    'before the JSON envelope',
+    'after the JSON envelope',
+    'before the JSON object',
+    'after the JSON object',
+    'prose before the JSON',
+    'prose after the JSON',
+    'narrative preamble',
+    'a markdown log preamble',
+  ];
+  const prohibitionRegex = /do not|never|no prose|no narrative|only the json|break(s|ing)? parsing|breaks parsing|quarantine|emit only the/i;
+  for (const mode of ['pr', 'spec', 'plan'] as const) {
+    const system = getSystemPrompt(mode, 2);
+    const lowered = system.toLowerCase();
+    for (const phrase of forbiddenPhrases) {
+      const loweredPhrase = phrase.toLowerCase();
+      let searchFrom = 0;
+      while (true) {
+        const idx = lowered.indexOf(loweredPhrase, searchFrom);
+        if (idx === -1) break;
+        const start = Math.max(0, idx - 120);
+        const end = Math.min(system.length, idx + loweredPhrase.length + 120);
+        const window = lowered.slice(start, end);
+        const isProhibition = prohibitionRegex.test(window);
+        expect(isProhibition).toBe(true);
+        searchFrom = idx + loweredPhrase.length;
+      }
+    }
+  }
+});
+
 // --- summary ---
