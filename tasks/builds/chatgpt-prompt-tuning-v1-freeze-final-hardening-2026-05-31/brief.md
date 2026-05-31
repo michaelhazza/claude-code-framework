@@ -2,7 +2,7 @@
 
 **Author:** Phase 1 spec-coordinator session, v1-freeze-final-hardening build (PR #450)
 **Date:** 2026-05-31
-**Status:** Revision 3 — applies findings from Round 1 of `chatgpt-spec-review` automated mode (1 OpenAI medium on §6.1 step 7 smoke-check reproducibility) plus 6 coordinator-adversarial findings on the brief itself (F18 over-attribution to SPEC-NEW-6, §6.3 FP-rating of SPEC-NEW-4 and SPEC-NEW-5, Decision 5 missing inverse-trigger criterion, SPEC-NEW-6 "full carrier set" wording, §3.3 phrasing inaccuracy on F20/F21 cadence). Revision 2 — applied the 8 findings from Round 1 of `claude-spec-review` (2 medium on prompt-version posture and SPEC-NEW-6 DOM scoping; 6 low on F22 attribution, SPEC-NEW-9 false-positive risk, SPEC-NEW-8 Postgres scoping, §6.1 step 7 acceptance criterion, SPEC-NEW-5 canonicaliser closure, plus the F22 cross-reference cleanup). Original Revision 1 — initial draft, 6 proposed SPEC-V2 Hunt Targets sourced from the 3-round `chatgpt-spec-review` session on the v1-freeze-final-hardening spec.
+**Status:** Revision 4 — applies external-reviewer feedback on the framework PR: (a) generalises SPEC-NEW-8 from "tenant" to "scope" terminology (renamed bullet + expanded examples to include project_id / workspace_id / partner_id / user_scope_id; rationale broadened from "RLS" to "access control"); (b) SPEC-NEW-9 audience phrasing changed from "customer-visible note" to "customer/operator/user-visible note (depending on repo audience)" for internal/automation-tool repos; (c) Decision 8 records the external-reviewer endorsement of CW-5 (tracking infrastructure for SPEC-NEW-4 through SPEC-NEW-8 stays deferred to a follow-up brief). Revision 3 — applies findings from Round 1 of `chatgpt-spec-review` automated mode (1 OpenAI medium on §6.1 step 7 smoke-check reproducibility) plus 6 coordinator-adversarial findings on the brief itself (F18 over-attribution to SPEC-NEW-6, §6.3 FP-rating of SPEC-NEW-4 and SPEC-NEW-5, Decision 5 missing inverse-trigger criterion, SPEC-NEW-6 "full carrier set" wording, §3.3 phrasing inaccuracy on F20/F21 cadence). Revision 2 — applied the 8 findings from Round 1 of `claude-spec-review` (2 medium on prompt-version posture and SPEC-NEW-6 DOM scoping; 6 low on F22 attribution, SPEC-NEW-9 false-positive risk, SPEC-NEW-8 Postgres scoping, §6.1 step 7 acceptance criterion, SPEC-NEW-5 canonicaliser closure, plus the F22 cross-reference cleanup). Original Revision 1 — initial draft, 6 proposed SPEC-V2 Hunt Targets sourced from the 3-round `chatgpt-spec-review` session on the v1-freeze-final-hardening spec.
 **Target file:** `scripts/chatgpt-reviewPure.ts` — `SYSTEM_PROMPT_SPEC_V2` only
 **Branches affected:** new branch `chatgpt-prompt-tuning-v1-freeze-final-hardening-2026-05-31` against `main` (Trivial-class, no runtime behaviour change)
 **Estimated diff size:** ~60 lines additive
@@ -24,7 +24,7 @@
    - 4.2 SPEC-NEW-5 — Dedupe-key canonicalisation for user-supplied strings
    - 4.3 SPEC-NEW-6 — Content-boundary ACs must enumerate non-visible carriers
    - 4.4 SPEC-NEW-7 — Hostname allowlists must specify IP-literal handling
-   - 4.5 SPEC-NEW-8 — Denormalised tenant columns need integrity triggers, not just RLS
+   - 4.5 SPEC-NEW-8 — Denormalised scope columns need parent-scope integrity, not just access control
    - 4.6 SPEC-NEW-9 — Deploy-boundary cutover for new idempotency arbiters
 5. Existing prompts (for reviewer context)
 6. Rollout
@@ -213,29 +213,32 @@ Six new Hunt-Target bullets, appended to the existing Hunt-Targets list in `scri
 
 **Why this Hunt Target is needed:** F15 was missed by OpenAI in Round 2. The existing "Security-mechanism claims contradicted by their own section" Hunt Target catches blanket-vs-bypass contradictions but does not catch missing-coverage gaps. IP-literal handling is a well-known host-pinning bypass class that recurs whenever a spec introduces URL allowlisting, webhook ingress validation, redirect-target validation, or trusted-origin matching.
 
-### 4.5 SPEC-NEW-8 — Denormalised tenant columns need integrity triggers, not just RLS
+### 4.5 SPEC-NEW-8 — Denormalised scope columns need parent-scope integrity, not just access control
 
 **Source:** F20 (Round 3, cross-org integrity trigger on `iee_run_artifacts`).
 
 ```
-- Denormalised tenant columns need integrity triggers, not just RLS. When
-  the spec introduces a new table that carries a denormalised tenant column
-  (organisation_id, org_id, tenant_id, subaccount_id, account_id, etc.)
-  alongside a parent foreign key to another table with its own tenant
-  column, RLS protects the value-as-stored but not its consistency with
-  the parent. A row whose denormalised tenant column does not match its
-  parent's tenant column is invisible to RLS (both columns are checked
-  against the same tx context) but corrupts every parent-join and every
-  tenant-scoped audit. Flag any new table whose denormalised tenant column
-  is not backed by an explicit parent-tenant integrity mechanism appropriate
-  to the project's data store: in Postgres + RLS deployments this is a
-  BEFORE INSERT OR UPDATE row-level integrity trigger comparing the column
-  against the parent's tenant column; in document stores or non-RDBMS
-  deployments this is typically an application-layer guard with audit-log
-  evidence and a deterministic test that proves the guard fires. Required
-  in all cases: a negative-path test (insert with mismatched tenant id →
-  rejected) and a post-test audit query. The fix sketch should name both
-  the integrity-mechanism contract and the AC enumerating the rejection path.
+- Denormalised scope columns need parent-scope integrity, not just access
+  control. When the spec introduces a new table that carries a
+  denormalised scope column (organisation_id, org_id, tenant_id,
+  subaccount_id, account_id, project_id, workspace_id, partner_id,
+  user_scope_id, etc.) alongside a parent foreign key to another table
+  with its own scope column, the project's access-control layer (RLS,
+  middleware, application guards) protects the value-as-stored but not
+  its consistency with the parent. A row whose denormalised scope column
+  does not match its parent's scope column is invisible to access control
+  (both columns are checked against the same caller scope) but corrupts
+  every parent-join and every scope-scoped audit. Flag any new table
+  whose denormalised scope column is not backed by an explicit
+  parent-scope integrity mechanism appropriate to the project's data
+  store: in Postgres + RLS deployments this is a BEFORE INSERT OR UPDATE
+  row-level integrity trigger comparing the column against the parent's
+  scope column; in document stores or non-RDBMS deployments this is
+  typically an application-layer guard with audit-log evidence and a
+  deterministic test that proves the guard fires. Required in all cases:
+  a negative-path test (insert with mismatched scope id → rejected) and
+  a post-test audit query. The fix sketch should name both the
+  integrity-mechanism contract and the AC enumerating the rejection path.
 ```
 
 **Why this Hunt Target is needed:** F20 was a high-severity OpenAI finding in Round 3. The existing "Tenant isolation and RLS" Hunt Target says "new tenant tables need tenant/org columns, RLS policies, registry entries" but does not address the parent-consistency gap. RLS is a value-as-stored protection; the trigger is a value-accuracy protection. Both are needed when the table denormalises tenant context for query-performance reasons.
@@ -254,10 +257,11 @@ Six new Hunt-Target bullets, appended to the existing Hunt-Targets list in `scri
   backfill from the existing state into the new arbiter, with a fixed
   pre-deploy SQL migration; (b) a pre-deploy queue-drain checklist step
   with a verification query; (c) explicit scope of the new guarantee to
-  post-deploy events only, with a customer-visible note about
-  pre-deploy-event behaviour. The fix sketch should name which option
-  applies + its operator-facing artefact (migration body, checklist step in
-  the operator runbook, customer-visible note in the guarantee section).
+  post-deploy events only, with a customer/operator/user-visible note
+  (depending on repo audience) about pre-deploy-event behaviour. The fix
+  sketch should name which option applies + its operator-facing artefact
+  (migration body, checklist step in the operator runbook,
+  audience-appropriate note in the guarantee section).
   Without an explicit cutover discipline, the new idempotency guarantee is
   silently false for events spanning the deploy boundary.
 ```
@@ -328,4 +332,7 @@ Risk class: **Trivial**. The change is additive to a system prompt; no runtime c
 - **Decision 5 (Revision 2):** do NOT bump `prompt_version` on additive Hunt-Target changes. The `openai-spec-review.vN` versioning is reserved for breaking changes to the output envelope or the reviewer contract; additive detection patterns do not break either. Precedent: the 2026-05-29 brief added 13 patterns across all three prompts without bumping any of them. **Inverse trigger (Revision 3):** the `prompt_version` MUST be bumped when any of (a) the output JSON envelope schema changes shape (new required fields, removed fields, retyped fields); (b) a Hunt Target is removed or its detection contract is materially weakened in a way that could cause callers depending on the prior pattern to silently miss findings; (c) the Process passes (currently 1–7 plus second-order integrity pass) are renumbered, removed, or fundamentally re-scoped; (d) the recommendation enum, severity enum, or scope-signal enum changes values. Additive Hunt Targets and clarifying re-wordings do not qualify.
 - **Decision 6 (Revision 2):** SPEC-NEW-8 keeps both the Postgres-+-RLS guidance AND the document-store / application-layer alternative, rather than scoping to Postgres alone. Rationale: the framework's downstream consuming repos are not all on Postgres; the brief's §6.2 portability claim is preserved by naming both shapes inline. Trade-off accepted: reviewers will spend an extra sentence deciding which shape applies before fix-sketching.
 - **Decision 7 (Revision 2):** SPEC-NEW-6 keeps a single Hunt Target with two scope tracks (DOM + non-DOM), rather than splitting into two separate Hunt Targets. Rationale: the detection logic ("AC enumerates only one carrier, no carrier set") is the same across both tracks; only the carrier list differs. Splitting would duplicate the detection logic.
+- **Decision 8 (Revision 4):** SPEC-NEW-8 generalises from "tenant" to "scope" terminology so the Hunt Target applies cleanly across the broader repo ecosystem (release-control, internal automation tools, single-tenant apps, project/workspace/partner-scoped products). Examples now include `project_id`, `workspace_id`, `partner_id`, `user_scope_id` alongside the original tenant variants. The Postgres-trigger + non-RDBMS-guard alternative path from Decision 6 is preserved. External-reviewer endorsed.
+- **Decision 9 (Revision 4):** SPEC-NEW-9 audience phrasing widened from "customer-visible note" to "customer/operator/user-visible note (depending on repo audience)" so internal-tooling and automation-only repos can satisfy option (c) without a customer-channel assumption. External-reviewer endorsed.
+- **Decision 10 (Revision 4):** CW-5 (tracking infrastructure for SPEC-NEW-4 through SPEC-NEW-8 alongside SPEC-NEW-9's existing tracking commitment) stays deferred to a separate follow-up brief. External-reviewer independently raised this gap and explicitly classified it as non-merge-blocking; the operator's prior defer decision is therefore reinforced, not reversed. Follow-up brief slug: `chatgpt-spec-prompt-followup-tracking` (to be authored after the next 10–20 spec reviews provide invocation evidence to size the tracking infrastructure appropriately).
 

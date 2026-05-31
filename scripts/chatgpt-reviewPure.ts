@@ -848,25 +848,28 @@ Hunt targets:
   self-host override or internal-loopback exception). The acceptance
   matrix must include at least one IP-literal negative case (or positive
   case when allowed) per IP family.
-- Denormalised tenant columns need integrity triggers, not just RLS. When
-  the spec introduces a new table that carries a denormalised tenant
-  column (organisation_id, org_id, tenant_id, subaccount_id, account_id,
-  etc.) alongside a parent foreign key to another table with its own
-  tenant column, RLS protects the value-as-stored but not its consistency
-  with the parent. A row whose denormalised tenant column does not match
-  its parent's tenant column is invisible to RLS (both columns are checked
-  against the same tx context) but corrupts every parent-join and every
-  tenant-scoped audit. Flag any new table whose denormalised tenant column
-  is not backed by an explicit parent-tenant integrity mechanism
-  appropriate to the project's data store: in Postgres + RLS deployments
-  this is a BEFORE INSERT OR UPDATE row-level integrity trigger comparing
-  the column against the parent's tenant column; in document stores or
-  non-RDBMS deployments this is typically an application-layer guard with
-  audit-log evidence and a deterministic test that proves the guard
-  fires. Required in all cases: a negative-path test (insert with
-  mismatched tenant id → rejected) and a post-test audit query. The fix
-  sketch should name both the integrity-mechanism contract and the AC
-  enumerating the rejection path.
+- Denormalised scope columns need parent-scope integrity, not just access
+  control. When the spec introduces a new table that carries a
+  denormalised scope column (organisation_id, org_id, tenant_id,
+  subaccount_id, account_id, project_id, workspace_id, partner_id,
+  user_scope_id, etc.) alongside a parent foreign key to another table
+  with its own scope column, the project's access-control layer (RLS,
+  middleware, application guards) protects the value-as-stored but not
+  its consistency with the parent. A row whose denormalised scope column
+  does not match its parent's scope column is invisible to access
+  control (both columns are checked against the same caller scope) but
+  corrupts every parent-join and every scope-scoped audit. Flag any new
+  table whose denormalised scope column is not backed by an explicit
+  parent-scope integrity mechanism appropriate to the project's data
+  store: in Postgres + RLS deployments this is a BEFORE INSERT OR UPDATE
+  row-level integrity trigger comparing the column against the parent's
+  scope column; in document stores or non-RDBMS deployments this is
+  typically an application-layer guard with audit-log evidence and a
+  deterministic test that proves the guard fires. Required in all cases:
+  a negative-path test (insert with mismatched scope id → rejected) and
+  a post-test audit query. The fix sketch should name both the
+  integrity-mechanism contract and the AC enumerating the rejection
+  path.
 - Deploy-boundary cutover for new idempotency arbiters. When the spec
   introduces a new table, column, or state that becomes the idempotency
   arbiter for a flow that has in-flight events at deploy time (queued
@@ -877,10 +880,11 @@ Hunt targets:
   arbiter, with a fixed pre-deploy SQL migration; (b) a pre-deploy
   queue-drain checklist step with a verification query; (c) explicit
   scope of the new guarantee to post-deploy events only, with a
-  customer-visible note about pre-deploy-event behaviour. The fix sketch
-  should name which option applies + its operator-facing artefact
-  (migration body, checklist step in the operator runbook,
-  customer-visible note in the guarantee section). Without an explicit
+  customer/operator/user-visible note (depending on repo audience) about
+  pre-deploy-event behaviour. The fix sketch should name which option
+  applies + its operator-facing artefact (migration body, checklist
+  step in the operator runbook, audience-appropriate note in the
+  guarantee section). Without an explicit
   cutover discipline, the new idempotency guarantee is silently false
   for events spanning the deploy boundary.
 
