@@ -32,6 +32,27 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.12.0 — 2026-06-01 — bug-fixer promoted to framework + session-scoped review-mode propagation
+
+**Highlights:** the GitHub-issue-driven `bug-fixer` agent (previously local-only in `automation-v1`) is promoted into the framework so every consumer repo gets the same fix-mode → finalise-mode contract used by the Release Control v2.3 § 12 stage-one loop. Operator surface is widened with the `launch bugfixer <N>` / `launch bug-fixer <N>` invocation aliases. New: a trailing `manual` / `automated` / `parallel` keyword on any trigger phrase now propagates the ChatGPT review mode through any coordinator pass the bug-fix escalates into. The mechanism is a single-line plaintext file at `.claude/session-state/review-mode` that each `chatgpt-*` agent reads as a higher-priority resolution tier than `CHATGPT_REVIEW_DEFAULT_MODE` — so the operator can change mode mid-session without restarting Claude Code. Minor-class change — additive agent + resolution tier; no breaking change to existing trigger phrases or env-var behaviour.
+
+**Added:**
+- `.claude/agents/bug-fixer.md` — promoted from the source repo. Operator triggers cover both `bug-fixer: <N>` and `launch bugfixer <N>` shapes for fix and finalise modes. New § "Mode flag" documents the keyword + state-file mechanism. New Step 0 (fix mode) and Step 8c (finalise mode) parse the trigger phrase, validate the optional mode keyword, and write `.claude/session-state/review-mode`. New Step 14 (finalise) clears the state file on success.
+- Resolution-tier-2 in all three chatgpt-* agents (`chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`): each agent now reads `.claude/session-state/review-mode` between the explicit operator phrase and the `CHATGPT_REVIEW_DEFAULT_MODE` env var. A missing or invalid file value falls through silently; the env-var and hard-default tiers are unchanged.
+
+**Changed:**
+- The MODE prose blocks in all three chatgpt-* agents now describe four resolution tiers instead of three (no behavioural change for repos that don't write the state file).
+- Escalation Step 5b in `bug-fixer.md` now reads the state file before printing the operator handoff. If a mode is set, the handoff includes a one-liner telling the operator the downstream pipeline will inherit it.
+
+**Consumer migration after v2.12.0 lands:**
+- Run `/claudeupdate` (or `git submodule update --remote .claude-framework && node .claude-framework/sync.js`) to pick up the new bug-fixer + patched chatgpt-* agents.
+- Add `.claude/session-state/` to `.gitignore` — the directory holds per-session ephemeral state.
+- Existing trigger phrases (`bug-fixer: <N>`, `bug-fixer: done <N>`, `chatgpt-pr-review: parallel`, etc.) are unchanged and continue to work. `CHATGPT_REVIEW_DEFAULT_MODE` still works as before; the state file just takes priority when present.
+
+**Trade-off note:** the state-file mechanism intentionally avoids modifying agent dispatch semantics — every chatgpt-* agent independently reads the file at start, so a coordinator that dispatches multiple chatgpt-* sub-agents propagates the choice for free without needing to pass parameters through. The cost is a per-session disk file that must be cleaned up (handled by bug-fixer Step 14 on successful finalise, by manual `rm` otherwise, or by a future framework-level cleanup hook).
+
+---
+
 ## 2.11.0 — 2026-05-31 — 9-round chatgpt-pr-review parallel-mode learning from admin-partner-console (`SYSTEM_PROMPT_PR_V2` + pr-reviewer + builder + parallel-mode)
 
 **Highlights:** distilled from a 9-round `chatgpt-pr-review` parallel-mode loop on a multi-tenant admin/partner console build in `altessa` (PR #19, 39 distinct real bugs fixed, 6 HIGH-severity, 3 false positives, server tests 311 → 347). Adds 6 new hunt targets + JSON-only output discipline to `SYSTEM_PROMPT_PR_V2`, a `Diff completeness hunts` block + class-of-bug discipline note to the canonical `pr-reviewer` agent, an extend-type-then-plumb minimal-change check to the canonical `builder` agent, and four reviewer-discipline rules (L2 / L4 / L5 / L6) to the `parallel-mode` operator-paste prompt template. All additions are scope-neutral and apply across multi-tenant SaaS, single-tenant apps, internal tools, and operator-facing repos. Minor-class change — additive prompt + agent-doc content, no schema or envelope contract change.

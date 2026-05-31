@@ -31,7 +31,7 @@ user can audit after the fact.
 
 ## Configuration
 
-**MODE** — three values: `manual`, `automated`, `parallel`. Resolution order: (1) explicit operator phrase at invocation; (2) `CHATGPT_REVIEW_DEFAULT_MODE` env var; (3) hard default `manual`. Recorded in the session log Session Info block and restored on resume.
+**MODE** — three values: `manual`, `automated`, `parallel`. Resolution order: (1) explicit operator phrase at invocation; (2) session-state file `.claude/session-state/review-mode` (single line: `manual` / `automated` / `parallel`; written by orchestrators like `bug-fixer` so the choice survives sub-agent dispatches without an env-var session restart); (3) `CHATGPT_REVIEW_DEFAULT_MODE` env var; (4) hard default `manual`. Recorded in the session log Session Info block and restored on resume.
 - `manual` (hard default) — you copy the spec into the ChatGPT UI and paste the response back. No API key required.
 - `automated` — the agent calls the OpenAI API via `scripts/chatgpt-review.ts`. Requires `OPENAI_API_KEY`.
 - `parallel` — runs BOTH paths in interleaved order: kicks off the OpenAI CLI in the background while the operator uploads the spec to ChatGPT-web, then renders a side-by-side compare panel before triage. Requires `OPENAI_API_KEY`. Used to A/B-tune the OpenAI prompts until they reliably catch the ChatGPT-web finding set. **Shared contract:** [`docs/review-pipeline/parallel-mode.md`](../../docs/review-pipeline/parallel-mode.md) — loop shape, compare-panel rendering, session-log schema, failure handling, and the Phase 3 transition criteria live there. Defer to that file for behaviour not spelled out below.
@@ -63,8 +63,9 @@ When the user says "run chatgpt-spec-review" (or equivalent):
 
 Apply the resolution order from § Configuration:
 1. Explicit operator phrase in the invocation → that wins. Recognised keywords: `automated`, `manual`, `parallel`.
-2. If no keyword is present, read `CHATGPT_REVIEW_DEFAULT_MODE` env var. Accept `manual` / `automated` / `parallel`; any other value is treated as unset.
-3. Fall back to hard default: `manual`. Do NOT ask the operator — silent default keeps the no-cost path active on a fresh machine.
+2. If no keyword is present, read `.claude/session-state/review-mode` (single-line file). Accept `manual` / `automated` / `parallel` after trimming whitespace; any other value (or missing/unreadable file) is treated as unset and falls through. This tier lets `bug-fixer` and similar orchestrators set a mode mid-session that propagates to every downstream reviewer dispatch without restarting the Claude Code session.
+3. If still unset, read `CHATGPT_REVIEW_DEFAULT_MODE` env var. Accept `manual` / `automated` / `parallel`; any other value is treated as unset.
+4. Fall back to hard default: `manual`. Do NOT ask the operator — silent default keeps the no-cost path active on a fresh machine.
 
 If MODE resolves to `automated` or `parallel`, verify `OPENAI_API_KEY` is set before proceeding. If missing, abort with: `error: <mode> mode requires OPENAI_API_KEY. Add it to your shell or .env file before running this agent.` Do NOT silently fall back to `manual`.
 
