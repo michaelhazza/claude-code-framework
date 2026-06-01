@@ -32,6 +32,33 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.12.1 — 2026-06-01 — promote release-control compound learnings (idempotency content-verification, result-type discrimination, post-write recheck, six new pr-review hunt targets)
+
+**Highlights:** four project-agnostic compound learnings, distilled in `release-control` over PRs #16–#23 (the v1.1 follow-ups batch and the multi-repo-readiness-v1 finalisation pass), are promoted upstream so every consumer repo gets the same review power without keeping the rules as local forks. Each addition fits its host file's existing pattern (architect chunk-contract bullet, pr-reviewer hunt-target bullet, spec-authoring Section 10 entry + checklist row, SYSTEM_PROMPT_PR_V2 hunt-target bullet).
+
+Patch-class change — purely additive prompt + reference content across four files. No schema, envelope, or agent-contract change. Consumer migration: run `/claudeupdate`; the four files will sync cleanly with no `.framework-new` writes for consumers whose only customisation was these same patterns (the canonical hashes now match the additions).
+
+**Added:**
+- `.claude/agents/architect.md` § 3 Per-Chunk Detail — new "State-based idempotency: 'exists' is not 'correct'" rule appended after the Dependencies bullet. Requires plan-level pinning of three outcomes on any X-exists path (content matches → `exists`; drift → repair + record success only on repair success; repair fails → typed errorCode + `partial` audit). Catches the failure mode where an orchestrator retries against partial state and silently records success while the resource remains wrong.
+- `.claude/agents/pr-reviewer.md` § Diff completeness hunts — new "Result-type error/value discrimination" hunt bullet. Flags any consumer of a discriminated `{ errored } | { value }` wrapper (Result, Either, FetchResult, etc.) that collapses `errored` and `value === null` into a single expression. The two states have different recovery semantics (transient upstream failure vs. genuine 404) and conflating them turns a 403 into false "resource missing" guidance. **Class-of-bug discipline** rule extended with explicit "include code newly added in the same diff" callout — the canonical miss is an error-masking fix in one consumer while a second consumer added in the same change repeats the original anti-pattern.
+- `docs/spec-authoring-checklist.md` § Section 10.8 (new) — "Post-write recheck for residual race after row-lock release". Any `DB-update-inside-FOR-UPDATE-tx → external HTTP call` flow must declare: (a) the snapshot taken inside the transaction; (b) the re-select + comparison after 2xx; (c) the drift outcome (`status: 'partial'` + typed errorCode + named flag). Without this, a concurrent rotation between lock release and HTTP completion is silently lost while the local audit lies. Pre-launch hardening checklist gains one corresponding `[Section 10]` row.
+- `scripts/chatgpt-reviewPure.ts` SYSTEM_PROMPT_PR_V2 — six new Hunt Target bullets appended to the existing list, before "JSON-only output discipline":
+  1. **State-based idempotency: "exists" without content verification** — mirrors the architect rule for downstream PR detection.
+  2. **External-API parameter-format literals** — verify contract-level string formats (owner-qualified branch filters, ref-name prefixes, full SHAs, owner/repo split) against the documented external-API shape.
+  3. **Symmetry-with-new-code on fix application** — extend Class-of-bug discipline to cover code newly introduced in the same diff.
+  4. **Reusable-workflow defaults precedence** — flag any caller `with:` value that shadows a more-specific reusable default (canonical bug: a staging caller passing `config: fly.toml`, shadowing the reusable's `fly.staging.toml` default → production config in staging).
+  5. **Doc/code drift** — scan referenced docs (onboarding / runbook / README) for code-level symbols the diff renames, removes, or contradicts.
+  6. **Prototype / spec drift** — scan `prototypes/*` and spec files for implementation-level claims that no longer match the diff.
+
+**Changed:**
+- `.claude/FRAMEWORK_VERSION` — 2.12.0 → 2.12.1.
+
+**Source rollup:** `release-control` compound-learning entries `[2026-05-31] Pattern — Drift-repair for idempotent write-on-existing-state`, `[2026-05-31] Pattern — FetchResult.errored vs value === null`, `[2026-05-31] Pattern — Post-write recheck for residual race after row-lock release`, plus the six hunt targets surfaced in the multi-repo-readiness-v1 finalisation pass. The compound-learning step had been adding these to local copies of the canonical files in `release-control`; this PR moves the learnings to canonical so the local forks can be retired.
+
+**Consumer migration after v2.12.1 lands:** run `/claudeupdate` to pick up the four file updates. Consumers that already added these same rules locally (via compound-learning or manual edit) can drop their local forks by accepting the canonical content; sync.js will write `.framework-new` for review where the locally-added wording differs from the canonical wording adopted here.
+
+---
+
 ## 2.12.0 — 2026-06-01 — bug-fixer promoted to framework + session-scoped review-mode + release-branch targeting
 
 **Highlights:** the GitHub-issue-driven `bug-fixer` agent (previously local-only in `automation-v1`) is promoted into the framework so every consumer repo gets the same fix-mode → finalise-mode contract used by the Release Control v2.3 § 12 stage-one loop. Three operator-facing improvements ship together:

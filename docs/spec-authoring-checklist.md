@@ -384,9 +384,21 @@ If the spec introduces or modifies a state machine (step transitions, run aggreg
 
 A spec that describes behaviour without pinning valid transitions and forbidden transitions will have its state machine diverge from implementation within two feature cycles.
 
+### 10.8 Post-write recheck for residual race after row-lock release
+
+When an orchestrator flow is `DB-update-inside-FOR-UPDATE-transaction → external HTTP call` (e.g. write a row's hash inside a `FOR UPDATE` transaction, then push the corresponding secret to GitHub Actions, Stripe, an IdP, etc.), the row-lock **cannot** span the HTTP call — holding it across an external round-trip would starve the connection pool, so the transaction commits and releases the lock before the HTTP write begins. That opens a residual race window: a concurrent writer can rotate the row between the lock release and the HTTP completion, leaving the external system with a stale/wrong value while the local audit still records success.
+
+Pin the recheck in the spec. After the HTTP write returns 2xx, **re-select the row's relevant hash/state and compare it to a snapshot captured inside the original transaction.** If drift is detected, mark the terminal audit `status: 'partial'` + a named flag (e.g. `staleSecretDetected: true`) and surface a typed `errorCode` in the response step. This makes the residual race observable rather than silent — the catch ("the audit lies") is worse than the failure ("the external write didn't happen"), because a lying audit leaves the operator with no signal to investigate.
+
+State three things in the spec for any such flow:
+
+- The snapshot taken inside the transaction (which column/hash is captured, and where).
+- The recheck after the 2xx (the re-select + comparison).
+- The drift outcome (terminal audit `status: 'partial'`, the named flag, and the typed `errorCode` returned to the caller).
+
 ### Reviewer signal this prevents
 
-"No idempotency posture declared" / "What happens when two callers race here?" / "How does the caller know if this partially failed?" — all caught in the pre-launch hardening pre-implementation hardening pass (amendments v2–v5, Chunks 3, 4, 5). These gaps are architectural, not stylistic — they produce correctness bugs at production load.
+"No idempotency posture declared" / "What happens when two callers race here?" / "How does the caller know if this partially failed?" / "The DB-then-HTTP write has no post-write recheck — a concurrent rotation between lock release and HTTP completion is silently lost" — all caught in the pre-launch hardening pre-implementation hardening pass. These gaps are architectural, not stylistic — they produce correctness bugs at production load.
 
 ---
 
@@ -500,6 +512,7 @@ Before invoking `spec-reviewer` on a draft spec, answer yes to all of the follow
 - [ ] **[Section 10]** Every cross-flow chain has a declared terminal event + post-terminal prohibition
 - [ ] **[Section 10]** Every DB unique constraint has a named HTTP mapping (no bubbled 500s from `23505`)
 - [ ] **[Section 10]** If a state machine is introduced or modified: valid transitions, forbidden transitions, and status-set closure are declared
+- [ ] **[Section 10]** Every `DB-update-in-transaction → external HTTP call` flow declares a post-write recheck (snapshot inside the tx, re-select after 2xx, `status: 'partial'` + typed errorCode on drift)
 - [ ] **[Section 11]** Spec opens with `Status:` / `Spec date:` / `Last updated:` / `Author:` / `Build slug:` frontmatter
 - [ ] **[Section 12]** Lifecycle Declaration present per spec §7.2 (5 required fields; launch state = `Inception` or `Growth` only)
 - [ ] **[Section 12]** ABCd Estimate present with S/M/L sizing only per spec §7.3 (4 dimensions; no numeric values)

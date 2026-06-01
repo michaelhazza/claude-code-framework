@@ -137,6 +137,8 @@ For each chunk:
 - **Test considerations** — key scenarios and edge cases the pr-reviewer should check after implementation
 - **Dependencies** — which other chunks must be complete first
 
+**State-based idempotency: "exists" is not "correct".** For every chunk whose contract describes state-based idempotency ("if X exists, record exists; else create X" — e.g. "is the onboarding branch already pushed?", "does the PR/secret/release already exist?"), require the plan to specify how the orchestrator verifies the EXISTING X's content matches the expected canonical content. Recording `status: 'exists'` from the existence check alone is wrong when the existing state may be partial or stale (a prior partial run leaves a half-built branch). The plan must pin three outcomes on the X-exists path: (a) content matches → record `exists`; (b) drift detected → attempt repair AND only record `exists` / `driftRepaired` on repair success; (c) repair fails → record `status: 'error'` with a typed errorCode and a `partial` audit. **"exists" status without content verification is a state lie.**
+
 ### 4. UX Considerations (when applicable)
 
 If the feature involves UI changes:
