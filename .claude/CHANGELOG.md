@@ -32,6 +32,58 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.13.0 — 2026-06-01 — framework learning loops (phase-lock + experiment-runner + chunk-learnings + audit-context-packs + cross-repo-scout)
+
+**Highlights:** Five framework augmentations derived from a 2026-05 comparison against the open-source `vibecode-pro-max-kit`. All five are additive, no breaking changes to existing pipelines.
+
+1. **Phase-lock hook** (`.claude/hooks/phase-lock.js` + `settings.json` registration): mechanically blocks Edit/Write/MultiEdit calls outside the allowed-paths matrix for the current build phase. Coordinator playbooks write `tasks/builds/{slug}/.phase` at each phase transition (spec-coordinator Step 6, feature-coordinator Steps 5/6/7, finalisation-coordinator Step 0).
+
+2. **`experiment-runner` agent** (`.claude/agents/experiment-runner.md` + `scripts/experiment-runner-loopPure.ts` + test): generic metric-optimisation loop for non-binary work (perf tuning, flake hunting, prompt A/B). Pure helper `decideKeepOrDiscard` (Contract 1) drives keep/discard per iteration; TSV audit trail (Contract 7) with status enum {keep, discard, failed}. Surfaced from `reality-checker` (numeric NEEDS_WORK), `triage-agent` (capture-phrase classifier), `bug-fixer` (flake:* / perf:* labels).
+
+3. **Chunk-learnings injection** (feature-coordinator + builder edits): after each chunk's G1 passes, feature-coordinator appends a 5-10 line entry to `tasks/builds/{slug}/chunk-learnings.md` (Contract 3). Next chunk's builder reads it at Step 0. Forward-only — no retroactive backfill.
+
+4. **`audit-context-packs` check** (`scripts/audit-context-packs.ts` + test + finalisation-coordinator Step 6 wire + code-graph-freshness-check.js refactor): pure-function validates that every anchor in `docs/context-packs/*.md` resolves to an `<a id>` or heading-derived slug in `architecture.md` (Contract 4). Runs at finalisation Step 6 (blocks on fail) AND at SessionStart (warns on fail).
+
+5. **`cross-repo-scout` agent** (`.claude/agents/cross-repo-scout.md` + `scripts/cross-repo-scoutPure.ts` + test + project-registries.json.template update + migration): searches sibling repos under `.claude/project-registries.json sibling_repos[]` (local Glob/Grep + GitHub `gh search code` fallback). Pure helper `rankAndTrim` (Contract 2) scores recency × framework-alignment × test-presence; agent envelope (Contract 6) carries partial-result signalling. Wired into `spec-coordinator` Step 3a (duplication) and `architect` Step 2 (approach selection).
+
+**Added:**
+- `.claude/hooks/phase-lock.js` — ESM PreToolUse hook (decidePhaseLock pure helper inside).
+- `.claude/hooks/phase-lock.test.js` — standalone node:test smoke.
+- `.claude/agents/experiment-runner.md` — new agent.
+- `.claude/agents/cross-repo-scout.md` — new agent.
+- `scripts/experiment-runner-loopPure.ts` + test.
+- `scripts/cross-repo-scoutPure.ts` + test.
+- `scripts/audit-context-packs.ts` + test.
+- `migrations/v2.13.0.js` — two halves: tasks/builds/*/.phase added to consumer .gitignore + sibling_repos: [] added to .claude/project-registries.json.
+- `.claude/project-registries.json.template.example.md` — documents the sibling_repos[] entry shape.
+
+**Changed:**
+- `.claude/settings.json` — appends phase-lock.js entry to all three existing PreToolUse matcher blocks (Write/Edit/MultiEdit), preserves existing config-protection.js + long-doc-guard.js entries.
+- `.claude/project-registries.json.template` — adds `sibling_repos: []` + `sibling_repos_$comment` doc-sibling.
+- `.claude/agents/feature-coordinator.md` — phase-marker writes at Steps 5/6/7; chunk-learnings append after each G1.
+- `.claude/agents/builder.md` — Step 0 reads chunk-learnings.md if present.
+- `.claude/agents/spec-coordinator.md` — Step 6 writes .phase=spec; Step 3a dispatches cross-repo-scout.
+- `.claude/agents/finalisation-coordinator.md` — Step 0 writes .phase=finalise; Step 6 invokes audit-context-packs with bash path-resolution.
+- `.claude/agents/architect.md` — Step 2 dispatches cross-repo-scout per approach.
+- `.claude/agents/reality-checker.md` — NEEDS_WORK with numeric criterion surfaces experiment-runner.
+- `.claude/agents/triage-agent.md` — capture-phrase classifier tags experiment-eligible.
+- `.claude/agents/bug-fixer.md` — fix-mode Step 0 recommends experiment-runner on flake:/perf: labels.
+- `.claude/hooks/code-graph-freshness-check.js` — wraps existing 6 branches in runSessionStartChecks(); appends audit-context-packs check; single terminal exit.
+- `manifest.json` — version bump 2.12.1 → 2.13.0 + new managedFiles entries for scripts/ paths not covered by existing globs.
+
+**Consumer migration after v2.13.0 lands:**
+- Run `/claudeupdate` (or `git submodule update --remote .claude-framework && node .claude-framework/scripts/run-migrations.js . 2.12.1 2.13.0 && node .claude-framework/sync.js`).
+- The migration v2.13.0.js idempotently: (a) adds `tasks/builds/*/.phase` to consumer .gitignore; (b) adds `sibling_repos: []` to existing `.claude/project-registries.json` if present.
+- Configure cross-repo-scout by adding entries to `sibling_repos[]` — see `.claude/project-registries.json.template.example.md` for the shape.
+- New builds get phase-lock enforcement automatically (coordinator writes `.phase`). In-flight builds at v2.13.0 adoption do NOT get retroactive `.phase` — the hook treats missing `.phase` as no-enforcement, so existing builds continue uninterrupted.
+
+**Plan-vs-spec drift recorded:**
+- Spec Contract 5 § review row describes a "first invocation per session" stdout message. The plan-and-implementation simplified this to silent no-op (no print) because hooks invoke as fresh child processes and a sentinel-file mechanism was not warranted. Documented in plan § Known plan-vs-spec drift.
+
+**Source provenance:** `tasks/builds/framework-learning-loops/spec.md` (in automation-v1) + 3 review tiers (claude-spec-review 8 findings, Codex spec-reviewer 22 fixes + 2 directional, ChatGPT-spec-review 12 findings across 3 rounds). 9-chunk implementation across one PR on the framework canonical.
+
+---
+
 ## 2.12.1 — 2026-06-01 — promote release-control compound learnings (idempotency content-verification, result-type discrimination, post-write recheck, six new pr-review hunt targets)
 
 **Highlights:** four project-agnostic compound learnings, distilled in `release-control` over PRs #16–#23 (the v1.1 follow-ups batch and the multi-repo-readiness-v1 finalisation pass), are promoted upstream so every consumer repo gets the same review power without keeping the rules as local forks. Each addition fits its host file's existing pattern (architect chunk-contract bullet, pr-reviewer hunt-target bullet, spec-authoring Section 10 entry + checklist row, SYSTEM_PROMPT_PR_V2 hunt-target bullet).

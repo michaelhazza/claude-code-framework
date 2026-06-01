@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.10.3",
+  "frameworkVersion": "2.13.0",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
@@ -38,7 +38,14 @@
     { "path": "schemas/CHANGELOG.md", "category": "review-schema", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/run-migrations.js", "category": "migration-runner", "mode": "sync", "substituteAt": "never" },
     { "path": "migrations/README.md", "category": "migration", "mode": "sync", "substituteAt": "never" },
-    { "path": "migrations/v*.js", "category": "migration", "mode": "sync", "substituteAt": "never" }
+    { "path": "migrations/v*.js", "category": "migration", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/experiment-runner-loopPure.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/cross-repo-scoutPure.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/audit-context-packs.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/__tests__/experiment-runner-loopPure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/__tests__/cross-repo-scoutPure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/__tests__/audit-context-packs.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
+    { "path": ".claude/project-registries.json.template.example.md", "category": "reference", "mode": "sync", "substituteAt": "never" }
   ],
   "removedFiles": [],
   "doNotTouch": [
