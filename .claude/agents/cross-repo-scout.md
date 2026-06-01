@@ -70,9 +70,22 @@ For each entry in `sibling_repos[]`:
 
 ### Local mode (when `mode !== 'github'`)
 
-1. Check whether `local_path` exists and is accessible (Bash: `test -d <local_path>`).
-   - If missing: record `reason: 'local_path_missing'` in `skippedRepos`, continue to GitHub step if `mode === 'both'`.
-   - If inaccessible (exists but permission denied): record `reason: 'local_path_inaccessible'`, continue to GitHub step if `mode === 'both'`.
+**Skip-bookkeeping rule.** A repo is added to `skippedRepos` only after every
+configured search avenue for that repo has been exhausted. For `mode === 'local'`
+that means the local check failed. For `mode === 'both'` that means both the
+local check AND the GitHub fallback failed. Do NOT append to `skippedRepos`
+mid-flow — track local-miss / github-miss reasons in scratch state, then commit
+to `skippedRepos` (or `searchedRepos`) once the per-repo decision is final.
+Without this discipline, a repo can land in both `searchedRepos` and
+`skippedRepos`, making `partial: true` misleading.
+
+1. Check whether `local_path` exists and is accessible (Bash: `test -d "$local_path"`).
+   - If missing: note `local_reason: 'local_path_missing'` in scratch state.
+     For `mode === 'both'`, proceed to the GitHub step; for `mode === 'local'`,
+     commit `{ name, reason: 'local_path_missing' }` to `skippedRepos`.
+   - If inaccessible (exists but permission denied): note
+     `local_reason: 'local_path_inaccessible'` similarly; for `mode === 'both'`
+     proceed to GitHub; for `mode === 'local'` commit to `skippedRepos`.
 
 2. If accessible, use Glob and Grep to find matching files:
    - Glob: `**/*.ts`, `**/*.js`, `**/*.md` under `local_path`
@@ -80,9 +93,12 @@ For each entry in `sibling_repos[]`:
 
 3. For each matching file, determine `lastModifiedDate` via:
    ```bash
-   git -C <local_path> log -1 --format=%cI -- <relative-file-path>
+   git -C "$local_path" log -1 --format=%cI -- "$relative_file_path"
    ```
    Take only the date portion (`YYYY-MM-DD`). Skip the file if the command fails or returns empty.
+   Quote both shell variables: `local_path` and the result-derived
+   `relative_file_path` originate from config / search output and may contain
+   spaces or shell metacharacters.
 
 4. Determine `hasColocatedTest`: check whether a `*.test.ts` or `*.spec.ts` file exists in the same directory as the matching file (Glob the directory).
 
@@ -106,8 +122,12 @@ For each entry in `sibling_repos[]`:
    Scoped by `--repo` (not `--owner`) so only the configured sibling repo's
    matches are returned — `--owner` would pull in unrelated repos under the
    same account and misattribute hits to the sibling.
-   On rate-limit error (HTTP 429): record `reason: 'github_rate_limited'`, skip this repo.
-   On other error: record `reason: 'github_search_failed'`, skip this repo.
+   On rate-limit error (HTTP 429): commit
+   `{ name, reason: 'github_rate_limited' }` to `skippedRepos` (per the
+   Skip-bookkeeping rule above — only when no prior local search succeeded
+   for this repo).
+   On other error: commit `{ name, reason: 'github_search_failed' }` to
+   `skippedRepos` under the same conditions.
 
 3. For each result, determine `lastModifiedDate`:
    ```bash

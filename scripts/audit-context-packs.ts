@@ -178,7 +178,9 @@ function extractPackAnchors(content: string): Array<{ anchor: string; line: numb
       // A top-level list item (no leading whitespace) that doesn't look like an
       // anchor ref resets the context. Sub-items (indented) may be anchor-ref lines
       // and do NOT reset the context — let the bare-fragment check run on them.
-      if (!/`#[a-z0-9-]+`/.test(line)) {
+      // Underscore is part of the GFM-slug allow-list (see gfmSlug above), so
+      // the regex must accept `_` to match anchors like `state-machine-usability_state`.
+      if (!/`#[a-z0-9_-]+`/.test(line)) {
         underSourceBlockHeading = false;
       }
     }
@@ -191,8 +193,10 @@ function extractPackAnchors(content: string): Array<{ anchor: string; line: numb
     }
 
     // Form 2: Bare backtick fragment under source-block heading: `#anchor-id`
+    // Mirror the declared-anchor slug character class — must include `_` so
+    // underscore-bearing anchors are extracted and validated.
     if (underSourceBlockHeading) {
-      const bareFragRe = /`(#[a-z0-9-]+)`/g;
+      const bareFragRe = /`(#[a-z0-9_-]+)`/g;
       while ((m = bareFragRe.exec(line)) !== null) {
         // Strip the leading '#'
         refs.push({ anchor: m[1].slice(1), line: lineNo });
@@ -237,14 +241,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
   (async () => {
     try {
-      // Read architecture.md
-      if (!existsSync(ARCH_PATH)) {
-        process.stderr.write(`audit-context-packs: architecture.md not found at ${ARCH_PATH}\n`);
-        process.exit(1);
-      }
-      const architectureMarkdown = readFileSync(ARCH_PATH, 'utf8');
-
-      // Read pack files from docs/context-packs/
+      // Read pack files from docs/context-packs/. If the directory is absent
+      // OR contains no *.md files, there is nothing to validate — short-circuit
+      // to exit 0 to match the pure helper's "empty packs returns ok" contract.
+      // This must run BEFORE the architecture.md existence check: a consumer
+      // with no context packs and no architecture.md should not have
+      // finalisation falsely blocked by this advisory check.
       const packPaths: string[] = [];
       const packsDir = join(PROJECT_DIR, 'docs', 'context-packs');
       if (existsSync(packsDir)) {
@@ -252,6 +254,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           if (f.endsWith('.md')) packPaths.push(join(packsDir, f));
         }
       }
+
+      if (packPaths.length === 0) {
+        process.stdout.write('OK\n');
+        process.exit(0);
+      }
+
+      // Read architecture.md — only required when there are packs to validate.
+      if (!existsSync(ARCH_PATH)) {
+        process.stderr.write(`audit-context-packs: architecture.md not found at ${ARCH_PATH}\n`);
+        process.exit(1);
+      }
+      const architectureMarkdown = readFileSync(ARCH_PATH, 'utf8');
 
       const packs = packPaths.map((p) => ({
         path: basename(p),

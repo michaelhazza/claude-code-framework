@@ -1,13 +1,22 @@
 /**
  * audit-context-packs.test.ts
  *
- * Pure-function tests for auditContextPacks (Contract 4).
+ * Pure-function tests for auditContextPacks (Contract 4) plus a few CLI-level
+ * regressions for the script's exit-code contract.
  * Run via: npx tsx scripts/__tests__/audit-context-packs.test.ts
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { auditContextPacks } from '../audit-context-packs.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const SCRIPT_PATH = join(dirname(__filename), '..', 'audit-context-packs.ts');
 
 // ---------------------------------------------------------------------------
 // Test 1: Empty packs → ok
@@ -244,4 +253,52 @@ test('GFM slug preserves underscores in heading text', () => {
     architectureMarkdown: arch,
   });
   assert.equal(result.kind, 'ok', 'underscored anchors must be recognised');
+});
+
+// ---------------------------------------------------------------------------
+// Test 15 (R2 OAI-PR-002 regression): bare backtick fragments under a
+// source-block heading must allow underscores. The extractor previously used
+// `[a-z0-9-]` and silently skipped underscored anchors — so a broken
+// underscored anchor in a pack's source-block list would never be flagged.
+// ---------------------------------------------------------------------------
+test('bare backtick fragment under source-block heading allows underscores', () => {
+  const arch = '# Real Section\n';
+  // Pack carries a source-block heading then a bare backtick fragment with an
+  // underscore. The fragment names an anchor that is NOT declared, so the
+  // audit must catch it as missing — proving extraction happened.
+  const pack = [
+    '- `architecture.md`:',
+    '  - `#state-machine-usability_state`',
+  ].join('\n');
+  const result = auditContextPacks({
+    packs: [{ path: 'minimal.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  assert.equal(result.kind, 'fail', 'underscored bare fragment must be extracted and validated');
+  if (result.kind !== 'fail') return;
+  assert.equal(result.missing.length, 1);
+  assert.equal(result.missing[0].anchor, 'state-machine-usability_state');
+});
+
+// ---------------------------------------------------------------------------
+// Test 16 (R2 OAI-PR-001 regression): CLI must exit 0 when there are no
+// context packs to validate, even if architecture.md is also missing. The
+// pure helper's contract is "empty packs → ok"; the CLI used to require
+// architecture.md first and would falsely block finalisation on repos that
+// have not yet adopted context packs.
+// ---------------------------------------------------------------------------
+test('CLI exits 0 when no context packs exist (architecture.md also absent)', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'audit-cli-noempty-'));
+  try {
+    const result = spawnSync('npx', ['tsx', SCRIPT_PATH], {
+      env: { ...process.env, CLAUDE_PROJECT_DIR: tmp },
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      timeout: 30_000,
+    });
+    assert.equal(result.status, 0, `expected exit 0, got ${result.status}; stderr=${result.stderr}`);
+    assert.match(result.stdout, /^OK\s*$/, 'expected stdout "OK"');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
