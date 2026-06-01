@@ -182,3 +182,46 @@ test('multiple packs — one miss surfaces with correct pack name', () => {
   assert.equal(result.missing[0].pack, 'review.md');
   assert.equal(result.missing[0].anchor, 'no-such-section');
 });
+
+// ---------------------------------------------------------------------------
+// Test 12 (PR-FLL-003 regression): Heading-shape line inside fenced code block
+// in architecture.md is NOT registered as a declared anchor.
+// ---------------------------------------------------------------------------
+test('headings inside fenced code blocks in architecture.md are not declared anchors', () => {
+  const arch = [
+    '# Real Heading',
+    '',
+    'Example markup:',
+    '',
+    '```markdown',
+    '## Fake Heading Inside Fence',
+    '```',
+    '',
+    '# Real Heading Two',
+    '',
+  ].join('\n');
+  const pack = '[see fake](architecture.md#fake-heading-inside-fence)\n';
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  assert.equal(result.kind, 'fail', 'fenced-block headings must not register as declared anchors');
+  if (result.kind !== 'fail') return;
+  assert.equal(result.missing[0].anchor, 'fake-heading-inside-fence');
+});
+
+// ---------------------------------------------------------------------------
+// Test 13 (PR-FLL-004 regression): GFM duplicate-suffix never collides with
+// a naturally-suffixed sibling heading.
+// `# Setup`, `# Setup`, `# Setup 1` → setup, setup-1, setup-1-1
+// ---------------------------------------------------------------------------
+test('duplicate-heading suffix skips collisions with naturally-suffixed siblings', () => {
+  const arch = '# Setup\n\n# Setup\n\n# Setup 1\n';
+  // setup-1-1 is what GitHub's renderer produces for the third heading.
+  const pack = '[ref](architecture.md#setup-1-1)\n';
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  assert.equal(result.kind, 'ok', 'setup-1-1 must be a registered anchor');
+});

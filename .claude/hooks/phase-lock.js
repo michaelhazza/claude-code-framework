@@ -256,7 +256,9 @@ function readBuildSlug(projectDir) {
   try {
     const content = readFileSync(`${projectDir}/tasks/current-focus.md`, 'utf8');
     // Look for lines like: build_slug: framework-learning-loops
-    // or: **Build slug:** `framework-learning-loops`
+    // (matches the YAML-style frontmatter and the prose body's `Active build slug:` form
+    // only when the field name uses underscore/hyphen — the literal `build slug` with a
+    // space is intentionally NOT matched to avoid false hits on prose like "the build slug is...")
     const match = content.match(/build[_-]slug[:\s*`]+([a-zA-Z0-9_-]+)/i);
     return match ? match[1] : null;
   } catch {

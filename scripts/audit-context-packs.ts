@@ -64,10 +64,14 @@ function extractDeclaredAnchors(markdown: string): Set<string> {
 
   // 2. Heading-derived slugs with GFM duplicate-suffix algorithm.
   //    Track counts globally across the file (not reset per section).
+  //    Skip heading-shape lines inside fenced code blocks — they are example markup,
+  //    not real declared anchors (closes the ghost-anchor false-positive corridor).
   const seenSlugs = new Map<string, number>();
   const lines = markdown.split('\n');
-  for (const line of lines) {
-    const headingMatch = /^#{1,6}\s+(.+)$/.exec(line);
+  const fenced = buildFenceMask(lines);
+  for (let i = 0; i < lines.length; i++) {
+    if (fenced[i]) continue;
+    const headingMatch = /^#{1,6}\s+(.+)$/.exec(lines[i]);
     if (!headingMatch) continue;
     // Strip inline code and links from heading text before slugging.
     const text = headingMatch[1]
@@ -75,10 +79,20 @@ function extractDeclaredAnchors(markdown: string): Set<string> {
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
     const base = gfmSlug(text);
     if (!base) continue;
-    const count = seenSlugs.get(base) ?? 0;
+    // GitHub's slug-assignment algorithm: first occurrence uses the bare base;
+    // subsequent occurrences get `-1`, `-2`, etc. If the candidate slug already
+    // collides with a slug claimed by an earlier heading (natural or suffixed),
+    // keep incrementing until a free slot is found. Matches GitHub's renderer
+    // for sequences like `# Setup` / `# Setup` / `# Setup 1` → setup, setup-1,
+    // setup-1-1.
+    let count = seenSlugs.get(base) ?? 0;
+    let candidate = count === 0 ? base : `${base}-${count}`;
+    while (anchors.has(candidate)) {
+      count += 1;
+      candidate = `${base}-${count}`;
+    }
+    anchors.add(candidate);
     seenSlugs.set(base, count + 1);
-    // First occurrence has no suffix, subsequent get -1, -2, ...
-    anchors.add(count === 0 ? base : `${base}-${count}`);
   }
 
   return anchors;
