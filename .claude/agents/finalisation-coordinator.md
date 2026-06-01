@@ -57,6 +57,21 @@ Only one warning block is printed per session regardless of how many gaps it con
 
 **Spec-deviations check:** check `spec_deviations:` in the handoff. If present, note them — they will be included in the chatgpt-pr-review kickoff context in step 5.
 
+After all context is loaded and entry guards pass, write the phase marker:
+
+```bash
+mkdir -p tasks/builds/{slug} && echo -n "finalise" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `finalise` phase. The hook treats `finalise` as
+no-op — finalisation touches to `KNOWLEDGE.md`, `docs/capabilities.md`,
+`tasks/todo.md`, and consumer-side doc-sync targets remain unblocked.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
+
 ## Step 1 — Top-level TodoWrite list
 
 Emit a TodoWrite list before doing any other work. Update items in real time as you complete each step.

@@ -203,6 +203,21 @@ When the sub-agent returns with a finalised plan, update `progress.md` and proce
 
 ## Step 5 — plan-gate
 
+Write the phase marker:
+
+```bash
+mkdir -p tasks/builds/{slug} && echo -n "plan" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `plan` phase. Any operator revise loop runs under
+plan-phase enforcement. Write this before presenting the plan to the operator
+so the transition is recorded even if the operator replies `abort`.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
+
 Present the finalised plan to the operator verbatim:
 
 > **Plan finalised at `tasks/builds/{slug}/plan.md`.**
@@ -245,6 +260,20 @@ The snapshot is (re)written at the end of every chunk loop iteration (see "Chunk
 
 ### Builder invocation
 
+Before dispatching builder for the **first chunk only**, write the phase marker:
+
+```bash
+mkdir -p tasks/builds/{slug} && echo -n "build" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `build` phase. Subsequent chunks do not overwrite —
+the file is already `build`.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
+
 **HARD RULE — builder dispatch is mandatory for all chunk construction.** The coordinator MUST dispatch `builder` via the `Agent` tool for every chunk in the plan. The coordinator MUST NEVER write chunk code inline with `Edit` or `Write` in the main session. Inline construction in the main session runs on the operator's main-session model (Opus during this coordinator) instead of Sonnet, defeats the cost model that motivates the builder sub-agent, and creates an unreviewed scope-drift hole because the commit-integrity invariant below depends on builder's structured `files-changed` verdict. If a chunk feels too small to dispatch, that is a plan defect — escalate as a `PLAN_GAP` to architect rather than implementing inline.
 
 Invoke `builder` as a sub-agent with an explicit per-invocation model override (belt-and-suspenders over `builder.md` frontmatter):
@@ -278,9 +307,21 @@ Cap at 3 fix attempts per chunk. On failure: send diagnostics to a fresh `builde
 
 If builder reports `PLAN_GAP`:
 
-1. Send back to architect: "Builder found a gap in chunk `{chunk-name}`: {gap}. Revise the plan at `tasks/builds/{slug}/plan.md`."
-2. Re-invoke builder with the revised plan.
-3. Cap at **2 plan-gap rounds per chunk**. On the third: escalate per failure paths.
+1. Write the phase marker back to `plan` before sending the gap to architect:
+
+   ```bash
+   echo -n "plan" > tasks/builds/{slug}/.phase
+   ```
+
+2. Send back to architect: "Builder found a gap in chunk `{chunk-name}`: {gap}. Revise the plan at `tasks/builds/{slug}/plan.md`."
+3. After the revised plan lands, write the phase marker back to `build` before the next builder dispatch:
+
+   ```bash
+   echo -n "build" > tasks/builds/{slug}/.phase
+   ```
+
+4. Re-invoke builder with the revised plan.
+5. Cap at **2 plan-gap rounds per chunk**. On the third: escalate per failure paths.
 
 ### Commit-integrity invariant
 
@@ -329,6 +370,20 @@ npm run typecheck
 Cap at 3 fix attempts. On failure after 3 attempts: route diagnostics to a fresh `builder` invocation. On the fourth attempt: escalate with full diagnostics per failure paths.
 
 Record G2 attempt count in `progress.md`.
+
+After G2 passes, write the phase marker:
+
+```bash
+echo -n "review" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `review` phase. The hook enforces the review-phase
+allowed-paths matrix on all Edit/Write/MultiEdit calls.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
 
 ### Post-G2 spec-validity checkpoint
 

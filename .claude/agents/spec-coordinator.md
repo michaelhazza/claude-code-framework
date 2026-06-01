@@ -368,6 +368,21 @@ When the loop exits, record the final mockup paths in `tasks/builds/{slug}/hando
 
 ## Step 6 — Spec authoring
 
+Write the phase marker:
+
+```bash
+mkdir -p tasks/builds/{slug} && echo -n "spec" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `spec` phase. The hook enforces the spec-phase
+allowed-paths matrix on all Edit/Write/MultiEdit calls until the next phase
+transition.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
+
 Author the spec using `docs/spec-authoring-checklist.md` as the rubric. Name the file `docs/superpowers/specs/{YYYY-MM-DD}-{slug}-spec.md` matching the existing convention.
 
 Required sections (checklist appendix is canonical — this is the local summary):
