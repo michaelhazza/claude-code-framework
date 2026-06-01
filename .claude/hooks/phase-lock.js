@@ -147,11 +147,18 @@ function toRelative(absPath) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR;
   if (projectDir) {
     const normedDir = normalisePath(projectDir).replace(/\/$/, '');
-    if (normed.startsWith(normedDir + '/')) {
-      return normed.slice(normedDir.length + 1);
+    // On Windows the same physical path can be presented with mixed drive-letter
+    // case (e.g. "c:/users/..." vs "C:/Users/..."). Match case-insensitively on
+    // win32 so legitimate absolute paths still strip the project-dir prefix and
+    // reach the relative-glob matcher.
+    const ci = process.platform === 'win32';
+    const lhs = ci ? normed.toLowerCase() : normed;
+    const rhs = ci ? normedDir.toLowerCase() : normedDir;
+    if (lhs.startsWith(rhs + '/')) {
+      return normed.slice(rhs.length + 1);
     }
-    if (normed.startsWith(normedDir)) {
-      return normed.slice(normedDir.length);
+    if (lhs.startsWith(rhs)) {
+      return normed.slice(rhs.length);
     }
   }
   // If the path looks relative already, return as-is
