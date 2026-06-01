@@ -277,6 +277,23 @@ When the sub-agent returns, it has done its own KNOWLEDGE.md updates and doc-syn
 
 ## Step 6 — Full doc-sync sweep
 
+**6.0 — audit-context-packs check (run first).**
+
+Resolve the script path: prefer the consumer-local copy; fall back to the framework submodule path:
+
+```bash
+if [ -f scripts/audit-context-packs.ts ]; then
+  npx tsx scripts/audit-context-packs.ts
+elif [ -f .claude-framework/scripts/audit-context-packs.ts ]; then
+  npx tsx .claude-framework/scripts/audit-context-packs.ts
+else
+  echo "audit-context-packs.ts not found at either consumer or framework path — skipping (pre-v2.13.0 consumer)"
+  exit 0
+fi
+```
+
+On non-zero exit: print each output line (format `<pack>:<line> <anchor>`) and **BLOCK finalisation**. The operator must either fix the broken anchors in `architecture.md` or `docs/context-packs/*.md`, or document a `REVIEW_GAP` for this gate, before proceeding to Step 6.1. Do NOT advance to Step 7 with a failing audit. If neither path exists the check is a no-op.
+
 Run the doc-sync sweep across the full feature change-set per `docs/doc-sync.md`. This is the cross-check of the work `chatgpt-pr-review` did — both should agree, but `finalisation-coordinator` is the system of record.
 
 **Mandatory per-doc procedure.** For each registered doc, follow the **Investigation procedure** in `docs/doc-sync.md` — read the doc, derive candidate-stale-reference set from the branch diff, grep the doc for each candidate, fix any stale references in this same pass, then record the verdict per **Verdict rule** in the same file. A `no` verdict that does not cite either the grep terms checked or the specific reason the update trigger does not apply is treated as missing — and missing verdicts block finalisation.

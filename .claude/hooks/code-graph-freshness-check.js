@@ -43,6 +43,12 @@
  *     lets the hook ship inside .claude/ without hard-requiring the
  *     code-graph generator to also be imported into the target repo
  *     yet (e.g. mid-incremental-import).
+ *
+ * audit-context-packs check:
+ *   - After the freshness check, run audit-context-packs (if present).
+ *   - Runs fail-open: a non-zero exit logs a warning to stderr but
+ *     does NOT block session start.
+ *   - If the script is missing (pre-v2.13.0 consumer), silently skip.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -53,6 +59,10 @@ const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const REFERENCES_DIR = join(PROJECT_DIR, 'references');
 const WATCHER_PID_PATH = join(REFERENCES_DIR, '.watcher.pid');
 const BUILD_SCRIPT_PATH = join(PROJECT_DIR, 'scripts', 'build-code-graph.ts');
+
+// Paths for audit-context-packs: prefer consumer-local, fall back to framework submodule.
+const AUDIT_SCRIPT_LOCAL = join(PROJECT_DIR, 'scripts', 'audit-context-packs.ts');
+const AUDIT_SCRIPT_FRAMEWORK = join(PROJECT_DIR, '.claude-framework', 'scripts', 'audit-context-packs.ts');
 
 // Generous upper bound. Spec says cold build completes in <30s; warm cache is
 // sub-second. 60s leaves headroom for the rare cold start on a slow machine
@@ -97,29 +107,51 @@ function refreshCache() {
   return { skipped: false, result };
 }
 
-function main() {
-  try {
-    if (watcherAlive()) {
-      // Steady state — cache is being kept live by the existing watcher.
-      process.exit(0);
-    }
+/**
+ * runSessionStartChecks() — orchestrates freshness + audit checks.
+ *
+ * Preserves all original branch behaviours, now as return-paths rather than
+ * early exits. The single terminal exit lives in main() below.
+ *
+ * Branch dispositions (original → post-refactor):
+ *   watcher-alive         : was early exit immediately → now returns early,
+ *                           audit check still runs.
+ *   build-script-missing  : was silent early exit → records
+ *                           freshness:'skipped', continues to audit.
+ *   spawn-failed          : was stderr + early exit → same stderr message,
+ *                           records freshness:'failed', continues to audit.
+ *   refresh-failed        : was stderr (2 lines) + early exit → same two
+ *                           stderr messages, records freshness:'failed'.
+ *   refresh-succeeded     : was stdout + early exit → same stdout line,
+ *                           records freshness:'refreshed', continues.
+ *   catch-handler         : outer try/catch in main() still terminates as
+ *                           a fallback safety net (branch 6 unchanged).
+ */
+function runSessionStartChecks() {
+  // branch: watcher-alive — watcher is live; cache is current.
+  if (watcherAlive()) {
+    // Cache is being kept live — no refresh needed.
+    // Fall through to audit check below.
+    return { freshness: 'watcher_alive' };
+  }
 
-    const refresh = refreshCache();
-    if (refresh.skipped) {
-      // Framework not (yet) fully imported — degrade silently.
-      process.exit(0);
-    }
+  const refresh = refreshCache();
+  let freshnessResult;
 
+  if (refresh.skipped) {
+    // branch: build-script-missing — framework not (yet) fully imported; degrade silently.
+    freshnessResult = { freshness: 'skipped', reason: 'build script missing' };
+  } else {
     const { result } = refresh;
     if (result.error) {
-      // spawnSync itself failed (e.g. timeout, ENOENT on npx). Don't block.
+      // branch: spawn-failed — spawnSync itself failed (e.g. timeout, ENOENT on npx).
       process.stderr.write(
         `code-graph-freshness-check: spawn failed (${result.error.code || result.error.message}). ` +
         `Cache is advisory; session continues.\n`,
       );
-      process.exit(0);
-    }
-    if (result.status !== 0) {
+      freshnessResult = { freshness: 'failed', reason: 'spawn' };
+    } else if (result.status !== 0) {
+      // branch: refresh-failed — build exited non-zero.
       process.stderr.write(
         `code-graph-freshness-check: build exited ${result.status}. ` +
         `Cache may be stale; session continues.\n`,
@@ -127,13 +159,49 @@ function main() {
       if (result.stderr) {
         process.stderr.write(`build stderr (last 400 chars): ${String(result.stderr).slice(-400)}\n`);
       }
-      process.exit(0);
+      freshnessResult = { freshness: 'failed', reason: 'build_status_nonzero' };
+    } else {
+      // branch: refresh-succeeded — cache refreshed successfully.
+      // Surface a one-line note into the SessionStart context so the agent
+      // knows the cache was just refreshed (and that any prior staleness has
+      // been resolved for this session).
+      process.stdout.write('Code intelligence cache refreshed at session start (watcher restarted).\n');
+      freshnessResult = { freshness: 'refreshed' };
     }
+  }
 
-    // Surface a one-line note into the SessionStart context so the agent
-    // knows the cache was just refreshed (and that any prior staleness has
-    // been resolved for this session).
-    process.stdout.write('Code intelligence cache refreshed at session start (watcher restarted).\n');
+  // audit-context-packs check — fail-open: warns on miss but never blocks session start.
+  // Prefer consumer-local script; fall back to framework submodule copy.
+  const auditScriptPath = existsSync(AUDIT_SCRIPT_LOCAL)
+    ? AUDIT_SCRIPT_LOCAL
+    : existsSync(AUDIT_SCRIPT_FRAMEWORK)
+      ? AUDIT_SCRIPT_FRAMEWORK
+      : null;
+
+  if (auditScriptPath !== null) {
+    const auditResult = spawnSync('npx', ['tsx', auditScriptPath], {
+      cwd: PROJECT_DIR,
+      timeout: BUILD_TIMEOUT_MS,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+    });
+    if (!auditResult.error && auditResult.status !== 0 && auditResult.stdout) {
+      // auditContextPacks printed <pack>:<line> <anchor> lines to stdout on failure.
+      process.stderr.write(
+        `audit-context-packs: broken anchors detected (fix before finalisation):\n${auditResult.stdout}`,
+      );
+    }
+  }
+  // If auditScriptPath is null: script missing (pre-v2.13.0 consumer) — silent skip.
+
+  return freshnessResult;
+}
+
+function main() {
+  try {
+    runSessionStartChecks();
+    // branch: catch-handler — outer safety net; single terminal exit below.
     process.exit(0);
   } catch (err) {
     process.stderr.write(
