@@ -85,14 +85,14 @@ Internal helper. Not a shared script.
 iteration\tcommit_sha\tmetric\tdelta\tstatus\tdescription\n
 ```
 
-**Column order (6 columns, tab-separated):**
+**Column order (6 columns, tab-separated) — per Spec Contract 7:**
 
 | Column | Type | Notes |
 |---|---|---|
-| `iteration` | integer | 1-indexed. |
-| `commit_sha` | string | Short SHA of the commit for this iteration (7 chars). `REVERTED` suffix if subsequently reverted. |
-| `metric` | float | Parsed stdout from the verify command. `NaN` if parse failed. |
-| `delta` | float | `currentMetric - bestSoFar` (signed). `0` on iteration 1 (no prior best). `NaN` if metric is NaN. |
+| `iteration` | integer | 1-indexed. Strictly increasing per row; no gaps. |
+| `commit_sha` | string | Full 40-char git SHA of the commit created BEFORE verify ran. Empty string only when status = `failed` AND the failure happened before the commit. |
+| `metric` | number OR empty string | Parsed stdout from the verify command. Empty string when status = `failed` (verify exited non-zero) or when verify produced no parseable number. |
+| `delta` | number OR empty string | Difference from previous best (`metric - bestSoFar` for `direction: 'higher'`; `bestSoFar - metric` for `direction: 'lower'`). Empty on iteration 1 (no prior best). Empty when metric is empty. |
 | `status` | enum | One of `keep`, `discard`, `failed`. Enum is closed — no other values. |
 | `description` | string | One-line description of the change attempted. Tabs escaped to space before appending. |
 
