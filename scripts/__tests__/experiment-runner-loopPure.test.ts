@@ -169,9 +169,9 @@ test('determinism: 100 identical invocations return identical Decision', () => {
 test('direction typo throws (not silently treated as higher)', () => {
   assert.throws(
     () => decideKeepOrDiscard({
-      // @ts-expect-error — runtime guard for invalid direction
       currentMetric: 100,
       bestSoFar: 50,
+      // @ts-expect-error — runtime guard for invalid direction literal
       direction: 'lowerer',
       minDelta: 5,
     }),
@@ -182,9 +182,9 @@ test('direction typo throws (not silently treated as higher)', () => {
 test('direction undefined throws', () => {
   assert.throws(
     () => decideKeepOrDiscard({
-      // @ts-expect-error — runtime guard for invalid direction
       currentMetric: 100,
       bestSoFar: 50,
+      // @ts-expect-error — runtime guard for undefined direction
       direction: undefined,
       minDelta: 5,
     }),
@@ -195,9 +195,9 @@ test('direction undefined throws', () => {
 test('direction empty-string throws', () => {
   assert.throws(
     () => decideKeepOrDiscard({
-      // @ts-expect-error — runtime guard for invalid direction
       currentMetric: 100,
       bestSoFar: 50,
+      // @ts-expect-error — runtime guard for empty-string direction
       direction: '',
       minDelta: 5,
     }),

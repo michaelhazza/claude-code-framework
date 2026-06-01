@@ -14,7 +14,7 @@
  * This file is a sanity script — re-run after any change to phase-lock.js.
  */
 
-import { decidePhaseLock, extractFilePaths } from "./phase-lock.js";
+import { decidePhaseLock, extractFilePaths, toRelative } from "./phase-lock.js";
 
 // [label, input, expectedDisposition]
 const CASES = [
@@ -129,6 +129,23 @@ const CASES = [
     { toolName: 'Write', targetPath: 'tasks/review-logs/some-review-log.md', currentPhase: 'spec', buildSlug: 'x' },
     'allow',
   ],
+
+  // 17. (R5 OAI-PR-002 regression) plan phase, Write, tasks/builds/x/handoff.md → allow.
+  // The pause-state path writes handoff.md while .phase=plan; the allow-list MUST
+  // include this file or the pause persist gets blocked.
+  [
+    "plan, Write, tasks/builds/x/handoff.md → allow (handoff.md in specGlobs)",
+    { toolName: 'Write', targetPath: 'tasks/builds/x/handoff.md', currentPhase: 'plan', buildSlug: 'x' },
+    'allow',
+  ],
+
+  // 18. Same in spec phase — handoff.md write is also legitimate in spec phase
+  // (e.g. mockup-loop pause writes handoff.md).
+  [
+    "spec, Write, tasks/builds/x/handoff.md → allow (handoff.md in specGlobs)",
+    { toolName: 'Write', targetPath: 'tasks/builds/x/handoff.md', currentPhase: 'spec', buildSlug: 'x' },
+    'allow',
+  ],
 ];
 
 let pass = 0;
@@ -191,7 +208,62 @@ for (const [label, toolName, toolInput, expectedPaths] of EXTRACT_CASES) {
   }
 }
 
-const totalCases = CASES.length + EXTRACT_CASES.length;
+// ── toRelative path-prefix boundary cases (R5 OAI-PR-001 regression) ──────
+// The exact-match branch previously used `lhs.startsWith(rhs)`, so a sibling
+// path whose string prefix coincidentally matched the project dir (e.g.
+// /tmp/repotasks given PROJECT_DIR=/tmp/repo) was incorrectly stripped and
+// presented as a repo-relative path to the matcher. Pin the boundary.
+const TO_REL_CASES = [
+  [
+    "PROJECT_DIR=/tmp/repo, abs=/tmp/repo/tasks/builds/x/plan.md → 'tasks/builds/x/plan.md'",
+    '/tmp/repo',
+    '/tmp/repo/tasks/builds/x/plan.md',
+    'tasks/builds/x/plan.md',
+  ],
+  [
+    "PROJECT_DIR=/tmp/repo, abs=/tmp/repotasks/builds/x/plan.md → unchanged (no boundary)",
+    '/tmp/repo',
+    '/tmp/repotasks/builds/x/plan.md',
+    '/tmp/repotasks/builds/x/plan.md',
+  ],
+  [
+    "PROJECT_DIR=/tmp/repo, abs=/tmp/repo → '' (exact match)",
+    '/tmp/repo',
+    '/tmp/repo',
+    '',
+  ],
+  [
+    "PROJECT_DIR=/tmp/repo/ trailing-slash, abs=/tmp/repo/tasks/builds/x/plan.md → 'tasks/builds/x/plan.md'",
+    '/tmp/repo/',
+    '/tmp/repo/tasks/builds/x/plan.md',
+    'tasks/builds/x/plan.md',
+  ],
+];
+
+const prevProjectDir = process.env.CLAUDE_PROJECT_DIR;
+for (const [label, projectDir, abs, expected] of TO_REL_CASES) {
+  process.env.CLAUDE_PROJECT_DIR = projectDir;
+  const actual = toRelative(abs);
+  if (actual === expected) {
+    pass++;
+  } else {
+    fails.push({
+      label,
+      input: { projectDir, abs },
+      expected,
+      actual,
+      reason: 'toRelative returned unexpected path',
+    });
+  }
+}
+// Restore prior env so subsequent invocations of this file are deterministic.
+if (prevProjectDir === undefined) {
+  delete process.env.CLAUDE_PROJECT_DIR;
+} else {
+  process.env.CLAUDE_PROJECT_DIR = prevProjectDir;
+}
+
+const totalCases = CASES.length + EXTRACT_CASES.length + TO_REL_CASES.length;
 console.log(`Cases: ${totalCases}, passed: ${pass}, failed: ${fails.length}`);
 if (fails.length) {
   for (const f of fails) {

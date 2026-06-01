@@ -50,6 +50,7 @@ function allowedGlobsForPhase(phase, slug) {
     `tasks/builds/${slug}/intent.md`,
     `tasks/builds/${slug}/progress.md`,
     `tasks/builds/${slug}/spec.md`,
+    `tasks/builds/${slug}/handoff.md`,
     `tasks/builds/${slug}/mockup-log.md`,
     `tasks/builds/${slug}/mockup-review-log-*.md`,
     `tasks/builds/${slug}/.phase`,
@@ -142,7 +143,7 @@ function hasDotDot(p) {
  * @param {string} absPath
  * @returns {string} relative POSIX path, or the input if conversion not possible
  */
-function toRelative(absPath) {
+export function toRelative(absPath) {
   const normed = normalisePath(absPath);
   const projectDir = process.env.CLAUDE_PROJECT_DIR;
   if (projectDir) {
@@ -157,8 +158,13 @@ function toRelative(absPath) {
     if (lhs.startsWith(rhs + '/')) {
       return normed.slice(rhs.length + 1);
     }
-    if (lhs.startsWith(rhs)) {
-      return normed.slice(rhs.length);
+    // Exact-match branch: the absPath IS the project directory itself. Without
+    // the strict equality, a bare startsWith would also catch sibling-of-repo
+    // paths whose string prefix coincidentally matches the project dir (e.g.
+    // /tmp/repotasks given PROJECT_DIR=/tmp/repo), producing a falsely
+    // repo-relative path that could match a permissive phase allow-list.
+    if (lhs === rhs) {
+      return normed.slice(rhs.length); // always returns ''
     }
   }
   // If the path looks relative already, return as-is
