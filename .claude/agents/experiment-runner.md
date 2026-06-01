@@ -41,16 +41,26 @@ Six required fields:
 
 1. Apply one atomic change within the `change_budget` constraint.
 2. Commit the change: `git commit -m "experiment iter N: <one-line description>"`. Commit BEFORE running verify — this makes every iteration revertable regardless of verify outcome.
-3. Run the `verify` command. Capture stdout as the metric value (parse as float). If the command exits non-zero or stdout is not a parseable number, record status `failed` and continue.
-4. Call `decideKeepOrDiscard` (Contract 1 — see `scripts/experiment-runner-loopPure.ts`) with `{ currentMetric, bestSoFar, direction, minDelta }`.
+3. Run the `verify` command. Capture stdout as the metric value (parse as float).
+   - **Verify-failure branch** (command exits non-zero OR stdout is not a parseable number):
+     1. Run `git revert HEAD --no-edit` to undo the iteration's commit. The
+        failure does NOT leave the iteration's commit applied to the worktree.
+     2. Append a TSV row per Contract 7 with `status: failed`, empty `metric`,
+        empty `delta`.
+     3. Increment the consecutive-counter by 1 (failed counts toward halt
+        thresholds per § 4 and Contract 7 § Counter interaction).
+     4. SKIP step 4 below — `decideKeepOrDiscard` is not called when verify
+        fails. Contract 1 (`scripts/experiment-runner-loopPure.ts`) only
+        returns `keep | discard`; the helper has no `failed` output.
+     5. Continue to step 7 (consecutive-counter check + next iteration).
+4. Call `decideKeepOrDiscard` (Contract 1 — see `scripts/experiment-runner-loopPure.ts`) with `{ currentMetric, bestSoFar, direction, minDelta }`. Reached only when verify succeeded and produced a parseable metric.
    - `keep`: update `bestSoFar` to `currentMetric`. Increment iteration counter.
    - `discard`: revert the commit (`git revert HEAD --no-edit`). Increment iteration counter.
-   - `failed`: revert the commit. Increment iteration counter.
 5. Append a TSV row per Contract 7 (see section 6 below).
-6. Update the consecutive-counter (section 4).
-7. If the counter has not triggered a halt, proceed to the next iteration.
+6. Update the consecutive-counter (section 4) — `keep` resets to 0, `discard` increments by 1. The verify-failure branch (step 3) already handled its own counter increment in step 3.iii.
+7. If the consecutive-counter has not triggered a halt, proceed to the next iteration.
 
-**Revert-on-discard:** `git revert HEAD --no-edit`. The reverted commit is not squashed — the history records both the attempt and the revert, which is the intended audit shape.
+**Revert-on-discard:** `git revert HEAD --no-edit`. The reverted commit is not squashed — the history records both the attempt and the revert, which is the intended audit shape. The same revert command is used by the verify-failure branch.
 
 ## 4. Consecutive-counter rules
 

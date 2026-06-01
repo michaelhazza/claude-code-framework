@@ -281,6 +281,83 @@ test('bare backtick fragment under source-block heading allows underscores', () 
 });
 
 // ---------------------------------------------------------------------------
+// Test 17 (R3 OAI-PR-002 regression): GFM fences may be indented by up to
+// 3 spaces. An indented example fence containing a markdown link must NOT
+// have that link extracted as a real pack ref.
+// ---------------------------------------------------------------------------
+test('indented fence (2 spaces) hides example pack link from extractor', () => {
+  const arch = '# Real Section\n';
+  const pack = [
+    'Intro text.',
+    '  ```markdown',
+    '  [example](architecture.md#fake-anchor)',
+    '  ```',
+    'End.',
+  ].join('\n');
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  assert.equal(result.kind, 'ok', 'indented fenced-block link must not be treated as a real ref');
+});
+
+// ---------------------------------------------------------------------------
+// Test 18 (R3 OAI-PR-002 regression): an indented fence containing a heading
+// example in architecture.md must NOT register that heading as a declared
+// anchor. If it did, a context pack link to that fake anchor would falsely
+// pass.
+// ---------------------------------------------------------------------------
+test('indented fence (2 spaces) in architecture.md hides example heading from declared anchors', () => {
+  const arch = [
+    '# Real Heading',
+    '',
+    '  ```markdown',
+    '  # Fake Heading Inside Indented Fence',
+    '  ```',
+    '',
+  ].join('\n');
+  const pack = '[fake](architecture.md#fake-heading-inside-indented-fence)\n';
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  assert.equal(result.kind, 'fail', 'fake heading inside indented fence must not register as a declared anchor');
+  if (result.kind !== 'fail') return;
+  assert.equal(result.missing[0].anchor, 'fake-heading-inside-indented-fence');
+});
+
+// ---------------------------------------------------------------------------
+// Test 19 (R3 OAI-PR-002 boundary): a fence with 4 spaces of indent is an
+// indented code block per GFM, NOT a fenced block. The mask must NOT treat
+// it as a fence open — but the 4-space indent already makes whatever's
+// inside a code-block region anyway. We assert correctness via the pack-link
+// path: a link inside a 4-space-indented region with backticks should still
+// be picked up as a real ref (because the backticks are not a real fence,
+// they're just text inside an indented code line — but our extractor scans
+// per-line non-fenced text). Documenting boundary behaviour.
+// ---------------------------------------------------------------------------
+test('fence with 4 spaces of indent is not treated as a real fence (boundary case)', () => {
+  // 4-space indent: per GFM the line is an indented code block, not a fence.
+  // For our purposes that means buildFenceMask must NOT enter fence mode.
+  const arch = '# Real Section\n';
+  const pack = [
+    'Intro text.',
+    '    ```markdown',
+    '[example](architecture.md#fake)',
+    '    ```',
+    'End.',
+  ].join('\n');
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  // The non-indented middle line is NOT inside a fence (because the open was
+  // 4-space-indented and ignored), so its link IS extracted, and the anchor
+  // `fake` is not declared, so the audit returns fail.
+  assert.equal(result.kind, 'fail', '4-space indent must not open a fence');
+});
+
+// ---------------------------------------------------------------------------
 // Test 16 (R2 OAI-PR-001 regression): CLI must exit 0 when there are no
 // context packs to validate, even if architecture.md is also missing. The
 // pure helper's contract is "empty packs → ok"; the CLI used to require

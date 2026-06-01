@@ -7,7 +7,7 @@ The field is an array of objects, each with four required fields:
 | Field | Type | Description |
 |---|---|---|
 | `name` | string | Short slug for the sibling repo. Used in cross-repo-scout output. |
-| `github` | string | `owner/repo` form for `gh search code --owner` fallback. |
+| `github` | string | `owner/repo` form for `gh search code --repo <owner>/<repo>` fallback. Scoped by `--repo` (not `--owner`) so only this sibling's matches are returned. |
 | `local_path` | string | Absolute path to a local working copy. Cross-repo-scout's local mode reads files from here via Glob/Grep. Use forward slashes regardless of OS. |
 | `is_framework_aligned` | boolean | `true` if the sibling repo uses claude-code-framework. Increases scoring weight in cross-repo-scout's rankAndTrim helper (Contract 2). |
 

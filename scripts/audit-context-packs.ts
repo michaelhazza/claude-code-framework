@@ -110,6 +110,10 @@ function extractDeclaredAnchors(markdown: string): Set<string> {
 /**
  * Returns an array of booleans, one per line, indicating whether that line is
  * inside a GFM fenced code block (``` or ~~~, opening fence >=3 chars).
+ *
+ * GFM allows fences to be indented by up to 3 spaces (4+ spaces makes the line
+ * an indented code block, not a fence). Both opening and closing fences accept
+ * the same 0-3 space leading-whitespace allowance.
  */
 function buildFenceMask(lines: string[]): boolean[] {
   const mask: boolean[] = new Array(lines.length).fill(false);
@@ -120,7 +124,8 @@ function buildFenceMask(lines: string[]): boolean[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!inFence) {
-      const fenceOpen = /^(`{3,}|~{3,})/.exec(line);
+      // 0-3 spaces, then >=3 backticks or tildes.
+      const fenceOpen = /^ {0,3}(`{3,}|~{3,})/.exec(line);
       if (fenceOpen) {
         inFence = true;
         fenceChar = fenceOpen[1][0];
@@ -129,8 +134,9 @@ function buildFenceMask(lines: string[]): boolean[] {
       }
     } else {
       mask[i] = true;
-      // Check for closing fence: same char, >= opening length, optional trailing whitespace.
-      const closeRe = new RegExp(`^(\\${fenceChar}{${fenceLen},})\\s*$`);
+      // Check for closing fence: same char, >= opening length, 0-3 space
+      // indent allowance, optional trailing whitespace.
+      const closeRe = new RegExp(`^ {0,3}(\\${fenceChar}{${fenceLen},})\\s*$`);
       if (closeRe.test(line)) {
         inFence = false;
       }
