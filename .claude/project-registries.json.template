@@ -35,5 +35,8 @@
     "$comment": "A one-paragraph summary of your project's local-vs-CI split. The reviewer uses this for the PLAN-NEW-1 local-vs-CI verification language consistency check.",
     "summary": null,
     "policy_doc_ref": null
-  }
+  },
+
+  "sibling_repos_$comment": "Convention: array fields use a `<fieldname>_$comment` sibling key for inline documentation, since the existing `{ \"$comment\": \"...\", ... }` object-level convention cannot attach to array values. Optional. The `sibling_repos` array holds objects of shape { name, github, local_path, is_framework_aligned } describing sibling repositories the cross-repo-scout agent (v2.13.0+) searches. Example file: .claude/project-registries.json.template.example.md. Empty array is the valid default — cross-repo-scout returns empty results without warning.",
+  "sibling_repos": []
 }

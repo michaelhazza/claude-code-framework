@@ -80,6 +80,20 @@ Trailing prose is allowed after the enum value (e.g. `**Verdict:** NEEDS_WORK (2
 
 The caller (feature-coordinator) persists this block to `tasks/review-logs/reality-check-log-{slug}-{timestamp}.md` before acting on the verdict.
 
+### Numeric-gap recommendation surface
+
+When verdict is `NEEDS_WORK` AND the implementer's claimed success criterion included a numeric threshold (e.g. "p95 < 200ms", "error rate < 0.1%", "ranker NDCG > 0.85") AND the observed value missed that threshold, include the following in the return block under `next_action`:
+
+```
+next_action: experiment-runner
+  hypothesis: <claimed criterion> was not met; needs metric-tuning loop
+  verify: <command the implementer should write to print current metric>
+  direction: <higher | lower — inferred from threshold>
+  gap: claimed <criterion-value>, observed <actual-value>
+```
+
+This routes NEEDS_WORK builds with numeric gaps toward the `experiment-runner` agent (per Spec Item 2 § Recommendation surfaces).
+
 ## Files NOT read
 
 When parts of the supplied evidence or source tree were skimmed or skipped, list them here:

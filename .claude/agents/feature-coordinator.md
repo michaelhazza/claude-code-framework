@@ -203,6 +203,21 @@ When the sub-agent returns with a finalised plan, update `progress.md` and proce
 
 ## Step 5 — plan-gate
 
+Write the phase marker:
+
+```bash
+mkdir -p tasks/builds/{slug} && echo -n "plan" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `plan` phase. Any operator revise loop runs under
+plan-phase enforcement. Write this before presenting the plan to the operator
+so the transition is recorded even if the operator replies `abort`.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
+
 Present the finalised plan to the operator verbatim:
 
 > **Plan finalised at `tasks/builds/{slug}/plan.md`.**
@@ -245,6 +260,20 @@ The snapshot is (re)written at the end of every chunk loop iteration (see "Chunk
 
 ### Builder invocation
 
+Before dispatching builder for the **first chunk only**, write the phase marker:
+
+```bash
+mkdir -p tasks/builds/{slug} && echo -n "build" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `build` phase. Subsequent chunks do not overwrite —
+the file is already `build`.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
+
 **HARD RULE — builder dispatch is mandatory for all chunk construction.** The coordinator MUST dispatch `builder` via the `Agent` tool for every chunk in the plan. The coordinator MUST NEVER write chunk code inline with `Edit` or `Write` in the main session. Inline construction in the main session runs on the operator's main-session model (Opus during this coordinator) instead of Sonnet, defeats the cost model that motivates the builder sub-agent, and creates an unreviewed scope-drift hole because the commit-integrity invariant below depends on builder's structured `files-changed` verdict. If a chunk feels too small to dispatch, that is a plan defect — escalate as a `PLAN_GAP` to architect rather than implementing inline.
 
 Invoke `builder` as a sub-agent with an explicit per-invocation model override (belt-and-suspenders over `builder.md` frontmatter):
@@ -278,19 +307,32 @@ Cap at 3 fix attempts per chunk. On failure: send diagnostics to a fresh `builde
 
 If builder reports `PLAN_GAP`:
 
-1. Send back to architect: "Builder found a gap in chunk `{chunk-name}`: {gap}. Revise the plan at `tasks/builds/{slug}/plan.md`."
-2. Re-invoke builder with the revised plan.
-3. Cap at **2 plan-gap rounds per chunk**. On the third: escalate per failure paths.
+1. Write the phase marker back to `plan` before sending the gap to architect:
+
+   ```bash
+   echo -n "plan" > tasks/builds/{slug}/.phase
+   ```
+
+2. Send back to architect: "Builder found a gap in chunk `{chunk-name}`: {gap}. Revise the plan at `tasks/builds/{slug}/plan.md`."
+3. After the revised plan lands, write the phase marker back to `build` before the next builder dispatch:
+
+   ```bash
+   echo -n "build" > tasks/builds/{slug}/.phase
+   ```
+
+4. Re-invoke builder with the revised plan.
+5. Cap at **2 plan-gap rounds per chunk**. On the third: escalate per failure paths.
 
 ### Commit-integrity invariant
 
 The plan's declared files for the chunk are the canonical source of truth. The integrity chain is `plan-declared ⊇ builder-reported ⊇ working-tree`. After builder SUCCESS + G1 passes:
 
 1. Verify builder's "Files changed" list is a subset of the plan-declared files for this chunk. Any builder-reported file outside the planned set → **hard fail**: print "Builder modified files outside the chunk's declared scope: {list}. Commit blocked — investigate before continuing." Do NOT commit. (This catches builder scope-drift even when the working tree itself looks clean.)
-2. Run `git diff --name-only HEAD` vs builder's "Files changed" list.
-3. If unexpected files appear → **hard fail**: print "Unexpected files in working tree: {list}. Commit blocked — investigate and revert unexpected changes before continuing." Do NOT commit; do NOT offer to stage only declared files. Operator must manually revert before coordinator resumes.
-4. Once only declared files remain: `git add <declared files only>` (never `git add .` or `git add -A`) then `git commit`.
-5. Update `tasks/builds/{slug}/progress.md` (mark this chunk done; refresh the environment snapshot — see below), mark TodoWrite complete, move to next chunk.
+2. **Chunk-learnings partial-write recovery (runs BEFORE the unexpected-files guard so a mid-write crash isn't blocked by the guard it produced):** check whether `tasks/builds/{slug}/chunk-learnings.md` appears in `git diff --name-only HEAD`. If it does AND the file ends with a `## Chunk N — <chunk title>` header for the CURRENT chunk (chunk-number header matches the chunk being committed), this is a recovery scenario from a prior crash mid-write. Re-validate the file's tail-entry shape against Contract 3 (Files touched / G1 failures resolved / Plan gaps surfaced / Watch-out for future chunks bullets). If the tail entry is partial/malformed, overwrite the `## Chunk N — ...` block in place using the current builder report; if complete, leave as-is. **Either way, the dirty `chunk-learnings.md` is now in a valid state and is allowed through the next step's working-tree comparison via the coordinator-owned-file carve-out.** Recovery applies ONLY to `tasks/builds/{slug}/chunk-learnings.md` and ONLY when the tail header matches the current chunk number — any other dirty coordinator-owned file or any non-matching chunk-learnings header proceeds to step 3 as normal.
+3. Run `git diff --name-only HEAD` vs builder's "Files changed" list. Allow `tasks/builds/{slug}/chunk-learnings.md` through as a coordinator-owned-file exception (the next step writes/updates it). Any OTHER unexpected file → **hard fail**: print "Unexpected files in working tree: {list}. Commit blocked — investigate and revert unexpected changes before continuing." Do NOT commit; do NOT offer to stage only declared files. Operator must manually revert before coordinator resumes.
+4. **Write the chunk-learnings entry FIRST** — if step 2 did not already produce a complete entry, append the `## Chunk N — <chunk title>` block (format below in *Chunk-learnings write*) to `tasks/builds/{slug}/chunk-learnings.md` before staging anything. This makes the learning land in the chunk's own commit, not the next chunk's or the close-Phase-2 catch-all.
+5. Once only declared files remain plus the updated `chunk-learnings.md`: `git add <declared files only> tasks/builds/{slug}/chunk-learnings.md` (never `git add .` or `git add -A`) then `git commit`.
+6. Update `tasks/builds/{slug}/progress.md` (mark this chunk done; refresh the environment snapshot — see below), mark TodoWrite complete, move to next chunk.
 
 Commit message per chunk:
 
@@ -302,9 +344,28 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 Push after each chunk commit.
 
+### Chunk-learnings write (BEFORE the chunk commit — step 4 above)
+
+After builder reports SUCCESS for chunk N and G1 passes, extract a 5-10-line summary and append to `tasks/builds/{slug}/chunk-learnings.md` using exactly this format (Contract 3). **This write happens at step 4 of the Commit-integrity invariant — BEFORE the `git add` + `git commit`** — so the learning entry lands in the same commit as the chunk it describes. Earlier versions wrote it after the commit, leaving the file dirty between chunks and risking the last-chunk entry never landing on its own commit.
+
+```markdown
+## Chunk N — <chunk title>
+
+- **Files touched:** <list builder reported in "Files changed">
+- **G1 failures resolved:** <one bullet per G1 fix attempt this chunk, or "none">
+- **Plan gaps surfaced:** <one bullet per PLAN_GAP routed back to architect this chunk, or "none">
+- **Watch-out for future chunks:** <one bullet — concrete, actionable observation (e.g. "Migration v2.13.0.js exports `migrate` only; Chunk 7 must APPEND to that function, not create a new one")>
+```
+
+Append-only — use `Edit` with the file's current EOF as anchor. If file does not exist, `Write` with the new entry as sole content. **Partial-write recovery:** if coordinator crashes mid-write and resumes, next invocation overwrites the partial `## Chunk N — ...` entry in place (matched by deterministic chunk-number header).
+
+The `Watch-out for future chunks` line is the load-bearing line — write a concrete observation, not generic advice. If no useful watch-out surfaced, write `none` rather than padding.
+
+**Forward-only bootstrap note:** the v2.13.0 build itself runs without chunk-learnings injection (this write lands in Chunk 5; chunks 1-4 had no prior file to read). New builds post-v2.13.0 get the full mechanism.
+
 ### Chunk-completion progress write (environment snapshot)
 
-When updating `tasks/builds/{slug}/progress.md` in step 4 above, write or replace a `## Environment snapshot` section so a subsequent resume run has a baseline for the resume-time comparison (see "Environment snapshot check" earlier in Step 6):
+When updating `tasks/builds/{slug}/progress.md` in the chunk-completion progress write step (after `git push` — the Commit-integrity invariant step 6), write or replace a `## Environment snapshot` section so a subsequent resume run has a baseline for the resume-time comparison (see "Environment snapshot check" earlier in Step 6):
 
 ```markdown
 ## Environment snapshot
@@ -329,6 +390,21 @@ npm run typecheck
 Cap at 3 fix attempts. On failure after 3 attempts: route diagnostics to a fresh `builder` invocation. On the fourth attempt: escalate with full diagnostics per failure paths.
 
 Record G2 attempt count in `progress.md`.
+
+After G2 passes, write the phase marker:
+
+```bash
+echo -n "review" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `review` phase. Review is **unrestricted** in the
+phase-lock matrix (the hook is a silent no-op) — review fixes are inherently
+cross-cutting and a path restriction would block legitimate fix patches.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
 
 ### Post-G2 spec-validity checkpoint
 
@@ -563,7 +639,14 @@ Write `phase_status: PHASE_2_PAUSED_PLAN` to `tasks/builds/{slug}/handoff.md`. E
 
 ### 2. plan-gate "abort"
 
-Write `phase_status: PHASE_2_ABORTED` to `tasks/builds/{slug}/handoff.md`. Set `tasks/current-focus.md` status to `NONE`. See abort write order below. Mark all remaining TodoWrite items completed. Exit.
+Write `phase_status: PHASE_2_ABORTED` to `tasks/builds/{slug}/handoff.md`. **Clear the phase lock** by writing `build` (an unrestricted phase) to `tasks/builds/{slug}/.phase` — this prevents the phase-lock hook from leaving the repo in a stuck plan-phase edit lock if `tasks/current-focus.md` still references the slug for any reason. Set `tasks/current-focus.md` status to `NONE`. See abort write order below. Mark all remaining TodoWrite items completed. Exit.
+
+```bash
+# Required pre-exit sequence for plan-gate abort:
+echo -n "build" > tasks/builds/{slug}/.phase    # release phase lock first
+# ... handoff.md write (see abort write order) ...
+# ... current-focus.md status: NONE ...
+```
 
 ### 3. Per-chunk plan-gap rounds exceed 2
 
@@ -603,4 +686,12 @@ On any abort or hard-escalation path, `tasks/current-focus.md` MUST end in one o
 
 ### Abort write order
 
-Always write `handoff.md` first, then update `tasks/current-focus.md`. Never reverse this order.
+Three-step sequence, executed in this exact order:
+
+1. **Release the phase lock first** by writing an unrestricted phase value (`build`) to `tasks/builds/{slug}/.phase` (only required when aborting from `plan`-phase enforcement — `spec` aborts skip this step). This ensures the subsequent handoff.md write itself is not blocked by phase-lock enforcement on the very build that's aborting. After this step, the hook treats the build as unrestricted for the remainder of the abort path.
+2. **Write `handoff.md`** with the abort `phase_status` (`PHASE_2_ABORTED` / `PHASE_2_PAUSED_*` as appropriate).
+3. **Update `tasks/current-focus.md`** last (`status: NONE` for full abort; otherwise the matching `*_PAUSED | *_ABORTED` named status — see § Abort invariant).
+
+The handoff-before-current-focus ordering between steps 2 and 3 is load-bearing — `handoff.md` is the resume contract, and a coordinator that crashes between steps 2 and 3 leaves a recoverable state. Reversing steps 2 and 3 would create a window where `tasks/current-focus.md` claims `NONE` but no handoff records why.
+
+The phase-lock release in step 1 is also load-bearing for `plan`-phase aborts only: if the phase marker still says `plan` when handoff.md is being written, the hook would block the write (handoff.md is NOT in the plan-phase allowed-paths matrix), creating a deadlock the operator could only break by manually editing `.phase`.

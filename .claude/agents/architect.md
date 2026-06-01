@@ -124,6 +124,30 @@ Split into chunks a developer can implement independently. Each chunk:
 
 Name chunks descriptively: "Add subtask wakeup service", not "Step 3".
 
+### Cross-repo prior art for each approach (added in v2.13.0)
+
+For each candidate approach (typically 2-3), dispatch `cross-repo-scout` with the approach's defining concept as the query:
+
+```
+cross-repo-scout: query="<approach concept e.g. 'pg-boss job worker with idempotency'>" mode=both
+```
+
+Each scout invocation returns the Contract 6 top-3 envelope. Include the
+single highest-scoring result per approach in the plan's "Rationale" section
+(when more than one approach surfaced the same repo, deduplicate to that
+approach's own top hit). The remaining envelope rows are not surfaced in the
+plan — they are available in `progress.md` for operator drill-down.
+
+```markdown
+**Approach A — <name>**
+- Cross-repo prior art: <repo>/<path> (<date>, score <n>) — <one-sentence summary of what it does>
+- ...
+```
+
+This grounds the architect's recommendation in observed patterns from sibling repos rather than purely abstract reasoning.
+
+If no sibling repos are configured or all return empty/low-score results, omit the sub-section — do not surface empty/noisy results.
+
 ### 3. Per-Chunk Detail
 
 For each chunk:

@@ -57,6 +57,21 @@ Only one warning block is printed per session regardless of how many gaps it con
 
 **Spec-deviations check:** check `spec_deviations:` in the handoff. If present, note them — they will be included in the chatgpt-pr-review kickoff context in step 5.
 
+After all context is loaded and entry guards pass, write the phase marker:
+
+```bash
+mkdir -p tasks/builds/{slug} && echo -n "finalise" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `finalise` phase. The hook treats `finalise` as
+no-op — finalisation touches to `KNOWLEDGE.md`, `docs/capabilities.md`,
+`tasks/todo.md`, and consumer-side doc-sync targets remain unblocked.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
+
 ## Step 1 — Top-level TodoWrite list
 
 Emit a TodoWrite list before doing any other work. Update items in real time as you complete each step.
@@ -261,6 +276,23 @@ Finalisation triggers ONLY on explicit operator signal. An inferred answer is no
 When the sub-agent returns, it has done its own KNOWLEDGE.md updates and doc-sync work as part of its existing finalisation. The coordinator's doc-sync sweep in step 6 is the cross-check that confirms `chatgpt-pr-review` covered everything.
 
 ## Step 6 — Full doc-sync sweep
+
+**6.0 — audit-context-packs check (run first).**
+
+Resolve the script path: prefer the consumer-local copy; fall back to the framework submodule path:
+
+```bash
+if [ -f scripts/audit-context-packs.ts ]; then
+  npx tsx scripts/audit-context-packs.ts
+elif [ -f .claude-framework/scripts/audit-context-packs.ts ]; then
+  npx tsx .claude-framework/scripts/audit-context-packs.ts
+else
+  echo "audit-context-packs.ts not found at either consumer or framework path — skipping (pre-v2.13.0 consumer)"
+  exit 0
+fi
+```
+
+On non-zero exit: print each output line (format `<pack>:<line> <anchor>`) and **BLOCK finalisation**. The operator must either fix the broken anchors in `architecture.md` or `docs/context-packs/*.md`, or document a `REVIEW_GAP` for this gate, before proceeding to Step 6.1. Do NOT advance to Step 7 with a failing audit. If neither path exists the check is a no-op.
 
 Run the doc-sync sweep across the full feature change-set per `docs/doc-sync.md`. This is the cross-check of the work `chatgpt-pr-review` did — both should agree, but `finalisation-coordinator` is the system of record.
 

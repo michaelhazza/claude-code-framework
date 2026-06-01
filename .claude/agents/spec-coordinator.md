@@ -280,6 +280,36 @@ Any supplementary per-cluster rows are appended below this table in the same sec
 3. **Mixed-lifecycle clusters within one cluster header:** worst-toward-Sunset ordering applied as above.
 4. **Operator amends `intent.md` during the `revise` loop creating a NEW partial overlap:** re-run Step 3a from the top — the loop handles it naturally.
 
+### Cross-repo prior art (added in v2.13.0)
+
+After the within-repo scan, dispatch `cross-repo-scout` with the intent's Problem Statement + Desired Outcome as the query, mode `both`:
+
+```
+cross-repo-scout: query="<problem statement + desired outcome combined>" mode=both
+```
+
+The agent returns a `CrossRepoScoutAgentOutput` envelope (Contract 6) with up to 3 ranked results from sibling repos declared in `.claude/project-registries.json sibling_repos[]`.
+
+Surface results in `intent.md § Duplication / Strategy Check` under a new sub-heading:
+
+```markdown
+### Cross-repo prior art
+
+(from cross-repo-scout, ranked by composite score)
+
+| Rank | Repo | File | Last modified | Framework-aligned | Has test | Score |
+|---|---|---|---|---|---|---|
+| 1 | <repo> | <path> | <date> | <bool> | <bool> | <score> |
+...
+
+Partial: <true|false>
+Notes: <notes-list>
+```
+
+If any HIGH-confidence match surfaces (compositeScore ≥ 80 — inclusive, matching the cross-repo-scout contract at `.claude/agents/cross-repo-scout.md § 6 Caller surfaces`), the recommendation may be `merge with existing capability` (apply the existing solution from the sibling repo) instead of `proceed`. Operator decides.
+
+If `sibling_repos[]` is empty in `.claude/project-registries.json`, skip this sub-step silently (no cross-repo data available).
+
 ## Step 3b — Grill-me Q&A (Standard+ only)
 
 Runs after Step 3a returns `recommendation = proceed`. Skipped for Trivial builds and when Step 3a halted with `stop` or `merge with existing capability`. Order invariant preserved: Step 3 → Step 3a → Step 3b → Step 4 → Step 5 → Step 6.
@@ -367,6 +397,21 @@ Steps within a round:
 When the loop exits, record the final mockup paths in `tasks/builds/{slug}/handoff.md` under a `mockups:` field. These paths become the design source of truth for spec authoring.
 
 ## Step 6 — Spec authoring
+
+Write the phase marker:
+
+```bash
+mkdir -p tasks/builds/{slug} && echo -n "spec" > tasks/builds/{slug}/.phase
+```
+
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
+coordinator is now in the `spec` phase. The hook enforces the spec-phase
+allowed-paths matrix on all Edit/Write/MultiEdit calls until the next phase
+transition.
+
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
+not benefit from its own enforcement — the hook is not yet deployed during this
+build. New builds post-v2.13.0 adoption get the markers automatically.
 
 Author the spec using `docs/spec-authoring-checklist.md` as the rubric. Name the file `docs/superpowers/specs/{YYYY-MM-DD}-{slug}-spec.md` matching the existing convention.
 

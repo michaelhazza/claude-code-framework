@@ -117,6 +117,14 @@ If `<mode>` is present:
 
 If `<mode>` is absent, do nothing here — the state file (if present from an earlier run) is left untouched.
 
+### experiment-eligible label recommendation
+
+After parsing the issue's labels in Step 0, check for any label matching the patterns `flake:*` or `perf:*`. If found, print this one-liner BEFORE proceeding to Step 1:
+
+> Issue #<N> carries label `<label>` — this looks experiment-eligible. Consider invoking `experiment-runner: <hypothesis from issue title> verify=<command>` for a metric-driven investigation. The bug-fixer pipeline still applies once the metric is improved; experiment-runner just adds a structured tuning loop ahead of the standard fix-PR flow. See `.claude/agents/experiment-runner.md`.
+
+Non-blocking — bug-fixer continues with the standard investigation flow regardless of operator response.
+
 ### Step 1 — TodoWrite skeleton
 
 Emit a TodoWrite with this list:
