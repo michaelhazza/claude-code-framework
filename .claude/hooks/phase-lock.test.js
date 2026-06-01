@@ -14,7 +14,7 @@
  * This file is a sanity script — re-run after any change to phase-lock.js.
  */
 
-import { decidePhaseLock } from "./phase-lock.js";
+import { decidePhaseLock, extractFilePaths } from "./phase-lock.js";
 
 // [label, input, expectedDisposition]
 const CASES = [
@@ -142,7 +142,57 @@ for (const [label, input, expected] of CASES) {
   }
 }
 
-console.log(`Cases: ${CASES.length}, passed: ${pass}, failed: ${fails.length}`);
+// ── extractFilePaths payload-shape regressions ─────────────────────────────
+// Real Claude Code MultiEdit payloads carry `file_path` at the top level,
+// with edits[] containing only `old_string`/`new_string`. A prior version of
+// the extractor scanned edits[].file_path and returned [] for valid payloads,
+// silently bypassing the phase-lock guard for MultiEdit. These cases pin the
+// shape contract.
+const EXTRACT_CASES = [
+  [
+    "MultiEdit hook payload uses top-level file_path",
+    'MultiEdit',
+    { file_path: 'server/foo.ts', edits: [{ old_string: 'a', new_string: 'b' }] },
+    ['server/foo.ts'],
+  ],
+  [
+    "MultiEdit with missing top-level file_path returns empty (no false positives)",
+    'MultiEdit',
+    { edits: [{ old_string: 'a', new_string: 'b' }] },
+    [],
+  ],
+  [
+    "Edit hook payload uses top-level file_path",
+    'Edit',
+    { file_path: 'server/foo.ts', old_string: 'a', new_string: 'b' },
+    ['server/foo.ts'],
+  ],
+  [
+    "Write hook payload uses top-level file_path",
+    'Write',
+    { file_path: 'tasks/builds/x/spec.md', content: 'hello' },
+    ['tasks/builds/x/spec.md'],
+  ],
+];
+
+for (const [label, toolName, toolInput, expectedPaths] of EXTRACT_CASES) {
+  const actual = extractFilePaths(toolName, toolInput);
+  const ok = JSON.stringify(actual) === JSON.stringify(expectedPaths);
+  if (ok) {
+    pass++;
+  } else {
+    fails.push({
+      label,
+      input: { toolName, toolInput },
+      expected: expectedPaths,
+      actual,
+      reason: 'extractFilePaths returned unexpected paths',
+    });
+  }
+}
+
+const totalCases = CASES.length + EXTRACT_CASES.length;
+console.log(`Cases: ${totalCases}, passed: ${pass}, failed: ${fails.length}`);
 if (fails.length) {
   for (const f of fails) {
     console.log(

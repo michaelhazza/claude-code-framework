@@ -40,9 +40,14 @@ export type AuditContextPacksResult =
 // ---------------------------------------------------------------------------
 
 function gfmSlug(heading: string): string {
+  // GitHub's heading-anchor slugger preserves underscores in addition to
+  // hyphens and alphanumerics — `# State machine (usability_state)` renders
+  // to `state-machine-usability_state`, not `state-machine-usabilitystate`.
+  // Without `_` in the allow-list, valid links in context packs would be
+  // falsely reported as broken anchors.
   return heading
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[^a-z0-9_\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-');

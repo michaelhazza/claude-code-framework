@@ -101,15 +101,21 @@ For each entry in `sibling_repos[]`:
 
 2. Run:
    ```bash
-   gh search code "<query>" --owner <owner-from-github-field> --limit 25
+   gh search code "<query>" --repo <owner>/<repo> --limit 25
    ```
+   Scoped by `--repo` (not `--owner`) so only the configured sibling repo's
+   matches are returned — `--owner` would pull in unrelated repos under the
+   same account and misattribute hits to the sibling.
    On rate-limit error (HTTP 429): record `reason: 'github_rate_limited'`, skip this repo.
    On other error: record `reason: 'github_search_failed'`, skip this repo.
 
 3. For each result, determine `lastModifiedDate`:
    ```bash
-   gh api repos/<owner>/<repo>/commits?path=<file-path>&per_page=1 --jq '.[0].commit.author.date'
+   gh api "repos/<owner>/<repo>/commits?path=<file-path>&per_page=1" --jq '.[0].commit.author.date'
    ```
+   The URL MUST be double-quoted — an unquoted `&per_page=1` is interpreted by
+   the shell as backgrounding the command and assigning `per_page=1` as a
+   separate variable, dropping the query parameter entirely.
    Take only the date portion. Drop the hit if lookup fails.
 
 4. Determine `hasColocatedTest`:

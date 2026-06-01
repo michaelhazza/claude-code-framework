@@ -236,19 +236,25 @@ export function decidePhaseLock({ toolName, targetPath, currentPhase, buildSlug 
 
 /**
  * Extract file paths from tool_input depending on tool type.
+ *
+ * Claude Code's MultiEdit payload schema is `{ file_path, edits: [{ old_string,
+ * new_string }, ...] }` — the file path is top-level, not per-edit. We always
+ * consume the top-level `file_path` first, then fall back to scanning `edits[]`
+ * for `file_path` entries in case a future schema variant adds per-edit paths.
+ * Edit/Write payloads carry only `file_path` at the top level.
+ *
  * @param {string} toolName
  * @param {Record<string, unknown>} toolInput
  * @returns {string[]}
  */
-function extractFilePaths(toolName, toolInput) {
+export function extractFilePaths(toolName, toolInput) {
   const paths = new Set();
+  if (toolInput.file_path) paths.add(String(toolInput.file_path));
   if (toolName === 'MultiEdit') {
-    const edits = toolInput.edits || [];
+    const edits = Array.isArray(toolInput.edits) ? toolInput.edits : [];
     for (const edit of edits) {
       if (edit && edit.file_path) paths.add(String(edit.file_path));
     }
-  } else {
-    if (toolInput.file_path) paths.add(String(toolInput.file_path));
   }
   return [...paths];
 }

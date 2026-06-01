@@ -127,11 +127,76 @@ function refreshCache() {
  *   catch-handler         : outer try/catch in main() still terminates as
  *                           a fallback safety net (branch 6 unchanged).
  */
+/**
+ * Run the audit-context-packs check. Fail-open: surfaces failures as stderr
+ * warnings, never blocks session start. Returns the disposition so callers can
+ * log it.
+ *
+ * Extracted so it can be called from BOTH branches of runSessionStartChecks
+ * (watcher-alive and watcher-dead) — the docstring on runSessionStartChecks
+ * promises the audit runs in both paths.
+ */
+function runAuditContextPacks() {
+  // Prefer consumer-local script; fall back to framework submodule copy.
+  const auditScriptPath = existsSync(AUDIT_SCRIPT_LOCAL)
+    ? AUDIT_SCRIPT_LOCAL
+    : existsSync(AUDIT_SCRIPT_FRAMEWORK)
+      ? AUDIT_SCRIPT_FRAMEWORK
+      : null;
+
+  if (auditScriptPath === null) {
+    // Script missing (pre-v2.13.0 consumer) — silent skip.
+    return { audit: 'skipped', reason: 'script_missing' };
+  }
+
+  const auditResult = spawnSync('npx', ['tsx', auditScriptPath], {
+    cwd: PROJECT_DIR,
+    timeout: BUILD_TIMEOUT_MS,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+
+  if (auditResult.error) {
+    // Spawn itself failed (timeout, ENOENT on npx, etc.). Surface fail-open.
+    process.stderr.write(
+      `audit-context-packs: spawn failed (${auditResult.error.code || auditResult.error.message}). ` +
+      `Session continues.\n`,
+    );
+    return { audit: 'failed', reason: 'spawn' };
+  }
+
+  if (auditResult.status !== 0) {
+    // The audit detected broken anchors OR the script itself errored. Surface
+    // BOTH stdout (broken-anchor lines) AND stderr (script errors such as
+    // "architecture.md not found"). Earlier this only surfaced stdout, so
+    // stderr-only failures were swallowed.
+    const stdout = auditResult.stdout ? String(auditResult.stdout) : '';
+    const stderr = auditResult.stderr ? String(auditResult.stderr) : '';
+    if (stdout || stderr) {
+      process.stderr.write(
+        `audit-context-packs: broken anchors detected (fix before finalisation):\n${stdout}${stderr}`,
+      );
+    } else {
+      // Non-zero exit with no output — surface the bare status so the failure is visible.
+      process.stderr.write(
+        `audit-context-packs: exited ${auditResult.status} with no output. Session continues.\n`,
+      );
+    }
+    return { audit: 'failed', reason: 'status_nonzero' };
+  }
+
+  return { audit: 'ok' };
+}
+
 function runSessionStartChecks() {
   // branch: watcher-alive — watcher is live; cache is current.
   if (watcherAlive()) {
-    // Cache is being kept live — no refresh needed.
-    // Fall through to audit check below.
+    // Cache is being kept live — no refresh needed, but the audit-context-packs
+    // check MUST still run: stale anchors can drift in the watcher-alive steady
+    // state too (a heading rename invalidates context-pack links regardless of
+    // whether the code-intelligence cache is fresh).
+    runAuditContextPacks();
     return { freshness: 'watcher_alive' };
   }
 
@@ -170,31 +235,7 @@ function runSessionStartChecks() {
     }
   }
 
-  // audit-context-packs check — fail-open: warns on miss but never blocks session start.
-  // Prefer consumer-local script; fall back to framework submodule copy.
-  const auditScriptPath = existsSync(AUDIT_SCRIPT_LOCAL)
-    ? AUDIT_SCRIPT_LOCAL
-    : existsSync(AUDIT_SCRIPT_FRAMEWORK)
-      ? AUDIT_SCRIPT_FRAMEWORK
-      : null;
-
-  if (auditScriptPath !== null) {
-    const auditResult = spawnSync('npx', ['tsx', auditScriptPath], {
-      cwd: PROJECT_DIR,
-      timeout: BUILD_TIMEOUT_MS,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      encoding: 'utf8',
-      shell: process.platform === 'win32',
-    });
-    if (!auditResult.error && auditResult.status !== 0 && auditResult.stdout) {
-      // auditContextPacks printed <pack>:<line> <anchor> lines to stdout on failure.
-      process.stderr.write(
-        `audit-context-packs: broken anchors detected (fix before finalisation):\n${auditResult.stdout}`,
-      );
-    }
-  }
-  // If auditScriptPath is null: script missing (pre-v2.13.0 consumer) — silent skip.
-
+  runAuditContextPacks();
   return freshnessResult;
 }
 

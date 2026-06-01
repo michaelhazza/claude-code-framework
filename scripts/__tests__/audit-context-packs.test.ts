@@ -225,3 +225,23 @@ test('duplicate-heading suffix skips collisions with naturally-suffixed siblings
   });
   assert.equal(result.kind, 'ok', 'setup-1-1 must be a registered anchor');
 });
+
+// ---------------------------------------------------------------------------
+// Test 14 (OAI-PR-003 regression): GitHub heading-anchor slugs preserve
+// underscores. The earlier slugger stripped them, so headings like
+// `# State machine (usability_state)` produced `state-machine-usabilitystate`
+// instead of the rendered `state-machine-usability_state`. Valid links in
+// context packs would have been reported as broken.
+// ---------------------------------------------------------------------------
+test('GFM slug preserves underscores in heading text', () => {
+  const arch = '# API_V2 Reference\n\n## State machine (usability_state)\n';
+  const pack = [
+    '[api](architecture.md#api_v2-reference)',
+    '[state](architecture.md#state-machine-usability_state)',
+  ].join('\n');
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  assert.equal(result.kind, 'ok', 'underscored anchors must be recognised');
+});
