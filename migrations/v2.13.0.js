@@ -1,16 +1,17 @@
 'use strict';
 
 /**
- * v2.13.0 migration — half 1 of 2 (.gitignore for phase markers).
- * Chunk 7 appends the sibling_repos half to the same migrate() function.
+ * v2.13.0 migration — two halves, one migrate() function.
  *
- * Half 1 (this chunk): idempotently append the line 'tasks/builds/.phase'
- * (glob: tasks/builds/star/.phase) to the consumer .gitignore so per-build
- * phase marker files are not committed to version control. Phase markers are
- * ephemeral coordination state; they must not appear in git history.
+ * Half 1 (Chunk 1): idempotently append 'tasks/builds/[*]/.phase'
+ * to the consumer .gitignore so per-build phase marker files are not
+ * committed to version control. Phase markers are ephemeral coordination
+ * state; they must not appear in git history.
  *
- * Half 2 (Chunk 7): adds `sibling_repos[]` field seeding to
- * .claude/project-registries.json for the cross-repo-scout agent.
+ * Half 2 (Chunk 7): idempotently add `sibling_repos: []` to
+ * .claude/project-registries.json for the cross-repo-scout agent (v2.13.0+).
+ * If the file does not exist, skips (consumer not yet running registries).
+ * If the key already exists, leaves untouched. Atomic via tmp-rename.
  *
  * Idempotent. Safe to re-run. Non-destructive.
  *
@@ -46,6 +47,31 @@ async function migrate(ctx) {
     notes.push(`Appended ${gitignoreLine} to .gitignore (phase marker files are ephemeral, must not be committed).`);
   } else {
     notes.push(`.gitignore already excludes ${gitignoreLine} — left untouched.`);
+  }
+
+  // -----------------------------------------------------------------------
+  // Half 2 — idempotently add `sibling_repos: []` to
+  // .claude/project-registries.json if the file exists and the key is absent.
+  // -----------------------------------------------------------------------
+  const registriesPath = path.join(consumerRoot, '.claude', 'project-registries.json');
+  if (fs.existsSync(registriesPath)) {
+    try {
+      const raw = fs.readFileSync(registriesPath, 'utf8');
+      const obj = JSON.parse(raw);
+      if (!('sibling_repos' in obj)) {
+        obj.sibling_repos = [];
+        const tmp = `${registriesPath}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+        fs.renameSync(tmp, registriesPath);
+        notes.push('Added sibling_repos: [] to .claude/project-registries.json.');
+      } else {
+        notes.push('.claude/project-registries.json already has sibling_repos — left untouched.');
+      }
+    } catch (e) {
+      notes.push(`WARN: failed to parse/modify .claude/project-registries.json: ${e.message}. Manual edit required.`);
+    }
+  } else {
+    notes.push('.claude/project-registries.json absent — seed via project-registries.json.template adoption.');
   }
 
   const status = 'applied';
