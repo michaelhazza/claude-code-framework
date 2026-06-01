@@ -70,6 +70,19 @@ Triggered when the user provides an idea or bug mid-session ("idea: ...", "bug: 
 - Never assess value or prioritise during capture.
 - If a bug involves data corruption or data loss, note severity as `critical` and flag it explicitly to the user.
 
+### experiment-eligible tag
+
+When the capture phrase contains any of these heuristic terms, tag the item `experiment-eligible`:
+- slow, slowness, latency, p50, p95, p99
+- flaky, flake, intermittent, sometimes fails
+- ranker quality, retrieval quality, NDCG, precision, recall
+- perf, performance, regression, slower than
+- benchmark, bench
+
+Heuristic only — not authoritative. When TRIAGE mode processes the queue, surface the `experiment-runner` recommendation for any `experiment-eligible` item:
+
+> Item N is `experiment-eligible`. Consider invoking `experiment-runner: <hypothesis> verify=<command>` for a metric-driven loop. See `.claude/agents/experiment-runner.md` for the full caller contract.
+
 ---
 
 ### Mode 2: TRIAGE
