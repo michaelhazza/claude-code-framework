@@ -132,7 +132,11 @@ For each candidate approach (typically 2-3), dispatch `cross-repo-scout` with th
 cross-repo-scout: query="<approach concept e.g. 'pg-boss job worker with idempotency'>" mode=both
 ```
 
-Include the top-ranked sibling-repo result for each approach in the plan's "Rationale" section under "Cross-repo prior art":
+Each scout invocation returns the Contract 6 top-3 envelope. Include the
+single highest-scoring result per approach in the plan's "Rationale" section
+(when more than one approach surfaced the same repo, deduplicate to that
+approach's own top hit). The remaining envelope rows are not surfaced in the
+plan — they are available in `progress.md` for operator drill-down.
 
 ```markdown
 **Approach A — <name>**

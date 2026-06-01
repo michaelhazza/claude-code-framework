@@ -39,8 +39,19 @@ Six required fields:
 
 **Per-iteration sequence:**
 
-1. Apply one atomic change within the `change_budget` constraint.
-2. Commit the change: `git commit -m "experiment iter N: <one-line description>"`. Commit BEFORE running verify — this makes every iteration revertable regardless of verify outcome.
+1. Apply one atomic change within the `change_budget` constraint. The
+   worktree MUST be clean of unrelated staged changes before this step —
+   re-check with `git status --porcelain --short` and abort the iteration if
+   anything outside the change-budget scope is staged or modified.
+2. Stage and commit the change:
+   ```bash
+   git add <files-touched-this-iteration>   # explicit list — never `git add .`
+   git commit -m "experiment iter N: <one-line description>"
+   ```
+   The explicit `git add` is required: Edit/Write don't auto-stage, so a bare
+   `git commit` would either fail with "no staged changes" or commit unrelated
+   work that was staged before the iteration started. Commit BEFORE running
+   verify — this makes every iteration revertable regardless of verify outcome.
 3. Run the `verify` command. Capture stdout as the metric value (parse as float).
    - **Verify-failure branch** (command exits non-zero OR stdout is not a parseable number):
      1. Run `git revert HEAD --no-edit` to undo the iteration's commit. The

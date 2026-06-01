@@ -163,3 +163,44 @@ test('determinism: 100 identical invocations return identical Decision', () => {
     assert.equal(decideKeepOrDiscard(input), first);
   }
 });
+
+// --- direction validation (R4 OAI-PR-004 regression) ---
+
+test('direction typo throws (not silently treated as higher)', () => {
+  assert.throws(
+    () => decideKeepOrDiscard({
+      // @ts-expect-error — runtime guard for invalid direction
+      currentMetric: 100,
+      bestSoFar: 50,
+      direction: 'lowerer',
+      minDelta: 5,
+    }),
+    /direction must be 'higher' or 'lower'/,
+  );
+});
+
+test('direction undefined throws', () => {
+  assert.throws(
+    () => decideKeepOrDiscard({
+      // @ts-expect-error — runtime guard for invalid direction
+      currentMetric: 100,
+      bestSoFar: 50,
+      direction: undefined,
+      minDelta: 5,
+    }),
+    /direction must be 'higher' or 'lower'/,
+  );
+});
+
+test('direction empty-string throws', () => {
+  assert.throws(
+    () => decideKeepOrDiscard({
+      // @ts-expect-error — runtime guard for invalid direction
+      currentMetric: 100,
+      bestSoFar: 50,
+      direction: '',
+      minDelta: 5,
+    }),
+    /direction must be 'higher' or 'lower'/,
+  );
+});

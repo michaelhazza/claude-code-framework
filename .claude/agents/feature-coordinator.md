@@ -330,8 +330,9 @@ The plan's declared files for the chunk are the canonical source of truth. The i
 1. Verify builder's "Files changed" list is a subset of the plan-declared files for this chunk. Any builder-reported file outside the planned set → **hard fail**: print "Builder modified files outside the chunk's declared scope: {list}. Commit blocked — investigate before continuing." Do NOT commit. (This catches builder scope-drift even when the working tree itself looks clean.)
 2. Run `git diff --name-only HEAD` vs builder's "Files changed" list.
 3. If unexpected files appear → **hard fail**: print "Unexpected files in working tree: {list}. Commit blocked — investigate and revert unexpected changes before continuing." Do NOT commit; do NOT offer to stage only declared files. Operator must manually revert before coordinator resumes.
-4. Once only declared files remain: `git add <declared files only>` (never `git add .` or `git add -A`) then `git commit`.
-5. Update `tasks/builds/{slug}/progress.md` (mark this chunk done; refresh the environment snapshot — see below), mark TodoWrite complete, move to next chunk.
+4. **Write the chunk-learnings entry FIRST** — append the `## Chunk N — <chunk title>` block (format below in *Chunk-learnings write*) to `tasks/builds/{slug}/chunk-learnings.md` before staging anything. This makes the learning land in the chunk's own commit, not the next chunk's or the close-Phase-2 catch-all.
+5. Once only declared files remain plus the updated `chunk-learnings.md`: `git add <declared files only> tasks/builds/{slug}/chunk-learnings.md` (never `git add .` or `git add -A`) then `git commit`.
+6. Update `tasks/builds/{slug}/progress.md` (mark this chunk done; refresh the environment snapshot — see below), mark TodoWrite complete, move to next chunk.
 
 Commit message per chunk:
 
@@ -343,20 +344,9 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 Push after each chunk commit.
 
-### Chunk-learnings write (after each chunk's G1 passes)
+### Chunk-learnings write (BEFORE the chunk commit — step 4 above)
 
-After builder reports SUCCESS for chunk N and G1 passes, extract a 5-10-line summary and append to `tasks/builds/{slug}/chunk-learnings.md` using exactly this format (Contract 3):
-
-```markdown
-## Chunk N — <chunk title>
-
-- **Files touched:** <comma-separated list of file paths>
-- **G1 failures resolved:** <one bullet per failure, or "none">
-- **Plan gaps surfaced:** <one bullet per gap, or "none">
-- **Watch-out for future chunks:** <one bullet — load-bearing line — describing a pattern or constraint the next chunk should respect>
-```
-
-After committing the chunk and BEFORE dispatching builder for chunk N+1, append a `## Chunk N — <chunk title>` entry to `tasks/builds/{slug}/chunk-learnings.md`. Entry format (Contract 3 in spec):
+After builder reports SUCCESS for chunk N and G1 passes, extract a 5-10-line summary and append to `tasks/builds/{slug}/chunk-learnings.md` using exactly this format (Contract 3). **This write happens at step 4 of the Commit-integrity invariant — BEFORE the `git add` + `git commit`** — so the learning entry lands in the same commit as the chunk it describes. Earlier versions wrote it after the commit, leaving the file dirty between chunks and risking the last-chunk entry never landing on its own commit.
 
 ```markdown
 ## Chunk N — <chunk title>
@@ -648,7 +638,14 @@ Write `phase_status: PHASE_2_PAUSED_PLAN` to `tasks/builds/{slug}/handoff.md`. E
 
 ### 2. plan-gate "abort"
 
-Write `phase_status: PHASE_2_ABORTED` to `tasks/builds/{slug}/handoff.md`. Set `tasks/current-focus.md` status to `NONE`. See abort write order below. Mark all remaining TodoWrite items completed. Exit.
+Write `phase_status: PHASE_2_ABORTED` to `tasks/builds/{slug}/handoff.md`. **Clear the phase lock** by writing `build` (an unrestricted phase) to `tasks/builds/{slug}/.phase` — this prevents the phase-lock hook from leaving the repo in a stuck plan-phase edit lock if `tasks/current-focus.md` still references the slug for any reason. Set `tasks/current-focus.md` status to `NONE`. See abort write order below. Mark all remaining TodoWrite items completed. Exit.
+
+```bash
+# Required pre-exit sequence for plan-gate abort:
+echo -n "build" > tasks/builds/{slug}/.phase    # release phase lock first
+# ... handoff.md write (see abort write order) ...
+# ... current-focus.md status: NONE ...
+```
 
 ### 3. Per-chunk plan-gap rounds exceed 2
 

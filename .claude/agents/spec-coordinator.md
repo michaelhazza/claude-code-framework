@@ -306,7 +306,7 @@ Partial: <true|false>
 Notes: <notes-list>
 ```
 
-If any HIGH-confidence match surfaces (compositeScore > 80), the recommendation may be `merge with existing capability` (apply the existing solution from the sibling repo) instead of `proceed`. Operator decides.
+If any HIGH-confidence match surfaces (compositeScore ≥ 80 — inclusive, matching the cross-repo-scout contract at `.claude/agents/cross-repo-scout.md § 6 Caller surfaces`), the recommendation may be `merge with existing capability` (apply the existing solution from the sibling repo) instead of `proceed`. Operator decides.
 
 If `sibling_repos[]` is empty in `.claude/project-registries.json`, skip this sub-step silently (no cross-repo data available).
 
