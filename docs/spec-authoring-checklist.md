@@ -396,8 +396,6 @@ State three things in the spec for any such flow:
 - The recheck after the 2xx (the re-select + comparison).
 - The drift outcome (terminal audit `status: 'partial'`, the named flag, and the typed `errorCode` returned to the caller).
 
-A flow that calls an external provider after releasing a row-lock without a post-write recheck is silently lossy under concurrent rotation.
-
 ### Reviewer signal this prevents
 
 "No idempotency posture declared" / "What happens when two callers race here?" / "How does the caller know if this partially failed?" / "The DB-then-HTTP write has no post-write recheck — a concurrent rotation between lock release and HTTP completion is silently lost" — all caught in the pre-launch hardening pre-implementation hardening pass. These gaps are architectural, not stylistic — they produce correctness bugs at production load.
