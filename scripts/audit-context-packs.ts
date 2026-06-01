@@ -59,23 +59,29 @@ function gfmSlug(heading: string): string {
 
 function extractDeclaredAnchors(markdown: string): Set<string> {
   const anchors = new Set<string>();
+  const lines = markdown.split('\n');
+  // Mask BOTH fenced code blocks AND 4-space-indented code blocks. Anchors and
+  // headings inside either form are example markup, not real declared anchors.
+  const codeBlocked = buildCodeBlockMask(lines);
 
-  // 1. Explicit <a id="..."></a> tags — highest precedence.
+  // 1. Explicit <a id="..."></a> tags — scan line-by-line so we can skip code-block lines.
+  //    Multiple tags on one non-code-block line are still captured by the global regex.
   const aIdRe = /<a\s+id="([^"]+)"\s*(?:\/>|><\/a>|>.*?<\/a>)/g;
-  let m: RegExpExecArray | null;
-  while ((m = aIdRe.exec(markdown)) !== null) {
-    anchors.add(m[1]);
+  for (let i = 0; i < lines.length; i++) {
+    if (codeBlocked[i]) continue;
+    let m: RegExpExecArray | null;
+    aIdRe.lastIndex = 0;
+    while ((m = aIdRe.exec(lines[i])) !== null) {
+      anchors.add(m[1]);
+    }
   }
 
   // 2. Heading-derived slugs with GFM duplicate-suffix algorithm.
   //    Track counts globally across the file (not reset per section).
-  //    Skip heading-shape lines inside fenced code blocks — they are example markup,
-  //    not real declared anchors (closes the ghost-anchor false-positive corridor).
+  //    Skip heading-shape lines inside code blocks (fenced or indented).
   const seenSlugs = new Map<string, number>();
-  const lines = markdown.split('\n');
-  const fenced = buildFenceMask(lines);
   for (let i = 0; i < lines.length; i++) {
-    if (fenced[i]) continue;
+    if (codeBlocked[i]) continue;
     const headingMatch = /^#{1,6}\s+(.+)$/.exec(lines[i]);
     if (!headingMatch) continue;
     // Strip inline code and links from heading text before slugging.
@@ -109,38 +115,68 @@ function extractDeclaredAnchors(markdown: string): Set<string> {
 
 /**
  * Returns an array of booleans, one per line, indicating whether that line is
- * inside a GFM fenced code block (``` or ~~~, opening fence >=3 chars).
+ * inside a code block — either a GFM fenced code block (``` or ~~~, opening
+ * fence >=3 chars, indented 0-3 spaces) OR a 4-space-indented Markdown code
+ * block (CommonMark §4.4). Anchors and headings inside either form are example
+ * markup, not real declared/referenced anchors.
  *
- * GFM allows fences to be indented by up to 3 spaces (4+ spaces makes the line
- * an indented code block, not a fence). Both opening and closing fences accept
- * the same 0-3 space leading-whitespace allowance.
+ * Indented-block rules (CommonMark): an indented code block cannot interrupt a
+ * paragraph, so we only treat 4+ space-indent lines as code when the most
+ * recent non-blank line was blank/SOF or already in an indented block. Blank
+ * lines inside an indented block do not break it — only a non-blank,
+ * less-than-4-space-indent line ends it.
  */
-function buildFenceMask(lines: string[]): boolean[] {
+function buildCodeBlockMask(lines: string[]): boolean[] {
   const mask: boolean[] = new Array(lines.length).fill(false);
   let inFence = false;
   let fenceChar = '';
   let fenceLen = 0;
+  let inIndentedBlock = false;
+  let prevLineBlank = true; // SOF behaves like a blank line
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!inFence) {
-      // 0-3 spaces, then >=3 backticks or tildes.
-      const fenceOpen = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-      if (fenceOpen) {
-        inFence = true;
-        fenceChar = fenceOpen[1][0];
-        fenceLen = fenceOpen[1].length;
-        mask[i] = true; // opening fence line is "inside"
-      }
-    } else {
+
+    if (inFence) {
       mask[i] = true;
-      // Check for closing fence: same char, >= opening length, 0-3 space
-      // indent allowance, optional trailing whitespace.
       const closeRe = new RegExp(`^ {0,3}(\\${fenceChar}{${fenceLen},})\\s*$`);
-      if (closeRe.test(line)) {
-        inFence = false;
-      }
+      if (closeRe.test(line)) inFence = false;
+      prevLineBlank = false;
+      continue;
     }
+
+    const isBlank = /^\s*$/.test(line);
+    const isIndented4 = /^( {4,}|\t)/.test(line);
+    const fenceOpen = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+
+    if (fenceOpen) {
+      inFence = true;
+      fenceChar = fenceOpen[1][0];
+      fenceLen = fenceOpen[1].length;
+      mask[i] = true;
+      inIndentedBlock = false;
+      prevLineBlank = false;
+      continue;
+    }
+
+    if (isBlank) {
+      // Blank lines inside an indented block remain in the block. Indented
+      // block doesn't end here; we wait for a non-blank, less-indented line.
+      if (inIndentedBlock) mask[i] = true;
+      prevLineBlank = true;
+      continue;
+    }
+
+    if (isIndented4 && (prevLineBlank || inIndentedBlock)) {
+      mask[i] = true;
+      inIndentedBlock = true;
+      prevLineBlank = false;
+      continue;
+    }
+
+    // Non-blank, non-code line — ends any in-progress indented block.
+    inIndentedBlock = false;
+    prevLineBlank = false;
   }
   return mask;
 }
@@ -156,7 +192,7 @@ function buildFenceMask(lines: string[]): boolean[] {
 function extractPackAnchors(content: string): Array<{ anchor: string; line: number }> {
   const refs: Array<{ anchor: string; line: number }> = [];
   const lines = content.split('\n');
-  const fenced = buildFenceMask(lines);
+  const fenced = buildCodeBlockMask(lines);
 
   // Track whether we are under a "- `architecture.md`:" style source-block heading.
   // Such headings introduce a list of anchor refs as bare backtick fragments.

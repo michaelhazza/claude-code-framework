@@ -204,3 +204,46 @@ test('direction empty-string throws', () => {
     /direction must be 'higher' or 'lower'/,
   );
 });
+
+// ---------------------------------------------------------------------------
+// PR #456 feedback regression: validation runs BEFORE the bestSoFar=null
+// iteration-1 shortcut. Invalid inputs on the first iteration must throw,
+// not silently return 'keep'.
+// ---------------------------------------------------------------------------
+
+test('iteration 1 (bestSoFar=null) with NaN currentMetric throws', () => {
+  assert.throws(
+    () => decideKeepOrDiscard({
+      currentMetric: NaN,
+      bestSoFar: null,
+      direction: 'lower',
+      minDelta: 5,
+    }),
+    /currentMetric must be finite/,
+  );
+});
+
+test('iteration 1 (bestSoFar=null) with invalid direction throws', () => {
+  assert.throws(
+    () => decideKeepOrDiscard({
+      currentMetric: 100,
+      bestSoFar: null,
+      // @ts-expect-error — runtime guard for invalid direction on iter 1
+      direction: 'lowerer',
+      minDelta: 5,
+    }),
+    /direction must be 'higher' or 'lower'/,
+  );
+});
+
+test('iteration 1 (bestSoFar=null) with non-positive minDelta throws', () => {
+  assert.throws(
+    () => decideKeepOrDiscard({
+      currentMetric: 100,
+      bestSoFar: null,
+      direction: 'lower',
+      minDelta: 0,
+    }),
+    /minDelta must be a finite positive number/,
+  );
+});

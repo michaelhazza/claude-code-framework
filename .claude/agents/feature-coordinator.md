@@ -365,7 +365,7 @@ The `Watch-out for future chunks` line is the load-bearing line — write a conc
 
 ### Chunk-completion progress write (environment snapshot)
 
-When updating `tasks/builds/{slug}/progress.md` in step 4 above, write or replace a `## Environment snapshot` section so a subsequent resume run has a baseline for the resume-time comparison (see "Environment snapshot check" earlier in Step 6):
+When updating `tasks/builds/{slug}/progress.md` in the chunk-completion progress write step (after `git push` — the Commit-integrity invariant step 6), write or replace a `## Environment snapshot` section so a subsequent resume run has a baseline for the resume-time comparison (see "Environment snapshot check" earlier in Step 6):
 
 ```markdown
 ## Environment snapshot
@@ -398,8 +398,9 @@ echo -n "review" > tasks/builds/{slug}/.phase
 ```
 
 This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
-coordinator is now in the `review` phase. The hook enforces the review-phase
-allowed-paths matrix on all Edit/Write/MultiEdit calls.
+coordinator is now in the `review` phase. Review is **unrestricted** in the
+phase-lock matrix (the hook is a silent no-op) — review fixes are inherently
+cross-cutting and a path restriction would block legitimate fix patches.
 
 **Bootstrap note:** the v2.13.0 build that introduces these phase markers does
 not benefit from its own enforcement — the hook is not yet deployed during this

@@ -138,11 +138,13 @@ Without this discipline, a repo can land in both `searchedRepos` and
    separate variable, dropping the query parameter entirely.
    Take only the date portion. Drop the hit if lookup fails.
 
-4. Determine `hasColocatedTest`:
+4. Determine `hasColocatedTest`: query the candidate file's directory directly so the answer is correct regardless of how many test files the repo has overall.
    ```bash
-   gh search code "*.test.ts OR *.spec.ts" --repo <owner>/<repo> --limit 5
+   # <candidate-dir> is the directory portion of the candidate file path.
+   # Use the GitHub contents API for the exact directory; cheaper and accurate.
+   gh api "repos/<owner>/<repo>/contents/<candidate-dir>" --jq '[.[] | .name] | join("\n")'
    ```
-   Check if any result is in the same directory as the file. Fall back to `false` if the check fails.
+   `hasColocatedTest` = `true` if any returned filename matches `*.test.ts`, `*.test.js`, `*.spec.ts`, or `*.spec.js`; else `false`. Fall back to `false` if the API call fails (404 on missing directory, or rate limit). **Do NOT use repo-wide `gh search code` with a small limit** — a repo with more than the limit's worth of test files can easily return unrelated tests first and falsely report `false`, which costs 20 composite-score points and can push relevant prior art below the surfaced top 3.
 
 5. Build `CandidateHit` as above.
 

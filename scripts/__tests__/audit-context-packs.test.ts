@@ -327,34 +327,102 @@ test('indented fence (2 spaces) in architecture.md hides example heading from de
 });
 
 // ---------------------------------------------------------------------------
-// Test 19 (R3 OAI-PR-002 boundary): a fence with 4 spaces of indent is an
-// indented code block per GFM, NOT a fenced block. The mask must NOT treat
-// it as a fence open — but the 4-space indent already makes whatever's
-// inside a code-block region anyway. We assert correctness via the pack-link
-// path: a link inside a 4-space-indented region with backticks should still
-// be picked up as a real ref (because the backticks are not a real fence,
-// they're just text inside an indented code line — but our extractor scans
-// per-line non-fenced text). Documenting boundary behaviour.
+// Test 19 (PR #14 feedback regression): an example link rendered inside a
+// 4-space-indented Markdown code block must NOT be treated as a real anchor
+// ref. Pack files routinely include example markdown showing what an
+// architecture.md link looks like — those examples are documentation, not
+// references the audit should validate. The mask must cover indented code
+// blocks in addition to fenced blocks.
 // ---------------------------------------------------------------------------
-test('fence with 4 spaces of indent is not treated as a real fence (boundary case)', () => {
-  // 4-space indent: per GFM the line is an indented code block, not a fence.
-  // For our purposes that means buildFenceMask must NOT enter fence mode.
+test('link inside 4-space-indented code block is NOT extracted as a real ref', () => {
   const arch = '# Real Section\n';
   const pack = [
-    'Intro text.',
-    '    ```markdown',
-    '[example](architecture.md#fake)',
-    '    ```',
-    'End.',
+    'Intro paragraph.',
+    '',                              // blank line required to start indented block
+    '    Example markdown:',
+    '    [example](architecture.md#fake-anchor)',
+    '',
+    'End paragraph.',
   ].join('\n');
   const result = auditContextPacks({
     packs: [{ path: 'review.md', content: pack }],
     architectureMarkdown: arch,
   });
-  // The non-indented middle line is NOT inside a fence (because the open was
-  // 4-space-indented and ignored), so its link IS extracted, and the anchor
-  // `fake` is not declared, so the audit returns fail.
-  assert.equal(result.kind, 'fail', '4-space indent must not open a fence');
+  // The indented lines are an indented code block per CommonMark §4.4.
+  // Links inside are example markup, not references.
+  assert.equal(result.kind, 'ok', 'links inside indented code blocks must not be extracted as refs');
+});
+
+// ---------------------------------------------------------------------------
+// Test 20 (PR #14 feedback regression): a non-blank prose line that happens
+// to be indented 4+ spaces is NOT a code block if it's a continuation of an
+// in-progress paragraph (indented code blocks "cannot interrupt a paragraph"
+// per CommonMark §4.4).
+// ---------------------------------------------------------------------------
+test('4-space-indented line that continues a paragraph is NOT masked', () => {
+  const arch = '# Real Section\n';
+  // No blank line between the intro and the indented continuation, so the
+  // indented line is paragraph text, not a code block.
+  const pack = [
+    'Intro paragraph that wraps and continues on the next line',
+    '    [example](architecture.md#fake-anchor)',
+  ].join('\n');
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  // The indented line is paragraph continuation; the link IS extracted; the
+  // anchor doesn't exist; audit fails.
+  assert.equal(result.kind, 'fail', 'paragraph-continuation indent must not mask the line');
+});
+
+// ---------------------------------------------------------------------------
+// Test 21 (PR #456 feedback regression): explicit <a id="..."></a> tags
+// inside fenced code blocks must NOT register as declared anchors. The
+// previous implementation ran the <a id> regex over the full markdown
+// string before applying the fence mask, allowing example markup in
+// architecture.md to ghost-register fake anchors.
+// ---------------------------------------------------------------------------
+test('explicit <a id> inside a fenced block is NOT a declared anchor', () => {
+  const arch = [
+    '# Real Heading',
+    '',
+    'Example anchor syntax:',
+    '',
+    '```html',
+    '<a id="fake-id-inside-fence"></a>',
+    '```',
+    '',
+    '# Real Heading Two',
+  ].join('\n');
+  const pack = '[fake](architecture.md#fake-id-inside-fence)\n';
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  assert.equal(result.kind, 'fail', '<a id> inside fenced block must not register as a declared anchor');
+  if (result.kind !== 'fail') return;
+  assert.equal(result.missing[0].anchor, 'fake-id-inside-fence');
+});
+
+// ---------------------------------------------------------------------------
+// Test 22 (PR #456 feedback regression): explicit <a id> inside a 4-space
+// indented code block also must NOT register as a declared anchor.
+// ---------------------------------------------------------------------------
+test('explicit <a id> inside indented code block is NOT a declared anchor', () => {
+  const arch = [
+    '# Real Heading',
+    '',                              // blank line required to start indented block
+    '    <a id="fake-id-in-indented-block"></a>',
+    '',
+    '# Real Heading Two',
+  ].join('\n');
+  const pack = '[fake](architecture.md#fake-id-in-indented-block)\n';
+  const result = auditContextPacks({
+    packs: [{ path: 'review.md', content: pack }],
+    architectureMarkdown: arch,
+  });
+  assert.equal(result.kind, 'fail', '<a id> inside indented code block must not register');
 });
 
 // ---------------------------------------------------------------------------
