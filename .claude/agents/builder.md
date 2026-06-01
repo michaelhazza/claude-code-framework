@@ -15,7 +15,8 @@ Read in order:
 3. `DEVELOPMENT_GUIDELINES.md` — read if present and the chunk touches migrations, schema, services, routes, shared libs, tenant-isolation policies, or LLM-routing code. Skip when absent OR for pure-frontend / pure-docs chunks.
 4. The plan file at the path provided by the caller
 5. The specific chunk section in the plan
-6. Any files the chunk references that already exist in the repo (Read before Edit)
+6. `tasks/builds/{slug}/chunk-learnings.md` if it exists. Read all prior entries; pay particular attention to each chunk's `Watch-out for future chunks:` line. If the file does not exist (first chunk of the build, or any in-flight build that pre-dates chunk-learnings adoption), proceed without it. **Do NOT fail** if the file is missing.
+7. Any files the chunk references that already exist in the repo (Read before Edit)
 
 ## Step 1 — TodoWrite list
 

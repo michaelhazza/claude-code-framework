@@ -343,6 +343,36 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 Push after each chunk commit.
 
+### Chunk-learnings write (after each chunk's G1 passes)
+
+After builder reports SUCCESS for chunk N and G1 passes, extract a 5-10-line summary and append to `tasks/builds/{slug}/chunk-learnings.md` using exactly this format (Contract 3):
+
+```markdown
+## Chunk N — <chunk title>
+
+- **Files touched:** <comma-separated list of file paths>
+- **G1 failures resolved:** <one bullet per failure, or "none">
+- **Plan gaps surfaced:** <one bullet per gap, or "none">
+- **Watch-out for future chunks:** <one bullet — load-bearing line — describing a pattern or constraint the next chunk should respect>
+```
+
+After committing the chunk and BEFORE dispatching builder for chunk N+1, append a `## Chunk N — <chunk title>` entry to `tasks/builds/{slug}/chunk-learnings.md`. Entry format (Contract 3 in spec):
+
+```markdown
+## Chunk N — <chunk title>
+
+- **Files touched:** <list builder reported in "Files changed">
+- **G1 failures resolved:** <one bullet per G1 fix attempt this chunk, or "none">
+- **Plan gaps surfaced:** <one bullet per PLAN_GAP routed back to architect this chunk, or "none">
+- **Watch-out for future chunks:** <one bullet — concrete, actionable observation (e.g. "Migration v2.13.0.js exports `migrate` only; Chunk 7 must APPEND to that function, not create a new one")>
+```
+
+Append-only — use `Edit` with the file's current EOF as anchor. If file does not exist, `Write` with the new entry as sole content. **Partial-write recovery:** if coordinator crashes mid-write and resumes, next invocation overwrites the partial `## Chunk N — ...` entry in place (matched by deterministic chunk-number header).
+
+The `Watch-out for future chunks` line is the load-bearing line — write a concrete observation, not generic advice. If no useful watch-out surfaced, write `none` rather than padding.
+
+**Forward-only bootstrap note:** the v2.13.0 build itself runs without chunk-learnings injection (this write lands in Chunk 5; chunks 1-4 had no prior file to read). New builds post-v2.13.0 get the full mechanism.
+
 ### Chunk-completion progress write (environment snapshot)
 
 When updating `tasks/builds/{slug}/progress.md` in step 4 above, write or replace a `## Environment snapshot` section so a subsequent resume run has a baseline for the resume-time comparison (see "Environment snapshot check" earlier in Step 6):
