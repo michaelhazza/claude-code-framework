@@ -328,9 +328,9 @@ If builder reports `PLAN_GAP`:
 The plan's declared files for the chunk are the canonical source of truth. The integrity chain is `plan-declared ⊇ builder-reported ⊇ working-tree`. After builder SUCCESS + G1 passes:
 
 1. Verify builder's "Files changed" list is a subset of the plan-declared files for this chunk. Any builder-reported file outside the planned set → **hard fail**: print "Builder modified files outside the chunk's declared scope: {list}. Commit blocked — investigate before continuing." Do NOT commit. (This catches builder scope-drift even when the working tree itself looks clean.)
-2. Run `git diff --name-only HEAD` vs builder's "Files changed" list.
-3. If unexpected files appear → **hard fail**: print "Unexpected files in working tree: {list}. Commit blocked — investigate and revert unexpected changes before continuing." Do NOT commit; do NOT offer to stage only declared files. Operator must manually revert before coordinator resumes.
-4. **Write the chunk-learnings entry FIRST** — append the `## Chunk N — <chunk title>` block (format below in *Chunk-learnings write*) to `tasks/builds/{slug}/chunk-learnings.md` before staging anything. This makes the learning land in the chunk's own commit, not the next chunk's or the close-Phase-2 catch-all.
+2. **Chunk-learnings partial-write recovery (runs BEFORE the unexpected-files guard so a mid-write crash isn't blocked by the guard it produced):** check whether `tasks/builds/{slug}/chunk-learnings.md` appears in `git diff --name-only HEAD`. If it does AND the file ends with a `## Chunk N — <chunk title>` header for the CURRENT chunk (chunk-number header matches the chunk being committed), this is a recovery scenario from a prior crash mid-write. Re-validate the file's tail-entry shape against Contract 3 (Files touched / G1 failures resolved / Plan gaps surfaced / Watch-out for future chunks bullets). If the tail entry is partial/malformed, overwrite the `## Chunk N — ...` block in place using the current builder report; if complete, leave as-is. **Either way, the dirty `chunk-learnings.md` is now in a valid state and is allowed through the next step's working-tree comparison via the coordinator-owned-file carve-out.** Recovery applies ONLY to `tasks/builds/{slug}/chunk-learnings.md` and ONLY when the tail header matches the current chunk number — any other dirty coordinator-owned file or any non-matching chunk-learnings header proceeds to step 3 as normal.
+3. Run `git diff --name-only HEAD` vs builder's "Files changed" list. Allow `tasks/builds/{slug}/chunk-learnings.md` through as a coordinator-owned-file exception (the next step writes/updates it). Any OTHER unexpected file → **hard fail**: print "Unexpected files in working tree: {list}. Commit blocked — investigate and revert unexpected changes before continuing." Do NOT commit; do NOT offer to stage only declared files. Operator must manually revert before coordinator resumes.
+4. **Write the chunk-learnings entry FIRST** — if step 2 did not already produce a complete entry, append the `## Chunk N — <chunk title>` block (format below in *Chunk-learnings write*) to `tasks/builds/{slug}/chunk-learnings.md` before staging anything. This makes the learning land in the chunk's own commit, not the next chunk's or the close-Phase-2 catch-all.
 5. Once only declared files remain plus the updated `chunk-learnings.md`: `git add <declared files only> tasks/builds/{slug}/chunk-learnings.md` (never `git add .` or `git add -A`) then `git commit`.
 6. Update `tasks/builds/{slug}/progress.md` (mark this chunk done; refresh the environment snapshot — see below), mark TodoWrite complete, move to next chunk.
 
@@ -686,4 +686,12 @@ On any abort or hard-escalation path, `tasks/current-focus.md` MUST end in one o
 
 ### Abort write order
 
-Always write `handoff.md` first, then update `tasks/current-focus.md`. Never reverse this order.
+Three-step sequence, executed in this exact order:
+
+1. **Release the phase lock first** by writing an unrestricted phase value (`build`) to `tasks/builds/{slug}/.phase` (only required when aborting from `plan`-phase enforcement — `spec` aborts skip this step). This ensures the subsequent handoff.md write itself is not blocked by phase-lock enforcement on the very build that's aborting. After this step, the hook treats the build as unrestricted for the remainder of the abort path.
+2. **Write `handoff.md`** with the abort `phase_status` (`PHASE_2_ABORTED` / `PHASE_2_PAUSED_*` as appropriate).
+3. **Update `tasks/current-focus.md`** last (`status: NONE` for full abort; otherwise the matching `*_PAUSED | *_ABORTED` named status — see § Abort invariant).
+
+The handoff-before-current-focus ordering between steps 2 and 3 is load-bearing — `handoff.md` is the resume contract, and a coordinator that crashes between steps 2 and 3 leaves a recoverable state. Reversing steps 2 and 3 would create a window where `tasks/current-focus.md` claims `NONE` but no handoff records why.
+
+The phase-lock release in step 1 is also load-bearing for `plan`-phase aborts only: if the phase marker still says `plan` when handoff.md is being written, the hook would block the write (handoff.md is NOT in the plan-phase allowed-paths matrix), creating a deadlock the operator could only break by manually editing `.phase`.
