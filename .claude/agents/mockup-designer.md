@@ -74,6 +74,45 @@ Match existing prototypes. Inspect `prototypes/agent-as-employee/_shared.css` an
 
 Do NOT introduce new CSS frameworks the existing prototypes don't use.
 
+## Step 3a — Operator-vocabulary rule (no engineer jargon)
+
+Default-visible UI copy (labels, buttons, headings, table cells, sample data, state names, empty states, tooltips) must read as plain English to a non-technical operator. If they would need product training to understand it, rewrite.
+
+**Forbidden in default UI copy:**
+
+- Protocol / engineering terms: MCP, JWT, OAuth scopes, idempotency, webhook, manifest, JSON-LD, RLS, write-tier, read-tier, capability flag, runtime, BEM, sparkline, gated, hydrated, debounced
+- Behaviour-state internals: drift, shadow mode, kill switch, promote to live, autonomous, fallback, throttled, settled, in-flight, soft-deleted
+- Identifier-style labels: snake_case or camelCase identifiers exposed as button/heading/cell text (e.g. `request_demo`, `evaluate_fit`, `agent_readiness_snapshots`). Operators read these as code.
+- Internal architecture vocabulary: pillar, primitive, orchestrator, charge router, spend ledger, action endpoint (without subtitle), citation observation, sentinel-org, deferred enforcement
+- Telemetry / observability jargon: provenance chain, lineage, resolver version, composition hash, blast radius, freshness window, occurrence counters (these belong behind Advanced or Audit-detail disclosures, never on first paint)
+
+**Required plain-English replacements (patterns, not exhaustive):**
+
+| Internal term | Plain English |
+|---|---|
+| "MCP read-only" | "Agents can ask questions, but can't take actions yet" |
+| "Manifest drift detected" | "Your site has changed, time to refresh" |
+| "Shadow mode" | "Practice mode (no real money moves)" |
+| "Promote to live" | "Turn on real spending" |
+| "Kill switch fired" | "Paused by operator" |
+| "Action endpoint" | "Agent-callable action" or "Action" with a clear intro |
+| `request_demo` | "Request a demo" |
+| `evaluate_fit` | "Check if we're a fit" |
+| `get_pricing` | "Ask for pricing" |
+
+**Required positive behaviour.** For every product-internal capability the prototype surfaces (any score, pillar, mode, primitive, integration), include a one-line plain-English subtitle / tooltip / tab intro explaining what it measures or does. The operator should never have to ask "what is this?"
+
+Examples:
+- Under an "Agent-Readiness" chip: "How easily AI agents can find and read your site"
+- At the top of an Action Endpoints tab: "These are the actions AI agents can take on your site. Configure once, agents invoke directly."
+- Under a "Practice mode" badge: "Nothing has been spent yet. Turn on real spending when you're confident."
+
+**Permitted contexts for internal terms:**
+1. Designer-notes blocks at the bottom of the prototype (for the spec author's reference)
+2. Admin-only / power-user surfaces where the operator persona is explicitly developer-equivalent (cite the persona in the round summary)
+
+**Failure mode:** mockup-reviewer flags per-occurrence as 🟡 Should-fix. Jargon on a high-traffic surface (chip subtitle, primary action button, tab name, page heading) escalates to 🔴 Blocking. Missing plain-English subtitle on an internal-capability surface is 🟡 Should-fix; jargon + missing subtitle on the same surface escalates to 🔴 Blocking.
+
 ## Step 4 — Round summary
 
 Append to `tasks/builds/{slug}/mockup-log.md`:

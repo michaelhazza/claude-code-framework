@@ -59,7 +59,16 @@ Per prototype screen, verify:
   - Sidebar cards: 1
   - Hash / ID exposures: 0 by default
   - Tier / model / variant comparisons: 0
-- **No jargon in default UI.** Internal/architectural terms must not surface in default surfaces. Examples that should NOT appear in default copy: `provenance chain`, `lineage`, `resolver version`, `composition hash`, `blast radius`, `stack health`, `dedupe`, `freshness window`, `RLS scope`, `idempotency key`, snapshot IDs, prefix hashes, occurrence counters, telemetry-aggregate jargon. These belong behind an "Advanced" or "Audit detail" disclosure, never on first paint.
+- **No engineer jargon in default UI copy.** Per `mockup-designer.md § Step 3a (Operator-vocabulary rule)`, default-visible labels, buttons, headings, table cells, sample data, state names, empty states, and tooltips must read as plain English to a non-technical operator. Hunt across five categories:
+  - **Protocol / engineering terms:** MCP, JWT, OAuth scopes, idempotency, webhook, manifest, JSON-LD, RLS, write-tier, read-tier, capability flag, runtime, BEM, sparkline, gated, hydrated, debounced
+  - **Behaviour-state internals:** drift, shadow mode, kill switch, promote to live, autonomous, fallback, throttled, settled, in-flight, soft-deleted
+  - **Identifier-style labels:** snake_case or camelCase identifiers exposed as button/heading/cell text (e.g. `request_demo`, `evaluate_fit`, `agent_readiness_snapshots`). Operators read these as code.
+  - **Internal architecture vocabulary:** pillar, primitive, orchestrator, charge router, spend ledger, action endpoint (without subtitle), citation observation, sentinel-org, deferred enforcement
+  - **Telemetry / observability jargon:** provenance chain, lineage, resolver version, composition hash, blast radius, freshness window, occurrence counters, snapshot IDs, prefix hashes, RLS scope, idempotency key
+
+  Per-occurrence finding = 🟡 Should-fix. Jargon on a high-traffic surface (chip subtitle, primary action button, tab name, page heading) escalates to 🔴 Blocking. Internal terms are permitted in designer-notes blocks and on admin-only / power-user surfaces with cited persona.
+
+- **Plain-English subtitles required on internal-capability surfaces.** For every product-internal capability surfaced (score, pillar, mode, primitive, integration), confirm the prototype includes a one-line plain-English explanation (subtitle under a chip, tooltip on a button, tab intro paragraph). Missing explanation = 🟡 Should-fix; missing + jargon on the same surface = 🔴 Blocking. The operator should never have to ask "what is this?"
 - **Reject-reason enums must be human language.** A reject-reason picker exposing enum strings (`incorrect_root_cause`, `insufficient_context`, etc.) is a 🔴. The data model can hold those values; the UI must map to plain English ("Not the right fix", "Don't want this", "Unsafe").
 - **No data-model leakage.** Stat tiles, KPI rows, and metrics panels lifted directly from a backend spec are a smell. Test each tile against "would the operator act on this?" — if no, cut.
 - **Admin-only controls are absent from non-admin views**, not disabled. Per `docs/frontend-design-principles.md § Admin-only controls`.
