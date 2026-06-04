@@ -25,6 +25,7 @@ Use it when drafting any **Significant** or **Major** spec (per the task classif
 10. Execution-safety contracts (new writes and state machines)
 11. Spec frontmatter (status header convention)
 12. Lifecycle Declaration and ABCd Estimate blocks (Standard+ only)
+13. Mobile capability section (mandatory if spec touches UI)
 
 Appendix — Pre-review checklist summary
 
@@ -491,6 +492,56 @@ Every Standard+ spec must include two governance blocks introduced by the develo
 
 ---
 
+## Section 13 — Mobile capability section (mandatory if spec touches UI)
+
+Every spec that introduces a new screen, modifies an existing screen, adds a new component, or changes navigation must include a **Mobile capability** subsection. Mobile is a peer to desktop in this framework, not an afterthought. See [`docs/mobile-capability-principles.md`](./mobile-capability-principles.md) for the full rule set.
+
+### When required
+
+- Any spec that adds, modifies, or removes a route.
+- Any spec that adds or modifies a component, page, modal, drawer, table, form, or navigation surface.
+- Any spec that changes how the user interacts with the UI (new actions, new flows, new states).
+
+### When NOT required (and why state it)
+
+- Pure backend specs with no UI surface (e.g. a new background job, a new internal service). State `Mobile capability: N/A — pure backend, no UI surface` in the spec to make the absence intentional. An unstated absence is a 🟡 finding from `spec-reviewer`.
+
+### Required fields
+
+For each new or modified screen / component / surface:
+
+1. **Mobile tier** (per `mobile-capability-principles.md § Mobile capability tiers`). One of `Tier 1` (primary user journey, native-feeling), `Tier 2` (admin/operator, fully usable), `Tier 3` (rare/edge, acceptable fallback).
+2. **Mobile shape decision.** How does the screen render at 375px? Pick one: `responsive (same component, breakpoint-driven)` / `divergent (separate mobile and desktop components)` / `desktop-only with justification (rare; explain)`.
+3. **Navigation impact.** Does this spec touch navigation? If yes: how does the new destination surface in the mobile shell (bottom-tab, More sheet, hamburger, full-screen flow)?
+4. **Table treatment** (only if the screen contains a table with more than 4 columns). Pick one: `card layout below md` / `sticky-first-column horizontal scroll inside the table region` / `column hiding at narrow widths`.
+5. **Modal / drawer treatment** (only if the spec adds a modal or drawer). Pick one: `bottom sheet on mobile` / `full-screen on mobile` / `responsive width (no fixed pixel width over 375px)`.
+6. **Hover-only interactions.** Confirm `none` or list each one and its tap equivalent.
+7. **Form treatment** (only if the spec adds a form). Confirm reflow to single column below md. Confirm keyboard-open behaviour (inputs scroll into view, submit reachable).
+8. **Touch target audit.** Confirm primary action buttons are at least 44px on touch viewports. Identify any icon-only buttons and confirm padding or label.
+
+### Example format
+
+```markdown
+## Mobile capability
+
+### Screen: New "Bulk Approve" panel (extending /admin/inbox)
+
+- **Mobile tier:** Tier 2 (admin workflow, fully usable, not native-polished).
+- **Mobile shape:** Responsive. Two-column desktop layout reflows to single column below md.
+- **Navigation impact:** None. Surfaces inside an existing route.
+- **Table treatment:** Card layout below md. Each row becomes a card with checkbox + identifier + state pill + tap-anywhere action.
+- **Modal treatment:** Bulk-approve confirmation is a bottom sheet on mobile, centred modal at >=768px.
+- **Hover-only:** None.
+- **Form treatment:** N/A (no form on this screen).
+- **Touch targets:** Bulk-action primary button at 48px. Row checkboxes at 24px visual size with 44px tap region.
+```
+
+### Reviewer signal this prevents
+
+"Spec adds a table but doesn't say how it renders on mobile" / "New modal width is 520px with no mobile treatment" / "Hover-only row actions added with no tap equivalent" — these are routinely caught by `mockup-reviewer` at the prototype stage, but catching them at spec authoring is significantly cheaper. The mockup loop should not be the first time mobile is considered.
+
+---
+
 ## Appendix — Pre-review checklist summary
 
 Before invoking `spec-reviewer` on a draft spec, answer yes to all of the following:
@@ -516,6 +567,7 @@ Before invoking `spec-reviewer` on a draft spec, answer yes to all of the follow
 - [ ] **[Section 11]** Spec opens with `Status:` / `Spec date:` / `Last updated:` / `Author:` / `Build slug:` frontmatter
 - [ ] **[Section 12]** Lifecycle Declaration present per spec §7.2 (5 required fields; launch state = `Inception` or `Growth` only)
 - [ ] **[Section 12]** ABCd Estimate present with S/M/L sizing only per spec §7.3 (4 dimensions; no numeric values)
+- [ ] **[Section 13]** If spec touches UI: Mobile capability subsection present, one entry per new or modified screen, with tier + shape + nav + table + modal + hover + form + touch fields completed. If spec is pure backend: explicit `Mobile capability: N/A — pure backend, no UI surface` line
 
 If every box is checked, the spec is ready for `spec-reviewer`. If any box is unchecked and you're intentionally leaving it so (e.g. deferring the contract to implementation), mark the deviation inline in the spec's framing section — don't leave it implicit.
 
