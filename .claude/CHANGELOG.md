@@ -32,6 +32,45 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.15.0 — 2026-06-04 — mobile capability as first-class requirement (frontend principles + mockup loop + spec checklist)
+
+**Highlights:** Adds mobile capability as a non-negotiable peer to desktop in every UI design decision across every consuming repo. Surfaced from the 2026-06-04 mobile-first audit of automation-v1, which found the codebase had ~9% responsive coverage, 50 desktop-fixed multi-column tables, fixed-width modals, no mobile navigation pattern, and no mobile-detection infrastructure. The root cause was systemic: mockup-designer was not required to produce a mobile shape, mockup-reviewer was not auditing mobile capability, frontend-design-principles.md had no mobile rules, and spec-authoring-checklist.md had no mobile section. Future builds across all consuming repos now have mobile capability baked into every design decision from spec authoring through prototype review.
+
+The rule is **mobile capability, not mobile-first dogma.** Desktop remains a first-class target. Both work, or the artifact is not ready to ship.
+
+**Added:**
+- `docs/mobile-capability-principles.md` — new canonical doc with 17 sections covering tiers (Tier 1 native-feeling / Tier 2 fully usable / Tier 3 acceptable fallback), viewport widths to design against (375 / 390 / 412 / 430 / 768 / 1024+), mobile navigation pattern (bottom-tab + More sheet default), mobile-native idioms vs desktop modals, table treatments (cards / sticky-first-column / column hiding), form reflow, touch targets (44px primary, 36px secondary minimum), hover not equal tap rule, keyboard handling, safe-area handling, network/offline behaviour, performance budget, pre-design checklist, re-check, when to break, mockup loop integration. Distributed via `manifest.json` to every consuming repo.
+- `.claude/agents/mockup-designer.md § Step 3b` — Mobile shape mandate. Every prototype produced this round must include a working mobile shape (single responsive HTML preferred, side-by-side mobile/desktop variants when layouts diverge). Seven required checks per screen: no page-level horizontal overflow at 375px, mobile navigation present and intentional, touch targets 44px on primary actions, mobile-native idioms over desktop modals, hover-only interactions with tap equivalents, single-column form reflow below md, table treatment for 5+ column tables. Round summary now records per-screen mobile shape check.
+- `.claude/agents/mockup-reviewer.md § Axis 3` — Mobile capability review axis added alongside grounding (Axis 1) and simplicity (Axis 2). 11 specific blocking findings: missing mobile shape, page-level horizontal overflow at 375px, fixed-width modal over 375px, hover-only interaction, missing mobile navigation, non-reflowing multi-column form grid, untreated wide table, touch target below 36px, missing safe-area on Tier 1 fixed element, missing keyboard-open handling on Tier 1 form. Tier-sensitive grading (Tier 3 tolerates sticky-first-column scroll, Tier 1 expects card layouts).
+- `docs/spec-authoring-checklist.md § Section 13` — Mobile capability subsection mandatory for any spec that touches UI. Eight required fields per new or modified screen: tier, mobile shape decision, navigation impact, table treatment, modal treatment, hover-only interactions, form treatment, touch target audit. Pure backend specs must explicitly state `Mobile capability: N/A — pure backend, no UI surface` to make the absence intentional. Appendix checklist updated.
+
+**Changed:**
+- `docs/frontend-design-principles.md` — top-of-doc banner pointing to `mobile-capability-principles.md` as a peer document, both must be satisfied simultaneously. Pre-design checklist adds "the mobile re-check" item. Re-check before delivery adds explicit mobile capability check.
+- `manifest.json` — `frameworkVersion` bumped to 2.15.0 (was 2.13.0; the v2.14.0 bump was missed in that release). `docs/mobile-capability-principles.md` added to `managedFiles` as reference distributed to consuming repos with adoption-time substitution.
+
+**Breaking:** none. The rule operationalises a previously unwritten expectation. Existing builds and prototypes that pre-date this version are not retroactively required to comply; new work from 2.15.0 forward is. Repos with in-flight builds at this version boundary should treat the new rules as forward-looking.
+
+**Migration:** repos on 2.13.x or 2.14.x pick this up by running `git submodule update --remote .claude-framework && node .claude-framework/sync.js`. The new `docs/mobile-capability-principles.md` lands as a new file. Updated agent files (`mockup-designer.md`, `mockup-reviewer.md`) and updated reference files (`frontend-design-principles.md`, `spec-authoring-checklist.md`) update outside the `LOCAL-OVERRIDE` markers, so any project-specific notes are preserved.
+
+**Note on CLAUDE.md.** CLAUDE.md is in the framework's `doNotTouch` list (each consuming repo owns its own). Consuming repos that want to surface the mobile capability rule prominently in their CLAUDE.md should add a one-line reference to `docs/mobile-capability-principles.md` under their existing Frontend Design Principles section. The canonical rules live in the distributed reference docs; CLAUDE.md is just an entry point.
+
+---
+
+## 2.14.0 — 2026-06-04 — operator-vocabulary rule for the mockup loop (no engineer jargon in default UI)
+
+**Highlights:** Adds an explicit "no engineer jargon" rule to all three mockup agents so prototypes do not surface protocol terms (MCP, JWT, manifest), behaviour-state internals (shadow mode, kill switch, promote to live), identifier-style labels (`request_demo`, `evaluate_fit`), internal architecture vocabulary (pillar, primitive, orchestrator, charge router, spend ledger), or telemetry jargon (provenance chain, lineage, blast radius) to non-technical operators. Surfaced from the 2026-06-04 `agent-first-aeo-bundle` build, where Round 3 of the mockup loop passed codebase grounding but the operator surfaced repeated questions about what terms like "manifest drift", "MCP read-only", "shadow mode", and `evaluate_fit` actually meant. The rule is now codified so future mockup rounds catch the same failure mode automatically.
+
+**Added:**
+- `.claude/agents/mockup-designer.md` — new `Step 3a — Operator-vocabulary rule (no engineer jargon)` section with five forbidden categories, plain-English replacement examples, required positive behaviour (one-line subtitle on every internal-capability surface), permitted contexts (designer-notes blocks, admin-only / power-user surfaces), and failure-mode severity mapping.
+
+**Changed:**
+- `.claude/agents/mockup-reviewer.md` — `No jargon in default UI` bullet under Axis 2 expanded into five named categories with per-occurrence 🟡 / high-traffic-surface 🔴 escalation, plus new bullet requiring plain-English subtitles on every internal-capability surface.
+- `.claude/agents/mockup-coordinator.md` — Step 3 (designer dispatch) brief list adds explicit reminder of the operator-vocabulary rule on every dispatch.
+**Breaking:** none. The rule operationalises the existing five-hard-rules check ("would a non-technical operator complete the task without feeling overwhelmed"); previous mockup rounds were already expected to comply implicitly. Explicit articulation lets `mockup-reviewer` flag violations mechanically.
+**Migration:** repos on 2.13.x pick this up by running `git submodule update --remote .claude-framework && node .claude-framework/sync.js`. The deployed `.claude/agents/mockup-*.md` files update outside the `LOCAL-OVERRIDE` markers, so any project-specific notes are preserved.
+
+---
+
 ## 2.13.0 — 2026-06-01 — framework learning loops (phase-lock + experiment-runner + chunk-learnings + audit-context-packs + cross-repo-scout)
 
 **Highlights:** Five framework augmentations derived from a 2026-05 comparison against the open-source `vibecode-pro-max-kit`. All five are additive, no breaking changes to existing pipelines.

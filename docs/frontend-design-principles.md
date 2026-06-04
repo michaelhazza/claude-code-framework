@@ -2,6 +2,8 @@
 
 Durable rules for any UI artifact built in this repo — mockups, components, pages, modals, empty states. This is the long-form companion to the short ruleset in [`CLAUDE.md` § Frontend Design Principles](../CLAUDE.md). Read both before generating any UI.
 
+> **Read alongside [`mobile-capability-principles.md`](./mobile-capability-principles.md).** Mobile capability is non-negotiable for every UI artifact in this framework. The two docs apply simultaneously: this one for consumer-simple + complexity discipline, the other for mobile shape and behaviour. A design that satisfies one but not the other is not ready to ship.
+
 ---
 
 ## Why this document exists
@@ -43,6 +45,7 @@ Work through these in order. An unchecked box is a design finding; every uncheck
 - [ ] **What would happen if I removed X?** For every candidate element (panel, metric, chart, table, sidebar card), ask this. If the answer is *"the user would still complete the primary task"*, the element is deferred.
 - [ ] **Where does everything else go?** Every deferred element goes to exactly one of: (a) progressive disclosure on this screen (collapsed "Advanced" section), (b) a dedicated page the primary user rarely visits, (c) admin-only view, (d) deferred out of v1 entirely. Name the destination per element.
 - [ ] **The re-check.** Imagine a non-technical operator landing on this screen for the first time. Do they know what to do within 3 seconds? If not, cut more.
+- [ ] **The mobile re-check.** Imagine the same operator on a 375px phone. Does the primary task complete? Is anything clipped or unreadable? If not, the design is not ready. Apply [`mobile-capability-principles.md`](./mobile-capability-principles.md) in full.
 
 ---
 
@@ -163,6 +166,7 @@ Before committing any UI artifact (mockup, PR, component), run through this quic
 - [ ] Have I deferred every monitoring / observability / diagnostic element that the task doesn't need?
 - [ ] If a non-technical operator landed here, would they know what to do in 3 seconds?
 - [ ] Am I under the complexity-budget caps?
+- [ ] **Mobile capability:** does this work at 375px? Touch targets 44px? No page-level horizontal overflow? Mobile shell intentional? See [`mobile-capability-principles.md` § Re-check before delivery](./mobile-capability-principles.md#re-check-before-delivery-mobile) for the full mobile sub-checklist.
 
 If any answer is "no" or "not sure", cut before shipping. Shipping a fatter UI "just in case someone wants it" is how this product loses the consumer-simple positioning.
 

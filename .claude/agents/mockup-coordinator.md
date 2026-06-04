@@ -59,6 +59,7 @@ Dispatch `mockup-designer` as a sub-agent via the `Agent` tool. Brief it with:
 - Format preference (single-file vs multi-screen)
 - The codebase-grounding requirement (mockup-designer's Step 0a is mandatory; remind it in your prompt)
 - The simplification requirement (mockup-designer's Step 3 five-hard-rules check is mandatory; remind it)
+- **The operator-vocabulary rule (mockup-designer's Step 3a) — no engineer jargon in default UI copy; plain-English subtitle required on every internal-capability surface.** Remind the designer explicitly in every dispatch prompt. This is the highest-leverage operator-overload fix and is easy to forget mid-design; the rule covers protocol terms (MCP, JWT, manifest, etc.), behaviour-state internals (shadow mode, kill switch, promote to live), identifier-style labels (`request_demo`, `evaluate_fit`), internal architecture vocabulary, and telemetry jargon.
 - An explicit instruction to enumerate per-screen filename grounding in `mockup-log.md` — this is what mockup-reviewer will verify against
 
 mockup-designer returns file paths + a change summary. Do NOT show these to the operator yet — go straight to Step 4.
