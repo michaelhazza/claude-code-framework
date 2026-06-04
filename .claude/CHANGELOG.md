@@ -32,6 +32,21 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.14.0 — 2026-06-04 — operator-vocabulary rule for the mockup loop (no engineer jargon in default UI)
+
+**Highlights:** Adds an explicit "no engineer jargon" rule to all three mockup agents so prototypes do not surface protocol terms (MCP, JWT, manifest), behaviour-state internals (shadow mode, kill switch, promote to live), identifier-style labels (`request_demo`, `evaluate_fit`), internal architecture vocabulary (pillar, primitive, orchestrator, charge router, spend ledger), or telemetry jargon (provenance chain, lineage, blast radius) to non-technical operators. Surfaced from the 2026-06-04 `agent-first-aeo-bundle` build, where Round 3 of the mockup loop passed codebase grounding but the operator surfaced repeated questions about what terms like "manifest drift", "MCP read-only", "shadow mode", and `evaluate_fit` actually meant. The rule is now codified so future mockup rounds catch the same failure mode automatically.
+
+**Changed:**
+- `.claude/agents/mockup-designer.md` — new `Step 3a — Operator-vocabulary rule (no engineer jargon)` section with five forbidden categories, plain-English replacement examples, required positive behaviour (one-line subtitle on every internal-capability surface), permitted contexts (designer-notes blocks, admin-only / power-user surfaces), and failure-mode severity mapping.
+- `.claude/agents/mockup-reviewer.md` — `No jargon in default UI` bullet under Axis 2 expanded into five named categories with per-occurrence 🟡 / high-traffic-surface 🔴 escalation, plus new bullet requiring plain-English subtitles on every internal-capability surface.
+- `.claude/agents/mockup-coordinator.md` — Step 3 (designer dispatch) brief list adds explicit reminder of the operator-vocabulary rule on every dispatch.
+
+**Added:** none.
+**Breaking:** none. The rule operationalises the existing five-hard-rules check ("would a non-technical operator complete the task without feeling overwhelmed"); previous mockup rounds were already expected to comply implicitly. Explicit articulation lets `mockup-reviewer` flag violations mechanically.
+**Migration:** repos on 2.13.x pick this up by running `git submodule update --remote .claude-framework && node .claude-framework/sync.js`. The deployed `.claude/agents/mockup-*.md` files update outside the `LOCAL-OVERRIDE` markers, so any project-specific notes are preserved.
+
+---
+
 ## 2.13.0 — 2026-06-01 — framework learning loops (phase-lock + experiment-runner + chunk-learnings + audit-context-packs + cross-repo-scout)
 
 **Highlights:** Five framework augmentations derived from a 2026-05 comparison against the open-source `vibecode-pro-max-kit`. All five are additive, no breaking changes to existing pipelines.
