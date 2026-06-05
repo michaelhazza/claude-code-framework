@@ -41,6 +41,18 @@ Per prototype screen, verify:
 - **Vocabulary matches the codebase.** Tab labels, status pill text, button copy, section headers should match what the existing page uses where the prototype is extending. "Inbox" not "Review Queue", etc. Mismatched vocabulary is 🟡 unless the brief explicitly changes it.
 - **One screen per extension target.** If the designer produced multiple screens that all extend the same existing page, ask whether they should collapse into one screen with progressive disclosure (tab, drawer, expand-on-click).
 
+### Axis 1.5 — Cross-cutting UI safety
+
+Per prototype screen, verify the rules that prevent silent-authorisation, generic-validation-error, and PII-leak failures. These are not mobile-specific — they apply to any UI that consumes a capability check, transits client data, or enforces a coupled-field invariant. Findings in this axis are typically 🟡 unless they hide a security/correctness implication, in which case they're 🔴.
+
+- **Capability-check failure states drawn.** If a prototype shows a toggle / button that gates on a capability check (push permission, biometric login, secure storage access, native file picker, payment API, geolocation, microphone/camera, WebAuthn), the prototype MUST show the failure-state UI for at least one denied/unsupported/error reason — not just on/off. Mockups that show only the granted+success path silently authorise wrong implementations later (the UI gates on "not the one failure mode I know about" instead of on the positive result). 🟡 by default; 🔴 if the brief explicitly names a capability check and the mockup omits the failure states.
+
+- **Coupled-field invariants drawn as a group.** If the spec calls for coupled fields where any-subset-set is meaningless (quiet-hours start/end/timezone; address line/city/postcode; bank acct + sort code; cron schedule fields), the mockup MUST draw them inside an enable-toggle + grouped fieldset, not as independent inputs. Independent inputs hide the invariant from the operator and surface as a generic 400 in implementation. 🟡 unless the brief explicitly demands the coupled invariant.
+
+- **Analytics / log emission must not name PII-adjacent props.** Any prototype that shows an analytics event surface, debug panel, audit log preview, or telemetry summary must not name fields with PII-adjacent stems (`token`, `secret`, `password`, `jwt`, `bearer`, `apikey`, `pii`). The server's denylist will strip them at ingest, but the mockup is the source of truth for what the team intends to emit; intending to emit `accessToken` even if it gets stripped is a design smell. 🟡.
+
+- **Mobile-extending mockups preserve desktop reference.** If the prototype is mobile-extending an existing live page, the Before/After pairing (per the project-specific notes or the consuming project's Before/After convention) MUST show the desktop view of the After state unchanged, alongside the mobile view. A mockup that shows the mobile After without proving the desktop After matches the desktop Before is missing the half of the design that pr-reviewer will gate on. 🟡 unless desktop is the only viewport in scope.
+
 ### Axis 2 — Simplicity / operator overload
 
 Per prototype screen, verify:
