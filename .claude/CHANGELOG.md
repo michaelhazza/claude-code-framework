@@ -32,6 +32,65 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.16.0 — 2026-06-06 — cross-cutting UI safety rules in the mockup loop (capability-check states, coupled-field invariants, analytics PII discipline, desktop preservation)
+
+**Highlights:** Adds five durable UI design rules to the mockup-loop that prevent a class of bugs that look fine in the mockup but ship as silent-authorisation, generic-validation-error, or PII-leak failures in code. Surfaced from the 2026-06-06 mobile-first-web-pwa Phase 2 audit (automation-v1 PR #474) which closed three categories: (a) the push permission gate was checking "not wrapper_required" instead of the positive `ok` result, silently authorising future denied/unsupported states; (b) the analytics PII denylist had exact-match-only coverage and missed common credential variants (`accessToken`, `refreshToken`, `clientSecret`, `authToken`); (c) the analytics `ts` field was unbounded, allowing year-275760 timestamps to 500 the route. The rules generalise these from "things ChatGPT R1 caught on one PR" into "things mockup-reviewer audits on every PR going forward". Drawing the failure-state UI at design time is what prevents the silent-authorisation pattern; declaring the tier classification at design time is what aligns the implementation pattern; declaring coupled-field grouping at design time is what surfaces invariants the operator can see.
+
+**Added:**
+- `.claude/agents/mockup-designer.md § Step 3a` — Cross-cutting UI safety checklist with 5 rules:
+  - Capability-check failure states drawn (push permission, biometric, secure storage, native file picker, payment API, geolocation, mic/camera, WebAuthn — anything with granted/denied/unsupported/wrapper-required/transport-failed states). The deferred-by-default rule does NOT apply to capability failure states; they are the half of the design that prevents silent-authorisation bugs.
+  - Coupled-field invariants drawn as a group (quiet-hours start/end/timezone; address line/city/postcode/country; bank acct + sort code; cron schedule fields). Single enable-toggle + grouped fieldset. Off → fields hidden/cleared. On → fields required + submit-disabled until all set.
+  - Analytics / log surfaces never name PII-adjacent props. The server's denylist will strip them, but the mockup is the source of truth for what the team INTENDS to emit; intending to emit `accessToken` is a design smell.
+  - Mobile-extending screens preserve desktop reference (Before/After pairing must show the desktop After view unchanged alongside the mobile After).
+  - Tier classification declared per screen for mobile-touching mockups (Tier 1 / Tier 2 / Tier 3 per §13.12).
+
+- `.claude/agents/mockup-reviewer.md § Axis 1.5` — Cross-cutting UI safety audit axis added alongside grounding (Axis 1) and simplicity (Axis 2). 4 specific findings: missing capability-check failure-state UI (🔴 if brief names the check, 🟡 otherwise); coupled-field invariants drawn as independent inputs (🟡 default); analytics surfaces naming PII-adjacent props (🟡); mobile-extending mockup missing desktop reference (🟡 unless desktop is the only viewport in scope).
+
+**Changed:**
+- `manifest.json` — `frameworkVersion` bumped to 2.16.0 (was 2.15.0).
+
+**Breaking:** none. The rules operationalise expectations that mockup-reviewer was already partially auditing on a per-prototype basis but not as a documented axis. Existing prototypes that pre-date this version are not retroactively required to comply; new mockup-loop rounds from 2.16.0 forward are.
+
+**Migration:** repos on 2.15.x pick this up by running `git submodule update --remote .claude-framework && node .claude-framework/sync.js`. Both updated agent files (`mockup-designer.md`, `mockup-reviewer.md`) update outside the `LOCAL-OVERRIDE` markers, so any project-specific notes are preserved.
+
+**Note on consuming-repo `docs/frontend-design-principles.md`:** the canonical "Cross-cutting UI safety rules" section lives in each consuming repo's own copy of `docs/frontend-design-principles.md` (it's not in the framework's distributed reference because consuming repos build different products with different capability surfaces). The reference in this changelog is to the automation-v1 instance at `docs/frontend-design-principles.md § Cross-cutting UI safety rules (Phase 1 + Phase 2 + ChatGPT PR-R1 learnings, 2026-06-06)`. Consuming repos may copy that section as a starting point and adapt the cited capability checks to their product surface.
+
+**Origin lineage** (scope clarification — addresses ChatGPT PR #17 review note 1):
+
+The "Rules A-H" lettering used below refers to the **8-rule consuming-repo `docs/frontend-design-principles.md § Cross-cutting UI safety rules` section**, NOT to framework artifacts. The framework's own contribution in this release is 5 mockup-loop rules (Step 3a checklist + Axis 1.5 audit). Those 5 framework rules map to a subset of the consuming-repo's 8 rules:
+
+| Framework rule | Consuming-repo rule | Surface |
+|---|---|---|
+| Step 3a item 1 / Axis 1.5 item 1 — capability-check failure states | Rule A | Mockup-loop UI |
+| Step 3a item 2 / Axis 1.5 item 2 — coupled-field invariant grouping | Rule D | Mockup-loop UI |
+| Step 3a item 3 / Axis 1.5 item 3 — analytics PII-adjacent prop names | Rule C (partial — naming only) | Mockup-loop UI |
+| Step 3a item 4 / Axis 1.5 item 4 — desktop reference preservation | Rule H | Mockup-loop UI |
+| Step 3a item 5 — tier classification | Mobile patterns Pattern 5 | Mockup round-summary metadata |
+
+The consuming-repo doc carries four additional rules that the framework's mockup loop does NOT enforce, because they are code-time concerns audited by `pr-reviewer` / `spec-reviewer` / `dual-reviewer`, not by `mockup-designer` / `mockup-reviewer`:
+
+- **Rule B** — plausibility-window validation on client-supplied data (Zod refines for timestamps, counts, strings). Server-side.
+- **Rule C** (server-side half) — PII denylist substring stems. Server-side.
+- **Rule E** — PWA `navigateFallback` is the SPA shell. Build-config / SW.
+- **Rule F** — module-level "already-happened" flag for pre-React-mount events. Client lifecycle code.
+- **Rule G** — iOS Safari touch file picker defer focus cleanup. Client integration code.
+
+**Origin per rule** (consuming-repo rule → PR/finding/commit that surfaced it):
+- Rule A ← ChatGPT PR-R1 finding 3 (push permission gate, automation-v1 PR #474)
+- Rule B ← ChatGPT PR-R1 finding 1 + adversarial-reviewer W3 (analytics ts unbounded)
+- Rule C ← ChatGPT PR-R1 finding 2 + R2 finding 1 (PII denylist exact + substring + array recursion)
+- Rule D ← Phase 2 Chunks 13+14 quiet-hours UX + claude-plan-review F3
+- Rule E ← Phase 2 Chunk 16 + dual-reviewer Codex iter 1 (vite-plugin-pwa navigateFallback regression)
+- Rule F ← Phase 1 SwUpdatePrompt + Chunk 5 finalisation ChatGPT R2 (module-level "already-happened" flag)
+- Rule G ← Phase 1 Chunk 5 (iOS Safari touch file picker focus race)
+- Rule H ← Phase 1+2 hard constraint (desktop ≥ md unchanged across mobile-extending diffs)
+
+Each rule has cited code-level provenance in the consuming-repo doc so future maintainers can verify the lineage instead of trusting the rule abstractly.
+
+**First instance of the consuming-repo 8-rule section:** automation-v1 PR #474, `docs/frontend-design-principles.md § Cross-cutting UI safety rules (Phase 1 + Phase 2 + ChatGPT PR-R1 learnings, 2026-06-06)`. Other consuming repos may copy that section as a starting point and adapt the cited capability checks to their product surface.
+
+---
+
 ## 2.15.0 — 2026-06-04 — mobile capability as first-class requirement (frontend principles + mockup loop + spec checklist)
 
 **Highlights:** Adds mobile capability as a non-negotiable peer to desktop in every UI design decision across every consuming repo. Surfaced from the 2026-06-04 mobile-first audit of automation-v1, which found the codebase had ~9% responsive coverage, 50 desktop-fixed multi-column tables, fixed-width modals, no mobile navigation pattern, and no mobile-detection infrastructure. The root cause was systemic: mockup-designer was not required to produce a mobile shape, mockup-reviewer was not auditing mobile capability, frontend-design-principles.md had no mobile rules, and spec-authoring-checklist.md had no mobile section. Future builds across all consuming repos now have mobile capability baked into every design decision from spec authoring through prototype review.

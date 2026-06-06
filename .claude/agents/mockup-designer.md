@@ -67,6 +67,24 @@ Apply the five hard rules from `docs/frontend-design-principles.md`:
 
 If the brief asks for behaviour that violates a hard rule (e.g. "five KPI tiles"), implement it AND flag the violation in the round summary. Do not silently sanitise.
 
+### Step 3a — Cross-cutting UI safety checklist
+
+Apply these whenever the brief touches the listed surface. These prevent a class of bugs that look fine in the mockup but ship as silent-authorisation, generic-validation-error, or PII-leak failures in code. Drawing them at design time saves a rework round when mockup-reviewer audits them.
+
+- **Capability-check failure states drawn.** If the screen consumes a capability check — anything that can return granted / denied / unsupported / wrapper-required / transport-failed (or equivalent multi-state result) — draw the failure-state UI for at least one denied/unsupported reason. Not just the granted+success path. **The general contract is the rule; the specific capability list is illustrative and non-exhaustive.** Examples that fit this contract today: push permission, biometric login, secure token storage, native file picker, payment API, geolocation, microphone/camera, WebAuthn. Any future platform capability that returns a multi-state result inherits this rule by default — do not wait for it to be added to the list. The deferred-by-default rule does NOT apply to capability failure states; they are the half of the design that prevents silent-authorisation bugs.
+
+- **Coupled-field invariants drawn as a group.** If the spec names coupled fields where any-subset-set is meaningless (e.g. quiet-hours start/end/timezone; address line/city/postcode/country; bank acct + sort code; cron schedule fields), draw them inside a single enable-toggle + grouped fieldset. Off → all fields hidden / cleared. On → all fields required + form-submit-disabled until all set. Don't draw three independent inputs and hope a validation rule downstream catches the mistake.
+
+- **Analytics / log surfaces never name PII-adjacent props.** If the prototype shows a debug panel, audit log preview, telemetry summary, or any event-emission surface, never name a field with a PII-adjacent stem (`token`, `secret`, `password`, `jwt`, `bearer`, `apikey`, `pii`). Use `tokenRedacted`, `passwordVerified`, `sessionState`, etc. Server-side denylists will strip the value at ingest, but the mockup is the source of truth for what the team INTENDS to emit; intending to emit `accessToken` is a design smell.
+
+- **Mobile-extending screens preserve desktop reference.** If you are mobile-extending an existing live page, your Before/After pairing must show the desktop After view alongside the mobile After. Prove desktop is unchanged. Don't draw only the mobile reflow.
+
+- **Tier classification declared per screen** (mobile-touching mockups only). Declare in the round summary which tier of mobile polish the screen targets:
+  - **Tier 1** (native-feeling) — daily-use operator workflow, primary nav slot. Cards, sheets, gestures, polish.
+  - **Tier 2** (responsive, no clipping) — secondary operator workflow. Cards-below-md OR contained `overflow-x-auto`.
+  - **Tier 3** (acceptable fallback) — system-admin / Studio. In-region scroll allowed; page must not clip at 375px.
+  - **If unclear, default to Tier 2 and flag the assumption in the round summary** so the caller can correct it. Do NOT halt to ask — Tier 2 is the safe minimum for any operator-facing surface (responsive, no clipping); the caller can promote to Tier 1 if needed or accept Tier 3 if the screen is system-admin / Studio. This keeps the mockup-loop forward-progressing while still surfacing the assumption for review. Inconsistent tier choices across a multi-screen prototype remain a rework finding.
+
 ### Styling convention
 
 Match existing prototypes. Inspect `prototypes/agent-as-employee/_shared.css` and `prototypes/pulse/*.html` for the current pattern.
