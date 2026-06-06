@@ -55,7 +55,39 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 **Note on consuming-repo `docs/frontend-design-principles.md`:** the canonical "Cross-cutting UI safety rules" section lives in each consuming repo's own copy of `docs/frontend-design-principles.md` (it's not in the framework's distributed reference because consuming repos build different products with different capability surfaces). The reference in this changelog is to the automation-v1 instance at `docs/frontend-design-principles.md § Cross-cutting UI safety rules (Phase 1 + Phase 2 + ChatGPT PR-R1 learnings, 2026-06-06)`. Consuming repos may copy that section as a starting point and adapt the cited capability checks to their product surface.
 
-**Origin lineage:** the rules trace to specific PR-review findings on automation-v1 PR #474 — Rule A from ChatGPT PR-R1 finding 3 (push permission gate), Rule B from ChatGPT PR-R1 finding 1 (analytics ts unbounded), Rule C from ChatGPT PR-R1 finding 2 (PII denylist), Rule D from Phase 2 Chunks 13+14 quiet-hours UX, Rule E from Phase 2 Chunk 16 + dual-reviewer Codex (vite-plugin-pwa navigateFallback), Rule F from Phase 1 SwUpdatePrompt + Chunk 5 finalisation ChatGPT R2 (module-level "already-happened" flag), Rule G from Phase 1 Chunk 5 (iOS Safari touch file picker), Rule H from Phase 1+2 hard constraint (desktop ≥ md unchanged). Phase 2 Chunks 13+14 also fed Rule D's all-three-coupled invariant pattern. Each rule has cited code-level provenance so future maintainers can verify the lineage instead of trusting the rule abstractly.
+**Origin lineage** (scope clarification — addresses ChatGPT PR #17 review note 1):
+
+The "Rules A-H" lettering used below refers to the **8-rule consuming-repo `docs/frontend-design-principles.md § Cross-cutting UI safety rules` section**, NOT to framework artifacts. The framework's own contribution in this release is 5 mockup-loop rules (Step 3a checklist + Axis 1.5 audit). Those 5 framework rules map to a subset of the consuming-repo's 8 rules:
+
+| Framework rule | Consuming-repo rule | Surface |
+|---|---|---|
+| Step 3a item 1 / Axis 1.5 item 1 — capability-check failure states | Rule A | Mockup-loop UI |
+| Step 3a item 2 / Axis 1.5 item 2 — coupled-field invariant grouping | Rule D | Mockup-loop UI |
+| Step 3a item 3 / Axis 1.5 item 3 — analytics PII-adjacent prop names | Rule C (partial — naming only) | Mockup-loop UI |
+| Step 3a item 4 / Axis 1.5 item 4 — desktop reference preservation | Rule H | Mockup-loop UI |
+| Step 3a item 5 — tier classification | Mobile patterns Pattern 5 | Mockup round-summary metadata |
+
+The consuming-repo doc carries four additional rules that the framework's mockup loop does NOT enforce, because they are code-time concerns audited by `pr-reviewer` / `spec-reviewer` / `dual-reviewer`, not by `mockup-designer` / `mockup-reviewer`:
+
+- **Rule B** — plausibility-window validation on client-supplied data (Zod refines for timestamps, counts, strings). Server-side.
+- **Rule C** (server-side half) — PII denylist substring stems. Server-side.
+- **Rule E** — PWA `navigateFallback` is the SPA shell. Build-config / SW.
+- **Rule F** — module-level "already-happened" flag for pre-React-mount events. Client lifecycle code.
+- **Rule G** — iOS Safari touch file picker defer focus cleanup. Client integration code.
+
+**Origin per rule** (consuming-repo rule → PR/finding/commit that surfaced it):
+- Rule A ← ChatGPT PR-R1 finding 3 (push permission gate, automation-v1 PR #474)
+- Rule B ← ChatGPT PR-R1 finding 1 + adversarial-reviewer W3 (analytics ts unbounded)
+- Rule C ← ChatGPT PR-R1 finding 2 + R2 finding 1 (PII denylist exact + substring + array recursion)
+- Rule D ← Phase 2 Chunks 13+14 quiet-hours UX + claude-plan-review F3
+- Rule E ← Phase 2 Chunk 16 + dual-reviewer Codex iter 1 (vite-plugin-pwa navigateFallback regression)
+- Rule F ← Phase 1 SwUpdatePrompt + Chunk 5 finalisation ChatGPT R2 (module-level "already-happened" flag)
+- Rule G ← Phase 1 Chunk 5 (iOS Safari touch file picker focus race)
+- Rule H ← Phase 1+2 hard constraint (desktop ≥ md unchanged across mobile-extending diffs)
+
+Each rule has cited code-level provenance in the consuming-repo doc so future maintainers can verify the lineage instead of trusting the rule abstractly.
+
+**First instance of the consuming-repo 8-rule section:** automation-v1 PR #474, `docs/frontend-design-principles.md § Cross-cutting UI safety rules (Phase 1 + Phase 2 + ChatGPT PR-R1 learnings, 2026-06-06)`. Other consuming repos may copy that section as a starting point and adapt the cited capability checks to their product surface.
 
 ---
 
