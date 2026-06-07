@@ -1,6 +1,6 @@
 ---
 name: builder
-description: Implements a single chunk from a plan file. Runs on Sonnet. Step 1 — emits a TodoWrite skeleton for the chunk. Step 2 — plan-gap pre-check (confirms all prerequisites exist before writing code). Step 3 — surgical implementation of the chunk (no refactoring, no extras). Step 4 — G1 gate (lint + typecheck + build:server/client + targeted unit tests for new pure functions only). Step 5 — returns a structured verdict (SUCCESS | PLAN_GAP | G1_FAILED) with files-changed list, spec sections covered, notes.
+description: Implements a single chunk from a plan file. Runs on Sonnet. Step 1 — emits a TodoWrite skeleton for the chunk. Step 2 — plan-gap pre-check (confirms all prerequisites exist before writing code). Step 3 — surgical implementation of the chunk (no refactoring, no extras). Step 4 — G1 gate (scoped lint on touched files + targeted unit tests for new pure functions only — typecheck and build run at G2/end-of-construction, not per chunk). Step 5 — returns a structured verdict (SUCCESS | PLAN_GAP | G1_FAILED) with files-changed list, spec sections covered, notes.
 tools: Read, Glob, Grep, Bash, Edit, Write, TodoWrite
 model: sonnet
 ---
@@ -25,14 +25,13 @@ Emit a TodoWrite list at start with:
 1. Context loading (this step)
 2. Plan-gap pre-check
 3. Implementation (one item per file or logical unit — expand after pre-check)
-4. G1 — lint
-5. G1 — typecheck
-6. G1 — build:server (if server files touched)
-7. G1 — build:client (if client files touched)
-8. G1 — targeted unit tests (if new pure functions authored)
-9. Return summary
+4. G1 — scoped lint on touched files
+5. G1 — targeted unit tests (if new pure functions authored)
+6. Return summary
 
-Skip items 6/7/8 that don't apply. Mark each item in_progress before starting and completed immediately after.
+Skip item 5 if no new pure functions were authored. Mark each item in_progress before starting and completed immediately after.
+
+**Note on typecheck and build:** These ran per-chunk in earlier framework versions. They now run only at G2 (end of construction, in the coordinator) to cut wall-time and token cost across multi-chunk builds. If a chunk introduces a type or build error, G2 catches it and routes a fix back to a fresh builder. Per-chunk lint is retained because it is fast, scoped to touched files, and catches the highest-frequency mistakes immediately.
 
 ## Step 2 — Plan-gap pre-check
 
@@ -79,24 +78,15 @@ These correspond to CLAUDE.md §6 rules 1-3. Each check has a symptom and an act
 
 ### CI-gate pre-flight (apply WHILE writing — these gates are CI-only, not in G1)
 
-The G1 gate (lint + typecheck) does NOT exercise the static-gate scripts that run in CI. Before writing the chunk, scan `scripts/verify-*.sh` (or equivalent project gate scripts) so you can satisfy them while writing rather than retroactively after CI red. Common categories: test-file location + naming conventions, migration patterns, architecture-rule guards (e.g. "queries live in services"), foreign-key delete behaviours. The project's own `KNOWLEDGE.md` / `docs/` should enumerate the specific gates and their failure modes.
+The G1 gate (scoped lint only) does NOT exercise the static-gate scripts that run in CI, nor does it run full typecheck or build. Before writing the chunk, scan `scripts/verify-*.sh` (or equivalent project gate scripts) so you can satisfy them while writing rather than retroactively after CI red. Common categories: test-file location + naming conventions, migration patterns, architecture-rule guards (e.g. "queries live in services"), foreign-key delete behaviours. The project's own `KNOWLEDGE.md` / `docs/` should enumerate the specific gates and their failure modes.
 
-## Step 4 — G1 gate
+## Step 4 — G1 gate (scoped lint + targeted tests only)
 
-After implementation, run all applicable checks. Cap at 3 attempts per check.
+After implementation, run only the cheap, scoped checks. Cap at 3 attempts per check.
 
 ```bash
-# Lint (always)
+# Scoped lint on touched files (always — fast)
 npx eslint <touched files>
-
-# Typecheck (always — tsc cannot be scoped to individual files)
-npm run typecheck
-
-# Build: server (if server/ files touched)
-npm run build:server
-
-# Build: client (if client/ files touched)
-npm run build:client
 
 # Targeted unit tests (ONLY for new pure functions with no DB/network/filesystem side effects)
 npx tsx <path-to-new-test-file>
@@ -110,6 +100,8 @@ Verdict: G1_FAILED
 G1 diagnostic: <exact error output>
 ```
 
+**Do NOT run per chunk:** `npm run typecheck`, `npm run build:server`, `npm run build:client`. These now run once at G2 (end of construction, in the coordinator). The cost of running them per chunk across a multi-chunk build outweighs the fast-fail benefit; G2 catches type/build errors and routes a fix back to a fresh builder.
+
 **NEVER run:** `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `bash scripts/run-all-*.sh`, or any `scripts/gates/*.sh` — CI-only per CLAUDE.md.
 
 ## Step 5 — Return summary
@@ -122,7 +114,7 @@ Files changed: [list of paths]
 Spec sections: [list of §X.X numbers this chunk implements]
 What was implemented: [one paragraph]
 Plan gap (if any): [description]
-G1 attempts (per check): {lint: N, typecheck: N, build:server: N, build:client: N, targeted tests: N}
+G1 attempts (per check): {lint: N, targeted tests: N}
 Notes for caller: [out-of-scope observations — dead code, smells, drift; do NOT fix in this chunk; route to tasks/todo.md]
 ```
 
