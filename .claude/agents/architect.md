@@ -190,16 +190,20 @@ Treat constraints documented in those project-bound locations as non-negotiable.
 - Any "baseline gate sweep", "Programme-end full gate set", "regression sanity check", or "quick re-verify" — dressed-up gate runs are still gate runs.
 - Hedging language ("optionally", "if helpful", "feel free to") around any of the above. Subagents read hedges as permission.
 
-**What every chunk's "Verification commands" section IS allowed to contain:**
-- `npm run lint` and `npm run typecheck` (or `npx tsc --noEmit`).
-- `npm run build:server` / `npm run build:client` when the chunk touches the build surface.
-- **Targeted execution of unit tests authored in THIS chunk** — a single file via `npx tsx <path-to-test>`. Authoring new tests and new gate scripts is encouraged; running the rest of the suite is not.
+**What every chunk's "Verification commands" section IS allowed to contain (G1):**
+- `npx eslint <files this chunk touches>` — scoped lint on the changed file set. Fast.
+- **Targeted execution of unit tests authored in THIS chunk** — a single file via the project's test runner (Vitest by default, or whatever the project's test invariants specify). Only for pure functions with no DB/network/filesystem side effects. Authoring new tests is encouraged; running the broader suite is not.
+
+**What runs ONCE at end of construction (G2) — coordinator-owned, not per-chunk:**
+- `npm run lint`, `npm run typecheck`, plus `npm run build:server` and/or `npm run build:client` against integrated branch state.
+
+**Do NOT list `npm run typecheck`, `npm run build:server`, or `npm run build:client` inside any individual chunk's "Verification commands" section.** Those execute once at G2, not N times across N chunks. Per-chunk execution gives earlier detection but the wall-time and token cost across a multi-chunk build outweighs that benefit; G2 catches the same class of failure at end of construction and routes a fix back through a fresh builder.
 
 **If a chunk's correctness depends on a gate-level invariant**, write a targeted unit test for that invariant inside the chunk. The test runs locally on its own (single file). The chunk is responsible for the test passing; CI is responsible for proving nothing else regressed.
 
 ### What this means for the plan document
 
-- Each chunk's "Verification commands" section lists ONLY lint, typecheck, build:server/client (when relevant), and targeted unit tests for that chunk. No `scripts/verify-*.sh`, no `npm run test:*` umbrella commands.
+- Each chunk's "Verification commands" section lists ONLY scoped lint (`npx eslint <touched files>`) plus any targeted unit test the chunk newly authored. **Typecheck and build commands belong in a single end-of-construction (G2) section, not in each chunk** — the coordinator runs them once against integrated branch state. No `scripts/verify-*.sh`, no `npm run test:*` umbrella commands.
 - The plan does NOT include a "Phase 0 baseline" section that runs gates, and does NOT include a "Programme-end verification" section that runs the full gate set. CI does both.
 - The plan's "Executor notes" must include this line verbatim: **"Test gates and whole-repo verification scripts (`npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, `scripts/run-all-*.sh`) are CI-only. They do NOT run during local execution of this plan, in any chunk, in any form. Targeted execution of unit tests authored within this plan is allowed; running the broader suite is not."**
 

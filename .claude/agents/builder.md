@@ -100,7 +100,7 @@ Verdict: G1_FAILED
 G1 diagnostic: <exact error output>
 ```
 
-**Do NOT run per chunk:** `npm run typecheck`, `npm run build:server`, `npm run build:client`. These now run once at G2 (end of construction, in the coordinator). The cost of running them per chunk across a multi-chunk build outweighs the fast-fail benefit; G2 catches type/build errors and routes a fix back to a fresh builder.
+**Do NOT run per chunk:** `npm run typecheck`, `npm run build:server`, `npm run build:client`. These now run once at G2 (end of construction, in the coordinator). Per-chunk execution gives earlier detection, but the wall-time and token cost across multi-chunk builds outweighs that benefit. G2 remains the required integrated type/build gate and routes any failure back through a fresh builder.
 
 **NEVER run:** `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `bash scripts/run-all-*.sh`, or any `scripts/gates/*.sh` — CI-only per CLAUDE.md.
 

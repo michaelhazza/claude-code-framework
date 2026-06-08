@@ -1,6 +1,6 @@
 ---
 name: feature-coordinator
-description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (automated default; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk scoped lint only (G1). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
+description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (automated default; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk G1 (builder runs scoped lint on touched files plus builder-owned targeted pure-function tests where applicable; coordinator re-runs scoped lint as a backup check). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -292,18 +292,18 @@ Provide the sub-agent with:
 - The chunk name
 - The list of files the plan associates with this chunk
 
-### G1 — per-chunk scoped lint
+### G1 — per-chunk scoped lint (builder also runs targeted pure-function tests where applicable)
 
-After builder reports success, run in the main session:
+G1 has two halves. The builder sub-agent runs the inner half against the chunk it just authored (scoped `eslint` on touched files plus any targeted pure-function test the chunk newly authored — see `builder.md` Step 4). The coordinator then re-runs the lint half as a backup check against the same touched-file set in the main session:
 
 ```bash
-# Scoped to files this chunk touched — fast, catches immediate mistakes.
+# Coordinator-side backup lint — same scoped check the builder ran.
 npx eslint <files builder reported as changed>
 ```
 
 Cap at 3 fix attempts per chunk. On failure: send diagnostics to a fresh `builder` invocation to fix. On the fourth attempt: escalate per failure paths.
 
-**Do NOT run `npm run typecheck` or `npm run build:server` / `npm run build:client` per chunk.** Those run once at G2 (Step 7), against the integrated branch state. Running them per chunk across a multi-chunk build burns wall-time and tokens with no fast-fail benefit that G2 wouldn't also catch.
+**Do NOT run `npm run typecheck` or `npm run build:server` / `npm run build:client` per chunk.** Those run once at G2 (Step 7), against the integrated branch state. Per-chunk execution gives earlier detection, but the wall-time and token cost across multi-chunk builds outweighs that benefit. G2 remains the required integrated type/build gate and routes any failure back through a fresh builder.
 
 ### Plan-gap handling
 
