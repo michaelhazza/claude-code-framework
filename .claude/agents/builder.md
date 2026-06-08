@@ -88,8 +88,11 @@ After implementation, run only the cheap, scoped checks. Cap at 3 attempts per c
 # Scoped lint on touched files (always — fast)
 npx eslint <touched files>
 
-# Targeted unit tests (ONLY for new pure functions with no DB/network/filesystem side effects)
-npx tsx <path-to-new-test-file>
+# Targeted unit tests (ONLY for new pure functions with no DB/network/filesystem side effects).
+# Use the project's own test runner — Vitest by default, or whatever the project's test
+# invariants specify. Never invent a runner; never hand-roll a `node:test` harness; never
+# `npx tsx` directly (it bypasses the project's discovery + reporter conventions).
+<project-test-runner> <path-to-new-test-file>
 ```
 
 On each failure: read the diagnostic, fix the specific issue, re-run.
