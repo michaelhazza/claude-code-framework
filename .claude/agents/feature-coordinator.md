@@ -1,6 +1,6 @@
 ---
 name: feature-coordinator
-description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (automated default; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk static checks (G1). After all chunks built, runs G2 integrated-state gate, then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
+description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (automated default; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk G1 (builder runs scoped lint on touched files plus builder-owned targeted pure-function tests where applicable; coordinator re-runs scoped lint as a backup check). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -47,7 +47,7 @@ Immediately after context loading, emit a TodoWrite task list with exactly these
 4. chatgpt-plan-review (automated default; Claude log + spec injected via D8)
 5. plan-gate
 6. Per-chunk loop (expanded after architect returns — one item per chunk)
-7. G2 integrated-state static-check gate
+7. G2 integrated-state gate (lint + typecheck + build:server/client)
 8. Branch-level review pass (one sub-item per reviewer)
 9. Doc-sync gate
 10. Handoff write (`tasks/builds/{slug}/handoff.md` — Phase 2 section)
@@ -292,16 +292,18 @@ Provide the sub-agent with:
 - The chunk name
 - The list of files the plan associates with this chunk
 
-### G1 — per-chunk static check
+### G1 — per-chunk scoped lint (builder also runs targeted pure-function tests where applicable)
 
-After builder reports success, run in the main session:
+G1 has two halves. The builder sub-agent runs the inner half against the chunk it just authored (scoped `eslint` on touched files plus any targeted pure-function test the chunk newly authored — see `builder.md` Step 4). The coordinator then re-runs the lint half as a backup check against the same touched-file set in the main session:
 
 ```bash
-npm run lint
-npm run typecheck
+# Coordinator-side backup lint — same scoped check the builder ran.
+npx eslint <files builder reported as changed>
 ```
 
 Cap at 3 fix attempts per chunk. On failure: send diagnostics to a fresh `builder` invocation to fix. On the fourth attempt: escalate per failure paths.
+
+**Do NOT run `npm run typecheck` or `npm run build:server` / `npm run build:client` per chunk.** Those run once at G2 (Step 7), against the integrated branch state. Per-chunk execution gives earlier detection, but the wall-time and token cost across multi-chunk builds outweighs that benefit. G2 remains the required integrated type/build gate and routes any failure back through a fresh builder.
 
 ### Plan-gap handling
 
@@ -380,16 +382,20 @@ This section is rewritten in place each chunk — only the most recent snapshot 
 
 ## Step 7 — G2 integrated-state gate
 
-After all chunks are committed, run against the integrated branch state:
+After all chunks are committed, run against the integrated branch state. This is the first time per-build that typecheck and build run — they were deferred from per-chunk G1 to here to avoid running them N times across a multi-chunk build.
 
 ```bash
 npm run lint
 npm run typecheck
+# Run only if the branch diff touched server/ files
+npm run build:server
+# Run only if the branch diff touched client/ files
+npm run build:client
 ```
 
 Cap at 3 fix attempts. On failure after 3 attempts: route diagnostics to a fresh `builder` invocation. On the fourth attempt: escalate with full diagnostics per failure paths.
 
-Record G2 attempt count in `progress.md`.
+Record G2 attempt count in `progress.md`. Record per-check attempts: `{lint: N, typecheck: N, build:server: N, build:client: N}`.
 
 After G2 passes, write the phase marker:
 
@@ -552,7 +558,7 @@ Failure to update a relevant doc is a blocking issue. Escalate to the operator �
 
 ```
 - [ ] All chunks have status done in tasks/builds/{slug}/progress.md
-- [ ] G2 passed (lint + typecheck on integrated branch state)
+- [ ] G2 passed (lint + typecheck + build:server/build:client as applicable on integrated branch state)
 - [ ] spec-conformance verdict is CONFORMANT or CONFORMANT_AFTER_FIXES
 - [ ] pr-reviewer verdict is APPROVED
 - [ ] Doc-sync gate verdicts recorded for all registered docs
