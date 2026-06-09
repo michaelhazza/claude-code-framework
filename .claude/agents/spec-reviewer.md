@@ -132,16 +132,28 @@ Repeat the following up to MAX_ITERATIONS times, subject to the stopping heurist
 
 ### Step 1 — Run Codex against the spec
 
-Invoke Codex non-interactively against the spec file. The spec is a markdown document, not a code diff, so we use `codex exec`, NOT `codex review` — the `review` subcommand only reviews git changes (`--uncommitted` / `--base` / `--commit`) and cannot take an arbitrary document. Pass the review instructions as the prompt and the spec content on stdin (Codex appends piped stdin as a `<stdin>` block). Run in the `read-only` sandbox so Codex cannot edit the working tree:
+Invoke Codex non-interactively against the spec file. The spec is a markdown document, not a code diff, so we use `codex exec`, NOT `codex review` — the `review` subcommand only reviews git changes (`--uncommitted` / `--base` / `--commit`) and cannot take an arbitrary document. Pass the review instructions as the prompt and the spec content on stdin (Codex appends piped stdin as a `<stdin>` block). Run in the `read-only` sandbox so Codex cannot edit the working tree.
+
+Define the review prompt once. It opens with an explicit read-only instruction as defence-in-depth, so that if a sandbox-less fallback ever runs, Codex is still told not to touch files:
 
 ```bash
-$CODEX_BIN exec -s read-only --skip-git-repo-check "Review this specification document for completeness, clarity, and implementation readiness. List findings as numbered items, each with Title, Severity (critical/high/medium/low), Category (bug/improvement/style/architecture), and a brief explanation. Focus on: missing contracts, ambiguous requirements, missing edge cases, internal inconsistencies, and unresolved forward references. End with an overall verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION." < "${SPEC_PATH}" 2>&1
+REVIEW_PROMPT="This is a READ-ONLY review: do not modify, create, or delete any files — only read and report. Review this specification document for completeness, clarity, and implementation readiness. List findings as numbered items, each with Title, Severity (critical/high/medium/low), Category (bug/improvement/style/architecture), and a brief explanation. Focus on: missing contracts, ambiguous requirements, missing edge cases, internal inconsistencies, and unresolved forward references. End with an overall verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION."
 ```
 
-If `codex exec` exits non-zero because the local Codex predates the `-s` / `--skip-git-repo-check` flags, retry once with the bare form (same prompt, spec still on stdin):
+Primary command — read-only sandbox, skip the git-repo check:
 
 ```bash
-$CODEX_BIN exec "Review this specification document for completeness, clarity, and implementation readiness. List findings as numbered items (Title, Severity, Category, explanation). Focus on missing contracts, ambiguous requirements, missing edge cases, internal inconsistencies, and unresolved forward references. End with a verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION." < "${SPEC_PATH}" 2>&1
+$CODEX_BIN exec -s read-only --skip-git-repo-check "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1
+```
+
+If that exits non-zero because the local Codex does not support one of the exec options above, escalate while **preserving the read-only sandbox for as long as the installed Codex accepts it** — drop `--skip-git-repo-check` first (keep `-s read-only`), and fall to the bare form only as a last resort. The bare form has no sandbox enforcement and relies solely on the read-only instruction baked into `$REVIEW_PROMPT`, which is weaker:
+
+```bash
+# 1) drop only --skip-git-repo-check, keep the read-only sandbox
+$CODEX_BIN exec -s read-only "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1 \
+  || \
+  # 2) last resort: older Codex without -s; no sandbox, prompt-level read-only only
+  $CODEX_BIN exec "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1
 ```
 
 Capture the full stdout+stderr as `CODEX_OUTPUT`.
