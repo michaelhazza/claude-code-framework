@@ -32,6 +32,23 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.16.2 — 2026-06-09 — review-pipeline fixes: Codex spec-review invocation + optional .env loading for the OpenAI review CLI
+
+**Highlights:** Fixes two breakages in the review pipeline surfaced on automation-v1 against Codex CLI 0.138.0 and a fresh-machine OpenAI key. (1) `spec-reviewer` invoked `codex review --file <spec> --rubric implementation-readiness` with a `cat … | codex review --stdin` fallback, but modern Codex `review` only reviews git changes (`--uncommitted` / `--base` / `--commit`) and has no `--file` / `--rubric` / `--stdin` — so the Codex spec-review tier could not run at all (it errored on unknown arguments). It now uses `codex exec` (read-only sandbox) with the spec piped on stdin, which is the correct command for reviewing an arbitrary document; verified against a live spec, Codex returned structured findings + a verdict. (2) `scripts/chatgpt-review.ts` did not load `.env`, so the OpenAI tier failed on machines where `OPENAI_API_KEY` lives only in a dotfile; it now optionally loads dotenv via a guarded `createRequire`, a no-op when `dotenv` is not installed. `dual-reviewer` was checked and is unaffected — its `codex review --uncommitted` / `--base main` invocation is valid in current Codex.
+
+**Fixed:**
+- `.claude/agents/spec-reviewer.md § Step 1` — replaced `codex review --file/--rubric` (+ `--stdin` fallback), which are not valid flags in current Codex CLI, with `codex exec -s read-only --skip-git-repo-check "$REVIEW_PROMPT" < "${SPEC_PATH}"`. On non-zero exit the fallback escalates while preserving the read-only sandbox as long as the installed Codex accepts it (drop `--skip-git-repo-check` first, keep `-s read-only`; bare `codex exec` only as a last resort), and the shared `$REVIEW_PROMPT` opens with an explicit read-only instruction so the sandbox-less last resort still tells Codex not to modify files. The Codex spec-review tier now reviews the spec document instead of erroring on unknown arguments.
+- `scripts/chatgpt-review.ts` — optionally load `dotenv/config` via `createRequire(import.meta.url)` wrapped in try/catch, so `OPENAI_API_KEY` can live in a local `.env`; repos without the `dotenv` package are unaffected (the import is a no-op). Verified ordering: the sole env consumer reads the key lazily in `main()` and `callResponsesApi` takes it as a parameter, so the post-import load runs before the key is read (documented inline for future refactors).
+
+**Changed:**
+- `.claude/FRAMEWORK_VERSION` and `manifest.json` — frameworkVersion bumped to 2.16.2 (was 2.16.0).
+
+**Breaking:** none.
+
+**Migration:** repos on 2.16.0 pick this up via `git submodule update --remote .claude-framework && node .claude-framework/sync.js`. The `spec-reviewer.md` change is outside the `LOCAL-OVERRIDE` markers, so project notes are preserved. To use `.env` loading for the OpenAI review CLI, ensure `dotenv` is installed in the consuming repo (optional; absent it, export `OPENAI_API_KEY` in the shell as before).
+
+---
+
 ## 2.16.0 — 2026-06-06 — cross-cutting UI safety rules in the mockup loop (capability-check states, coupled-field invariants, analytics PII discipline, desktop preservation)
 
 **Highlights:** Adds five durable UI design rules to the mockup-loop that prevent a class of bugs that look fine in the mockup but ship as silent-authorisation, generic-validation-error, or PII-leak failures in code. Surfaced from the 2026-06-06 mobile-first-web-pwa Phase 2 audit (automation-v1 PR #474) which closed three categories: (a) the push permission gate was checking "not wrapper_required" instead of the positive `ok` result, silently authorising future denied/unsupported states; (b) the analytics PII denylist had exact-match-only coverage and missed common credential variants (`accessToken`, `refreshToken`, `clientSecret`, `authToken`); (c) the analytics `ts` field was unbounded, allowing year-275760 timestamps to 500 the route. The rules generalise these from "things ChatGPT R1 caught on one PR" into "things mockup-reviewer audits on every PR going forward". Drawing the failure-state UI at design time is what prevents the silent-authorisation pattern; declaring the tier classification at design time is what aligns the implementation pattern; declaring coupled-field grouping at design time is what surfaces invariants the operator can see.

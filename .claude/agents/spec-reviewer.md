@@ -132,16 +132,24 @@ Repeat the following up to MAX_ITERATIONS times, subject to the stopping heurist
 
 ### Step 1 — Run Codex against the spec
 
-Invoke Codex's review command against the spec file. The spec is a markdown document, not a code diff, so we use the document-review variant of the Codex CLI:
+Invoke Codex non-interactively against the spec file. The spec is a markdown document, not a code diff, so we use `codex exec`, NOT `codex review` — the `review` subcommand only reviews git changes (`--uncommitted` / `--base` / `--commit`) and cannot take an arbitrary document. Pass the review instructions as the prompt and the spec content on stdin (Codex appends piped stdin as a `<stdin>` block). Run in the `read-only` sandbox so Codex cannot edit the working tree.
+
+Define the review prompt once. It opens with an explicit read-only instruction as defence-in-depth, so that if a sandbox-less fallback ever runs, Codex is still told not to touch files:
 
 ```bash
-$CODEX_BIN review --file "${SPEC_PATH}" --rubric "implementation-readiness" 2>&1
+REVIEW_PROMPT="This is a READ-ONLY review: do not modify, create, or delete any files — only read and report. Review this specification document for completeness, clarity, and implementation readiness. List findings as numbered items, each with Title, Severity (critical/high/medium/low), Category (bug/improvement/style/architecture), and a brief explanation. Focus on: missing contracts, ambiguous requirements, missing edge cases, internal inconsistencies, and unresolved forward references. End with an overall verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION."
 ```
 
-If the `--rubric` flag is not supported by the local Codex version, fall back to piping the spec into a bare review:
+Primary command — read-only sandbox, skip the git-repo check:
 
 ```bash
-cat "${SPEC_PATH}" | $CODEX_BIN review --stdin 2>&1
+$CODEX_BIN exec -s read-only --skip-git-repo-check "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1
+```
+
+If that exits non-zero because the local Codex does not support one of the exec options above, escalate while **preserving the read-only sandbox for as long as the installed Codex accepts it**. The first command in the `||` chain is the preferred fallback — `-s read-only` alone, dropping only `--skip-git-repo-check`. The second is the last resort: a bare `codex exec` for an older Codex without `-s`, which has no sandbox enforcement and relies solely on the read-only instruction in `$REVIEW_PROMPT` (weaker than sandbox enforcement):
+
+```bash
+$CODEX_BIN exec -s read-only "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1 || $CODEX_BIN exec "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1
 ```
 
 Capture the full stdout+stderr as `CODEX_OUTPUT`.

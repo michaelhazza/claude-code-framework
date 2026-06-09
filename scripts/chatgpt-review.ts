@@ -46,6 +46,7 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import {
   buildAdHocPromptVars,
   buildInputSummary,
@@ -67,6 +68,22 @@ import {
   type ReviewMode,
 } from './chatgpt-reviewPure.js';
 import { callResponsesApi } from './chatgpt-review-api.js';
+
+// Dev-tool convenience: load OPENAI_API_KEY from a local .env when present.
+// Optional — guarded so repos without the `dotenv` package are unaffected.
+//
+// Ordering note: ESM static imports above evaluate before this block, so this
+// only works if no imported module reads the key at import time. Verified: the
+// sole consumer reads `process.env.OPENAI_API_KEY` lazily inside main() at
+// runtime, and callResponsesApi() takes the key as a parameter — neither reads
+// it at module load. So this post-import load runs before the key is read. If a
+// future change adds an import-time env read, promote this into a bootstrap
+// module imported first (before the rest of the implementation).
+try {
+  createRequire(import.meta.url)('dotenv/config');
+} catch {
+  /* dotenv not installed — rely on the ambient environment */
+}
 
 const DEFAULT_MODEL = 'gpt-5.5';
 const EXIT_MODEL_MISMATCH = 3;
