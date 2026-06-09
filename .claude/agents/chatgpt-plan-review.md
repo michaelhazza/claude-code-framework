@@ -31,6 +31,16 @@ If MODE resolves to `automated` or `parallel`, verify `OPENAI_API_KEY` is set be
 
 MODE is recorded in the session log header and restored on resume.
 
+**AUTONOMY** — `attended` (default for interactive sessions) | `unattended`. **MODE (`manual`/`automated`/`parallel`) selects the review TRANSPORT only; it NEVER implies autonomy.** Resolution order: (1) explicit operator phrase (`autonomous`/`unattended` → unattended; `attended`/`interactive` → attended); (2) `.claude/session-state/review-autonomy` single-line file (`attended`/`unattended`); (3) **dispatch context — if this agent runs as a dispatched sub-agent with no interactive operator, default `unattended`** (a "wait for input" gate has no operator to satisfy and deadlocks as a premature return-to-caller); (4) default `attended`.
+
+When `unattended`, the agent **NEVER blocks waiting for operator input.** Every pausing gate becomes surface-and-continue:
+- **User-facing and technical-escalated findings** are surfaced-but-non-blocking: do NOT auto-apply; record each in the round log, route it to `tasks/todo.md` as a deferred operator decision, and return the full list to the caller. Never await approval.
+- A **directional `NEEDS_DISCUSSION` / `NEEDS_REVISION` fork** does NOT halt the loop. Resolve it conservatively (prefer the plan as-is / the simplest option, mirroring `spec-reviewer` Step 7), record the fork and its conservative resolution in `tasks/todo.md` as a deferred operator decision, and continue. The session verdict must reflect the open items — **never a silent `APPROVED`**.
+- **Termination auto-triggers** on convergence (an `APPROVED` round, or the round cap) WITHOUT an explicit `done`.
+- The **ONLY** hard-stops are genuine tooling failures (non-zero CLI exit, file-write failure, `git push` failure) — surface the exact error and stop.
+
+This aligns the `unattended` contract with the autonomous reviewers (`spec-reviewer`, `claude-plan-review`), which route directional findings to the backlog rather than blocking. `attended` mode is unchanged.
+
 ## On Start
 
 When invoked with `chatgpt-plan-review target=tasks/builds/{slug}/plan.md`:
@@ -148,7 +158,7 @@ For each round:
 
 ## Termination
 
-Operator says `done` → write the Final Summary section in the log, return to caller:
+Operator says `done` → write the Final Summary section in the log, return to caller: (In `unattended` mode — see § Mode Detection / AUTONOMY — termination auto-triggers on convergence without a `done` signal, because there is no interactive operator to type it.)
 
 ```
 Verdict: APPROVED | NEEDS_REVISION

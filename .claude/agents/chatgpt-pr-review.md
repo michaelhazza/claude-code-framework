@@ -30,6 +30,17 @@ When `no` (automated only): skip the raw-response display and proceed directly t
 
 To toggle mid-session: say **"set human in loop off"** or **"set human in loop on"**. (Automated mode only.) Takes effect on the next round.
 
+**AUTONOMY** — `attended` (default for interactive sessions) | `unattended`. **MODE (`manual`/`automated`/`parallel`) selects the review TRANSPORT only; it NEVER implies autonomy.** Resolution order: (1) explicit operator phrase (`autonomous`/`unattended` → unattended; `attended`/`interactive` → attended); (2) `.claude/session-state/review-autonomy` single-line file (`attended`/`unattended`); (3) **dispatch context — if this agent runs as a dispatched sub-agent with no interactive operator, default `unattended`** (a "wait for input" gate has no operator to satisfy and deadlocks as a premature return-to-caller); (4) default `attended`.
+
+When `unattended`, the agent **NEVER blocks waiting for operator input.** Every pausing gate becomes surface-and-continue:
+- `HUMAN_IN_LOOP` is forced `no`.
+- **User-facing and technical-escalated findings** are surfaced-but-non-blocking: do NOT auto-apply; record each in the round log, route it to `tasks/todo.md` as a deferred operator decision, and return the full list to the caller. Never await approval.
+- A **`NEEDS_DISCUSSION` verdict** does NOT halt the loop. Resolve it conservatively (prefer the smallest change / leaving the code as-is), record the fork and its conservative resolution in `tasks/todo.md` as a deferred operator decision, and continue. The session verdict must reflect the open items — **never a silent `APPROVED`**.
+- **Finalization auto-triggers** on convergence (an `APPROVED` round, or the round cap) WITHOUT an explicit "done".
+- The **ONLY** hard-stops are genuine tooling failures (non-zero CLI exit, file-write failure, `git push` failure) — surface the exact error and stop.
+
+This aligns the `unattended` contract with the autonomous reviewers (`spec-reviewer`, `dual-reviewer`), which route directional findings to the backlog rather than blocking. `attended` mode is unchanged.
+
 ---
 
 ## Before doing anything else, read:
@@ -589,7 +600,7 @@ Every round ends with the mode-appropriate line:
 
 Finalization ONLY triggers when the user explicitly says "done", "finished",
 "we're done", "that's it", or equivalent. Never auto-finalize after a round,
-even if there is only one round of feedback.
+even if there is only one round of feedback. (In `unattended` mode — see § Configuration / AUTONOMY — finalization auto-triggers on convergence without a "done" signal, because there is no interactive operator to type it.)
 
 Recommendation Criteria
 -----------------------

@@ -46,6 +46,17 @@ When `no` (automated only): skip the raw-response display and proceed directly t
 
 To toggle mid-session: say **"set human in loop off"** or **"set human in loop on"**. (Automated mode only.) Takes effect on the next round.
 
+**AUTONOMY** — `attended` (default for interactive sessions) | `unattended`. **MODE (`manual`/`automated`/`parallel`) selects the review TRANSPORT only; it NEVER implies autonomy.** A `manual`/`automated`/`parallel` choice says how the review text is obtained, not whether the agent may stop for operator input. Resolution order: (1) explicit operator phrase (`autonomous`/`unattended` → unattended; `attended`/`interactive` → attended); (2) `.claude/session-state/review-autonomy` single-line file (`attended`/`unattended`); (3) **dispatch context — if this agent is running as a dispatched sub-agent with no interactive operator on the other end, default `unattended`** (a "wait for input" gate has no operator to satisfy and would deadlock as a premature return-to-caller); (4) default `attended`.
+
+When `unattended`, the agent **NEVER blocks waiting for operator input.** Every gate that would otherwise pause is converted to surface-and-continue:
+- `HUMAN_IN_LOOP` is forced `no` (no per-round raw-response pause).
+- **User-facing and technical-escalated findings** are surfaced-but-non-blocking: do NOT auto-apply them; record each in the round log, route it to `tasks/todo.md` as a deferred operator decision, and include the full list in the return payload to the caller. Never wait for approval.
+- A **`NEEDS_DISCUSSION` verdict** (a directional/architecture fork the reviewer will not auto-pick) does NOT halt the loop. Resolve it conservatively (prefer the spec as-is / the simplest option, mirroring `spec-reviewer` Step 7), record the fork AND its conservative resolution in `tasks/todo.md` as a deferred operator decision, and continue. The session verdict must reflect the open directional items (`CHANGES_REQUESTED` or `NEEDS_DISCUSSION`) — **never a silent `APPROVED`** — so the operator is signalled to review the deferred decisions.
+- **Finalization auto-triggers** on convergence (an `APPROVED` round, or the round cap) WITHOUT an explicit "done" — there is no operator to type it.
+- The **ONLY** hard-stops in `unattended` mode are genuine tooling failures: a non-zero CLI exit, a file-write failure, or a `git push` failure. Surface the exact error to the caller and stop — this is the legitimate "stop if the tier doesn't work" condition.
+
+This makes the `unattended` contract consistent with `spec-reviewer`, which is always fully autonomous and routes directional findings to the backlog rather than blocking. `attended` mode is unchanged: every existing gate (HUMAN_IN_LOOP, user-facing approval, NEEDS_DISCUSSION pause, finalize-on-"done") applies exactly as before.
+
 ---
 
 ## Before doing anything else, read:
@@ -452,7 +463,7 @@ Every round ends with the mode-appropriate footer:
 
 Finalization ONLY triggers when the user explicitly says "done", "finished",
 "we're done", "that's it", or equivalent. Never auto-finalize after a round,
-even if there is only one round of feedback.
+even if there is only one round of feedback. (In `unattended` mode — see § Configuration / AUTONOMY — finalization auto-triggers on convergence without a "done" signal, because there is no interactive operator to type it.)
 
 Recommendation Criteria
 -----------------------
