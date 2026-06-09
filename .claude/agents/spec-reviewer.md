@@ -146,14 +146,10 @@ Primary command — read-only sandbox, skip the git-repo check:
 $CODEX_BIN exec -s read-only --skip-git-repo-check "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1
 ```
 
-If that exits non-zero because the local Codex does not support one of the exec options above, escalate while **preserving the read-only sandbox for as long as the installed Codex accepts it** — drop `--skip-git-repo-check` first (keep `-s read-only`), and fall to the bare form only as a last resort. The bare form has no sandbox enforcement and relies solely on the read-only instruction baked into `$REVIEW_PROMPT`, which is weaker:
+If that exits non-zero because the local Codex does not support one of the exec options above, escalate while **preserving the read-only sandbox for as long as the installed Codex accepts it**. The first command in the `||` chain is the preferred fallback — `-s read-only` alone, dropping only `--skip-git-repo-check`. The second is the last resort: a bare `codex exec` for an older Codex without `-s`, which has no sandbox enforcement and relies solely on the read-only instruction in `$REVIEW_PROMPT` (weaker than sandbox enforcement):
 
 ```bash
-# 1) drop only --skip-git-repo-check, keep the read-only sandbox
-$CODEX_BIN exec -s read-only "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1 \
-  || \
-  # 2) last resort: older Codex without -s; no sandbox, prompt-level read-only only
-  $CODEX_BIN exec "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1
+$CODEX_BIN exec -s read-only "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1 || $CODEX_BIN exec "$REVIEW_PROMPT" < "${SPEC_PATH}" 2>&1
 ```
 
 Capture the full stdout+stderr as `CODEX_OUTPUT`.
