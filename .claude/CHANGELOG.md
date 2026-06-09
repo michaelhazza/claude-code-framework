@@ -32,7 +32,7 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
-## 2.16.1 — 2026-06-09 — review-pipeline fixes: Codex spec-review invocation + optional .env loading for the OpenAI review CLI
+## 2.16.2 — 2026-06-09 — review-pipeline fixes: Codex spec-review invocation + optional .env loading for the OpenAI review CLI
 
 **Highlights:** Fixes two breakages in the review pipeline surfaced on automation-v1 against Codex CLI 0.138.0 and a fresh-machine OpenAI key. (1) `spec-reviewer` invoked `codex review --file <spec> --rubric implementation-readiness` with a `cat … | codex review --stdin` fallback, but modern Codex `review` only reviews git changes (`--uncommitted` / `--base` / `--commit`) and has no `--file` / `--rubric` / `--stdin` — so the Codex spec-review tier could not run at all (it errored on unknown arguments). It now uses `codex exec` (read-only sandbox) with the spec piped on stdin, which is the correct command for reviewing an arbitrary document; verified against a live spec, Codex returned structured findings + a verdict. (2) `scripts/chatgpt-review.ts` did not load `.env`, so the OpenAI tier failed on machines where `OPENAI_API_KEY` lives only in a dotfile; it now optionally loads dotenv via a guarded `createRequire`, a no-op when `dotenv` is not installed. `dual-reviewer` was checked and is unaffected — its `codex review --uncommitted` / `--base main` invocation is valid in current Codex.
 
@@ -41,7 +41,7 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 - `scripts/chatgpt-review.ts` — optionally load `dotenv/config` via `createRequire(import.meta.url)` wrapped in try/catch, so `OPENAI_API_KEY` can live in a local `.env`; repos without the `dotenv` package are unaffected (the import is a no-op). Verified ordering: the sole env consumer reads the key lazily in `main()` and `callResponsesApi` takes it as a parameter, so the post-import load runs before the key is read (documented inline for future refactors).
 
 **Changed:**
-- `.claude/FRAMEWORK_VERSION` and `manifest.json` — frameworkVersion bumped to 2.16.1 (was 2.16.0).
+- `.claude/FRAMEWORK_VERSION` and `manifest.json` — frameworkVersion bumped to 2.16.2 (was 2.16.0).
 
 **Breaking:** none.
 
