@@ -132,16 +132,16 @@ Repeat the following up to MAX_ITERATIONS times, subject to the stopping heurist
 
 ### Step 1 — Run Codex against the spec
 
-Invoke Codex's review command against the spec file. The spec is a markdown document, not a code diff, so we use the document-review variant of the Codex CLI:
+Invoke Codex non-interactively against the spec file. The spec is a markdown document, not a code diff, so we use `codex exec`, NOT `codex review` — the `review` subcommand only reviews git changes (`--uncommitted` / `--base` / `--commit`) and cannot take an arbitrary document. Pass the review instructions as the prompt and the spec content on stdin (Codex appends piped stdin as a `<stdin>` block). Run in the `read-only` sandbox so Codex cannot edit the working tree:
 
 ```bash
-$CODEX_BIN review --file "${SPEC_PATH}" --rubric "implementation-readiness" 2>&1
+$CODEX_BIN exec -s read-only --skip-git-repo-check "Review this specification document for completeness, clarity, and implementation readiness. List findings as numbered items, each with Title, Severity (critical/high/medium/low), Category (bug/improvement/style/architecture), and a brief explanation. Focus on: missing contracts, ambiguous requirements, missing edge cases, internal inconsistencies, and unresolved forward references. End with an overall verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION." < "${SPEC_PATH}" 2>&1
 ```
 
-If the `--rubric` flag is not supported by the local Codex version, fall back to piping the spec into a bare review:
+If `codex exec` exits non-zero because the local Codex predates the `-s` / `--skip-git-repo-check` flags, retry once with the bare form (same prompt, spec still on stdin):
 
 ```bash
-cat "${SPEC_PATH}" | $CODEX_BIN review --stdin 2>&1
+$CODEX_BIN exec "Review this specification document for completeness, clarity, and implementation readiness. List findings as numbered items (Title, Severity, Category, explanation). Focus on missing contracts, ambiguous requirements, missing edge cases, internal inconsistencies, and unresolved forward references. End with a verdict: APPROVED, CHANGES_REQUESTED, or NEEDS_DISCUSSION." < "${SPEC_PATH}" 2>&1
 ```
 
 Capture the full stdout+stderr as `CODEX_OUTPUT`.
