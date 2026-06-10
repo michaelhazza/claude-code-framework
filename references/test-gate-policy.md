@@ -6,7 +6,7 @@ This file replaces ~10 duplicated copies of the same rule across the agent fleet
 
 ## Rule
 
-**Continuous integration runs the complete test/gate suite as a pre-merge gate.** No local agent or development session runs the full battery. This applies to every agent in `.claude/agents/`, every skill, every review loop iteration, and every main-session task — no carve-outs.
+**Continuous integration runs the complete test/gate suite as the final pre-merge confirmation.** No local agent or development session runs the full battery. This applies to every agent in `.claude/agents/`, every skill, every review loop iteration, and every main-session task — with exactly ONE carve-out: the finalisation G5 local CI-parity gate (see below).
 
 ## Forbidden locally
 
@@ -23,6 +23,14 @@ This file replaces ~10 duplicated copies of the same rule across the agent fleet
 - **Targeted execution of unit tests authored for THIS change** — a single test file via `npx tsx <path-to-test>`. Confirm the new test runs and passes. Not to re-run anything else.
 
 Authoring tests and gates is encouraged. Running the full battery of them locally is not. CI handles that.
+
+## Finalisation G5 carve-out (the ONE sanctioned local full-suite run)
+
+`finalisation-coordinator` Step 8c (G5 local CI-parity gate) and its Step 11 fix-loop verification run the full CI check suite locally. This is deliberate and is the only exception to the rule above.
+
+**Why the carve-out exists:** GitHub Actions minutes are a constrained, billed resource. The consuming repo's heavy CI jobs are gated on the `ready-to-merge` label and re-run on every push while the label is present. The carve-out inverts the cost: the full suite runs locally (cheap, fast iteration) until green, the label is applied once, and the labeled CI run is a single final confirmation — target: one full CI run per ticket.
+
+**Scope is strict.** The carve-out applies ONLY while executing the `finalisation-coordinator` playbook at Step 8c or Step 11 (CI-failure fix verification). No other agent, skill, plan, spec, review loop, or main-session task inherits it. `builder`, `feature-coordinator`, `pr-reviewer`, and every Phase 1/2 surface remain bound by "Forbidden locally" in full. A plan or spec citing this carve-out to justify a mid-build full-suite run is mis-scoped and gets auto-fixed by spec-reviewer.
 
 ## Why
 
