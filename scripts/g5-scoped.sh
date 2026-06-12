@@ -59,6 +59,8 @@ ESCAPE_PATTERNS=(
 # command whose glob matches at least one changed file runs exactly once.
 # Lint and typecheck are NOT listed here — they always run in full.
 GATE_MAP=(
+  # self-check: this script must at least parse when it changes
+  "scripts/g5-scoped.sh|bash -n scripts/g5-scoped.sh"
   # "server/db/schema/*|bash scripts/verify-rls.sh"
   # "server/jobs/*|bash scripts/verify-job-payload-schema.sh"
   # "client/src/*|bash scripts/verify-no-orphan-react-component.sh"
@@ -80,6 +82,13 @@ DB_GATE_MAP=(
 # direct CI job steps. Leave SHARD_MANIFEST empty to treat every gate strictly.
 SHARD_MANIFEST=""
 SHARD_GATE_ENV=""
+
+# Strictest-runner-wins override: a gate that appears as a DIRECT step in any
+# workflow file under this directory is strict on CI (the CI runner fails the
+# step on any non-zero exit), even if the gate is also listed in the shard
+# manifest. Prevents a dual-listed gate from silently inheriting warning
+# semantics. Leave empty to disable the check.
+CI_WORKFLOW_DIR=".github/workflows"
 
 # Always-run commands for the scoped set (cheap, cross-file).
 ALWAYS_CMDS=(
@@ -115,15 +124,29 @@ record_mode() {
   fi
 }
 
+# Residual contract (Step 8c.3): checks that cannot run locally are recorded in
+# progress.md, not just printed — they are the only checks allowed to run first on CI.
+record_residual() {
+  local line="G5-residual: $1 — $2"
+  say "$line"
+  if [ -n "${G5_SLUG:-}" ] && [ -f "tasks/builds/${G5_SLUG}/progress.md" ]; then
+    printf '%s\n' "$line" >> "tasks/builds/${G5_SLUG}/progress.md"
+  fi
+}
+
 # 1. Changed-file set: branch commits since merge-base + uncommitted (tracked) + untracked.
 CHANGED=()
 while IFS= read -r f; do [ -n "$f" ] && CHANGED+=("$f"); done < <(
   {
-    git diff --name-only --diff-filter=ACMR "${BASE_REF}...HEAD" --
-    git diff --name-only --diff-filter=ACMR HEAD --
+    git diff --name-only --no-renames --diff-filter=ACMRD "${BASE_REF}...HEAD" --
+    git diff --name-only --no-renames --diff-filter=ACMRD HEAD --
     git ls-files --others --exclude-standard
   } | sort -u
 )
+# Deletions are deliberately included (--diff-filter=...D, --no-renames): deleting
+# a migration, baseline, workflow, or registry file must trip the escape hatch,
+# and deleting a mapped source path must still trigger its surface gates. The
+# [ -f ] guard below keeps deleted paths out of the related-test set only.
 
 if [ "${#CHANGED[@]}" -eq 0 ]; then
   say "No changed files vs ${BASE_REF} — nothing to scope. Run lint/typecheck directly if needed."
@@ -193,6 +216,11 @@ run_gate_cmd() {
      && grep -q "\"$gate_path\"" "$SHARD_MANIFEST"; then
     shard=1
   fi
+  # Strictest wins: direct workflow steps are strict on CI even if shard-listed.
+  if [ "$shard" -eq 1 ] && [ -n "${CI_WORKFLOW_DIR:-}" ] && [ -d "$CI_WORKFLOW_DIR" ] \
+     && grep -rq "$gate_path" "$CI_WORKFLOW_DIR"; then
+    shard=0
+  fi
   hr "gate: $cmd"
   if [ "$shard" -eq 1 ]; then
     say "\$ ${SHARD_GATE_ENV} $cmd   (shard gate: exit 2 = warning, exit 3 = info)"
@@ -253,7 +281,7 @@ run_related_suite "unit tests (related)" "$UNIT_SUITE_ENV"
 
 if [ -n "$INTEGRATION_SUITE_ENV" ]; then
   if [ "$INTEGRATION_NEEDS_DB" -eq 1 ] && [ -z "${DATABASE_URL:-}" ]; then
-    say "G5-residual: integration tests (related) — no DATABASE_URL (no local test DB)"
+    record_residual "integration tests (related)" "no DATABASE_URL (no local test DB)"
   else
     for setup in "${INTEGRATION_SETUP_CMDS[@]}"; do
       run_cmd "integration setup: $setup" "$setup"
@@ -296,7 +324,7 @@ MIGRATED=0
 for cmd in "${GATES_TO_RUN[@]:-}"; do
   [ -n "$cmd" ] || continue
   if [ -z "${DATABASE_URL:-}" ]; then
-    say "G5-residual: ${cmd} — no DATABASE_URL (no local test DB)"
+    record_residual "${cmd}" "no DATABASE_URL (no local test DB)"
     continue
   fi
   if [ "$MIGRATED" -eq 0 ]; then run_cmd "npm run migrate (DB-backed gates)" "npm run migrate"; MIGRATED=1; fi
