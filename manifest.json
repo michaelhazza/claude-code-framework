@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.18.0",
+  "frameworkVersion": "2.19.0",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
@@ -27,6 +27,7 @@
     { "path": "docs/frontend-design-examples.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
     { "path": "docs/doc-sync.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
     { "path": "references/verification-commands.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
+    { "path": "scripts/g5-scoped.sh", "category": "template", "mode": "adopt-only", "substituteAt": "never" },
     { "path": "scripts/chatgpt-review.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/chatgpt-review-api.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/chatgpt-reviewPure.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
