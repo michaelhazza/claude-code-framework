@@ -96,13 +96,18 @@ ALWAYS_CMDS=(
   "npm run typecheck"
 )
 
-# Test suites: "label|env-prefix|extra-args". Each runs
-#   <env-prefix> npx vitest related --run --passWithNoTests <changed source files> <extra-args>
-# Suites marked needs-db run only when DATABASE_URL is set (G5-residual otherwise).
-UNIT_SUITE_ENV=""                 # e.g. "" — vitest config defaults apply
+# Test suites. Each runs
+#   <env-prefix> npx vitest related --run --passWithNoTests <changed source files> <suite-args>
+# *_SUITE_ARGS are extra runner args appended to the related-run (word-split),
+# e.g. "--hookTimeout=60000" for slow machines. When DATABASE_URL is set,
+# `npm run migrate` runs once (ensure_migrated) before the first DB-backed leg —
+# do NOT also list it in INTEGRATION_SETUP_CMDS.
+UNIT_SUITE_ENV=""                 # e.g. "" — runner config defaults apply
+UNIT_SUITE_ARGS=""
 INTEGRATION_SUITE_ENV=""          # e.g. "NODE_ENV=integration" — leave empty to disable the leg
+INTEGRATION_SUITE_ARGS=""
 INTEGRATION_NEEDS_DB=1            # 1 = skip with a G5-residual line when DATABASE_URL is unset
-INTEGRATION_SETUP_CMDS=()         # e.g. ("npm run migrate" "npx tsx scripts/seed-integration-fixtures.ts")
+INTEGRATION_SETUP_CMDS=()         # e.g. ("npx tsx scripts/seed-integration-fixtures.ts")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ENGINE — generic; avoid project-specific edits below this line
@@ -193,6 +198,7 @@ done
 
 FAILURES=0
 WARNINGS=0
+MIGRATED=0
 run_cmd() {
   local label="$1"; shift
   hr "$label"
@@ -247,10 +253,20 @@ for cmd in "${ALWAYS_CMDS[@]}"; do
   run_cmd "$cmd" "$cmd"
 done
 
+# CI-parity DB setup: every DB-backed CI job (unit, integration, DB gates) runs
+# `npm run migrate` first. Mirror that exactly once, and only when a test DB is
+# actually configured.
+ensure_migrated() {
+  if [ -n "${DATABASE_URL:-}" ] && [ "$MIGRATED" -eq 0 ]; then
+    run_cmd "npm run migrate (CI-parity DB setup)" "npm run migrate"
+    MIGRATED=1
+  fi
+}
+
 # 5. Related tests per suite.
 TEST_FILE_COUNT=0
 run_related_suite() {
-  local label="$1" env_prefix="$2"
+  local label="$1" env_prefix="$2" suite_args="${3:-}"
   if [ "${#SOURCES[@]}" -eq 0 ]; then
     say "[SKIP] $label — no traceable source files in the diff"
     return 0
@@ -258,6 +274,10 @@ run_related_suite() {
   hr "$label (vitest related, ${#SOURCES[@]} changed source files)"
   local out code=0
   local cmd=(npx vitest related --run --passWithNoTests "${SOURCES[@]}")
+  if [ -n "$suite_args" ]; then
+    # shellcheck disable=SC2206 — deliberate word-splitting of operator-pinned args
+    cmd+=($suite_args)
+  fi
   say "\$ ${env_prefix:+$env_prefix }${cmd[*]}"
   if [ -n "$env_prefix" ]; then
     out="$(env $env_prefix "${cmd[@]}" 2>&1)" || code=$?
@@ -277,16 +297,18 @@ run_related_suite() {
 if [ -z "${DATABASE_URL:-}" ]; then
   say "note: DATABASE_URL unset — if the related selection includes DB-backed unit tests, they will fail to connect. Set DATABASE_URL to the throwaway test DB, or record such failures as G5-residual."
 fi
-run_related_suite "unit tests (related)" "$UNIT_SUITE_ENV"
+ensure_migrated   # CI's unit job migrates before the unit suite; mirror when a DB is configured
+run_related_suite "unit tests (related)" "$UNIT_SUITE_ENV" "$UNIT_SUITE_ARGS"
 
 if [ -n "$INTEGRATION_SUITE_ENV" ]; then
   if [ "$INTEGRATION_NEEDS_DB" -eq 1 ] && [ -z "${DATABASE_URL:-}" ]; then
     record_residual "integration tests (related)" "no DATABASE_URL (no local test DB)"
   else
+    ensure_migrated
     for setup in "${INTEGRATION_SETUP_CMDS[@]}"; do
       run_cmd "integration setup: $setup" "$setup"
     done
-    run_related_suite "integration tests (related)" "$INTEGRATION_SUITE_ENV"
+    run_related_suite "integration tests (related)" "$INTEGRATION_SUITE_ENV" "$INTEGRATION_SUITE_ARGS"
   fi
 fi
 
@@ -327,7 +349,7 @@ for cmd in "${GATES_TO_RUN[@]:-}"; do
     record_residual "${cmd}" "no DATABASE_URL (no local test DB)"
     continue
   fi
-  if [ "$MIGRATED" -eq 0 ]; then run_cmd "npm run migrate (DB-backed gates)" "npm run migrate"; MIGRATED=1; fi
+  ensure_migrated
   GATE_COUNT=$((GATE_COUNT + 1))
   run_gate_cmd "$cmd"
 done
