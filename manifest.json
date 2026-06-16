@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.19.0",
+  "frameworkVersion": "2.20.0",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
@@ -10,9 +10,11 @@
     { "path": ".claude/FRAMEWORK_VERSION", "category": "version", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/CHANGELOG.md", "category": "changelog", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/project-registries.json.template", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
+    { "path": ".claude/context/agent-context.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
     { "path": "docs/decisions/0001-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/0002-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/0005-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/decisions/0006-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/README.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/_template.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/context-packs/*.md", "category": "context-pack", "mode": "sync", "substituteAt": "adoption" },

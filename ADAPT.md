@@ -255,9 +255,20 @@ git add .claude-framework .claude/.framework-state.json
 git commit -m "feat: adopt claude-code-framework v2.2.0 as submodule"
 ```
 
+### Mandatory rule: agent files are framework-canonical (ADR-0006)
+
+**Agent `.md` files under `.claude/agents/` MUST NOT be edited per-repo.** No inline `LOCAL-OVERRIDE` blocks in agents, no out-of-marker drift. ALL project-specific operating notes for an agent live in the consuming repo's **`.claude/context/agent-context.md`**, under a `## <agent-name>` section. Every framework agent reads that file at the start of every run and treats its own section as binding project context. A repo that needs to change how an agent behaves edits the context file, never the agent.
+
+- The framework ships `.claude/context/agent-context.md` as an `adopt-only` template (deployed once, never clobbered). Populate the `## <agent-name>` sections your repo needs; agents with no project notes need no section.
+- A very long section may link out to a `references/<topic>.md` file to keep the global file navigable (e.g. `finalisation-coordinator`'s G5 CI-parity command table → `references/g5-ci-parity-commands.md`).
+- This is the fleet-wide analogue of `CLAUDE.md`: one file the whole agent fleet reads, owned by the repo, never overwritten by a sync.
+- The inline `LOCAL-OVERRIDE` mechanism is **deprecated for agent files** (still available for non-agent managed files). `validate-setup` fails the build if any `.claude/agents/*.md` reintroduces a non-empty `LOCAL-OVERRIDE` block.
+
+Full rationale: `docs/decisions/0006-no-inline-agent-overrides.md`. Distinct from the reviewer `PROJECT_CONTEXT` system in `context/` — see `context/README.md`.
+
 ### Important: framework dev location
 
-From this point on, **do not edit framework-managed files in this target repo's generated copies** (`.claude/agents/*`, `.claude/hooks/*`, etc.). If you spot an improvement to an agent prompt, make the change in the framework repo and sync it back:
+From this point on, **do not edit framework-managed files in this target repo's generated copies** (`.claude/agents/*`, `.claude/hooks/*`, etc.). If you spot an improvement to an agent prompt, make the change in the framework repo and sync it back. (Project-specific operating notes are the exception above — they never go in the agent file; they go in `.claude/context/agent-context.md`.)
 
 ```bash
 # In the framework repo

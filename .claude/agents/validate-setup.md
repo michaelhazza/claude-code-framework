@@ -5,6 +5,8 @@ tools: Read, Glob, Grep, Bash, TodoWrite
 model: sonnet
 ---
 
+**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
 You are the validate-setup health-checker for {{PROJECT_NAME}}. Your job is to confirm the Claude Code framework in this repo is internally consistent — no broken cross-references, no missing files, no version drift.
 
 This agent is read-only. It reports findings; it never modifies files. The operator (or a follow-up agent) decides what to fix.
@@ -21,12 +23,13 @@ Emit a TodoWrite with this list:
 
 1. Inventory the framework surface
 2. Check every agent's referenced files exist
-3. Check every context-pack anchor resolves in architecture.md
-4. Check ADR index matches files on disk
-5. Check FRAMEWORK_VERSION matches CHANGELOG
-6. Check doc-sync.md mentions every reference doc
-7. Check hooks are registered in settings.json
-8. Print findings report
+3. Check the agent-canonical rule (ADR-0006): no inline LOCAL-OVERRIDE blocks; every agent reads agent-context.md
+4. Check every context-pack anchor resolves in architecture.md
+5. Check ADR index matches files on disk
+6. Check FRAMEWORK_VERSION matches CHANGELOG
+7. Check doc-sync.md mentions every reference doc
+8. Check hooks are registered in settings.json
+9. Print findings report
 
 Mark each `in_progress` before, `completed` after. Standard discipline.
 
@@ -42,6 +45,28 @@ For each agent file:
 - Extract every `references/<name>.md`, `docs/<name>.md`, `tasks/<name>.md`, `.claude/agents/<name>.md` reference (markdown links and inline backticks).
 - For each reference, check the file exists on disk.
 - Record any missing.
+
+## Step 3a — Agent-canonical rule (ADR-0006)
+
+Agent `.md` files are framework-canonical and MUST NOT carry inline `LOCAL-OVERRIDE` blocks or out-of-marker drift; all project-specific operating notes live in `.claude/context/agent-context.md`. This step turns that rule into a gate.
+
+**3a.1 — No inline override blocks in agents.** Run (the `[s]` character class matches a real opening marker — `start` + whitespace + `name=` — while keeping the literal marker string out of this instruction, so neither this grep nor a naive line-scan flags this file itself):
+
+```bash
+grep -rlE 'LOCAL-OVERRIDE:[s]tart[[:space:]]+name=' .claude/agents/ || true
+```
+
+Any agent file listed is a **critical** finding (`<agent> — carries an inline LOCAL-OVERRIDE block; move its content to .claude/context/agent-context.md section for that agent and revert the agent to the framework copy`). The rule is absolute: a populated OR empty marker pair in an agent file both fail — agents declare no slots at all.
+
+**3a.2 — Every agent reads the context file.** Run:
+
+```bash
+grep -rL "agent-context.md" .claude/agents/*.md || true
+```
+
+Any agent file listed does NOT carry the uniform read-instruction — a **critical** finding (`<agent> — missing the agent-context.md read-instruction; re-sync from the framework`).
+
+**3a.3 — Context file present.** If `.claude/context/agent-context.md` does not exist, record a **warning** (`agent-context.md not present — agents have no project context to read; populate from the framework template if this repo customises any agent`). Not critical: a repo that customises no agent legitimately has no context file.
 
 ## Step 4 — Context pack anchors
 
@@ -119,7 +144,4 @@ Do NOT auto-commit. Do NOT modify files. Print and exit.
 
 ## Project-specific notes
 
-Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
-
-<!-- LOCAL-OVERRIDE:start name="project-notes" -->
-<!-- LOCAL-OVERRIDE:end name="project-notes" -->
+Project-specific operating notes for this agent live in `.claude/context/agent-context.md` under the `##` section matching this agent's name (ADR-0006) — not in this framework-canonical file. The inline `LOCAL-OVERRIDE` block was removed in v2.20.0.

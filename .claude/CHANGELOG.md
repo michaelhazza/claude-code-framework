@@ -32,6 +32,29 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.20.0 — 2026-06-17 — Agent files are framework-canonical: per-repo overrides move to a global agent-context file
+
+**Highlights:** Two changes. **(Part B, main)** Agent `.md` files under `.claude/agents/` are now framework-canonical and MUST NOT be edited per-repo (ADR-0006). The inline `LOCAL-OVERRIDE` mechanism is **deprecated for agent files** — all project-specific operating notes for an agent move to the consuming repo's new `.claude/context/agent-context.md`, under a `## <agent-name>` section, which every framework agent reads at the start of every run and treats as binding project context. This is the fleet-wide analogue of `CLAUDE.md`: one file the whole agent fleet reads, owned by the repo, never overwritten by a sync. A long section may link out to a `references/<topic>.md` file. Every framework agent gained one uniform, greppable read-instruction line after its frontmatter, and every agent's inline `project-notes` override slot was removed. **(Part A, small)** ChatGPT-PR review's "always write the diff file every round" mandate is hoisted into a prominent `### Diff-file discipline (manual + parallel)` invariant in `chatgpt-pr-review.md` and the per-round/On-Start steps are relabelled `[MANUAL + PARALLEL]`, closing a discoverability gap where `parallel` mode was covered only by inference; `finalisation-coordinator` Step 5's contract bullet was strengthened to match.
+
+**Breaking:** Consuming repos that carried inline `LOCAL-OVERRIDE` content in any `.claude/agents/*.md` must migrate that content to `.claude/context/agent-context.md` (one `## <agent-name>` section each) and re-sync the agents to clean framework copies. On the next sync, the framework agents no longer declare the `project-notes` slot, so any unmigrated in-slot content is orphaned and dropped (sync warns). Migrate before syncing. The `.claude/context/agent-context.md` template ships `adopt-only`; populate it per repo.
+
+**Added:**
+- `.claude/context/agent-context.md` — `adopt-only` template (manifest entry); the global per-repo agent-context file every framework agent reads each run.
+- `docs/decisions/0006-no-inline-agent-overrides.md` — ADR capturing the rule and rationale.
+- `validate-setup` Step 3a — agent-canonical gate: fails (critical) if any `.claude/agents/*.md` carries an inline `LOCAL-OVERRIDE` block or omits the `agent-context.md` read-instruction.
+- `scripts/__tests__/local-override-e2e.js` STEP 5 — asserts the framework's own agents are LOCAL-OVERRIDE-free and all reference `agent-context.md`.
+
+**Changed:**
+- Every `.claude/agents/*.md` — uniform read-instruction line added after frontmatter; inline `project-notes` `LOCAL-OVERRIDE` slot removed; `## Project-specific notes` section now points at `agent-context.md`.
+- `chatgpt-pr-review.md` — new `### Diff-file discipline (manual + parallel) — MANDATORY, NO EXCEPTIONS` block; On-Start "Prepare Round 1" and per-round step-9 relabelled `[MANUAL + PARALLEL]`.
+- `finalisation-coordinator.md` — Step 5 chatgpt-pr-review contract strengthened (diff file always at round 1, round summary incomplete without the link, mandatory in manual AND parallel); G5 prose references repointed from "the LOCAL-OVERRIDE block" to `.claude/context/agent-context.md`.
+- `ADAPT.md` — new mandatory rule section (ADR-0006).
+
+**Deprecated:**
+- Inline `LOCAL-OVERRIDE` blocks **in agent files only**. The mechanism remains valid for non-agent managed files (docs, references). See `references/local-override-convention.md` (deprecation note at top).
+
+**Migration (consuming repos):** on next sync, expect `.framework-new` for any agent that still carries customised content — migrate the content to `.claude/context/agent-context.md` first, then resolve the `.framework-new` by taking the framework copy, and re-baseline the agent's state entry. Populate `.claude/context/agent-context.md` from the shipped template.
+
 ## 2.19.0 — 2026-06-12 — G5-scoped: diff-scoped pre-merge verification mode for the G5 local CI-parity gate
 
 **Highlights:** The 2.18.0 G5 gate requires the FULL CI-parity suite locally before the ready-to-merge label — on large consuming repos that is 45–60+ minutes per attempt on a dev machine. G5 now has two modes, selected at the new Step 8c.2. **G5-scoped (default when the repo ships `scripts/g5-scoped.sh`)** runs only the checks the branch diff can plausibly trip: lint and typecheck always run in full (cheap, cross-file); test selection uses the runner's related-files mode (e.g. `vitest related --run <changed files>`) per suite, so only test files whose transitive import graph touches the changed code run; static gates are selected by a declarative path-glob → gate-script mapping table pinned in the consuming repo's script. **Full G5 remains as a mandatory escape hatch (not optional):** scoped mode REFUSES (distinct exit code 3) when the diff touches aggregate/global surfaces where subset runs are blind — migration directories, package manifests/lockfiles, the project's shared registry files, `*baseline*` files, the test-runner config, CI workflow files — or when a merge commit from main brought such changes into the branch (the real failure classes: migration-number collisions, baseline drift, allowlist grace-window expiry). Whichever mode runs records `G5 mode: scoped (<N> test files, <M> gates)` or `G5 mode: full (reason: <trigger>)` in the build's `progress.md`. The labeled CI run remains the system of record and the Step 11 label-pull discipline is unchanged; in scoped mode a labeled-CI failure's fix verification runs that check's FULL local-parity command plus a clean scoped pass.

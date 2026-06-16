@@ -151,5 +151,24 @@ assert.ok(contentAfterNewSlot.includes('Consumer custom example 1'), 'old consum
 assert.ok(contentAfterNewSlot.includes('Framework default for new slot'), 'new framework block uses framework default since consumer has not filled it');
 pass('framework can add new override blocks without disturbing consumer overrides');
 
+// STEP 5 — ADR-0006 gate: the framework's own agent files must carry NO inline LOCAL-OVERRIDE
+// blocks. Agents are framework-canonical; project-specific notes live in .claude/context/agent-context.md.
+// (The mechanism above remains valid for NON-agent managed files — docs/principles.md exercised it.)
+{
+  const agentsDir = path.join(realFwRoot, '.claude', 'agents');
+  const offenders = [];
+  const missingReadInstruction = [];
+  for (const f of fs.readdirSync(agentsDir).filter(n => n.endsWith('.md'))) {
+    const body = fs.readFileSync(path.join(agentsDir, f), 'utf8');
+    // Match a REAL opening marker (start + whitespace + name=), not prose/grep examples that
+    // mention the marker shape (e.g. validate-setup's own gate instruction).
+    if (/LOCAL-OVERRIDE:start\s+name=/.test(body)) offenders.push(f);
+    if (!body.includes('agent-context.md')) missingReadInstruction.push(f);
+  }
+  assert.deepStrictEqual(offenders, [], `framework agents must not declare LOCAL-OVERRIDE blocks (ADR-0006); offenders: ${offenders.join(', ')}`);
+  assert.deepStrictEqual(missingReadInstruction, [], `every framework agent must carry the agent-context.md read-instruction; missing in: ${missingReadInstruction.join(', ')}`);
+  pass('framework agents are LOCAL-OVERRIDE-free and all reference agent-context.md (ADR-0006)');
+}
+
 process.stdout.write('\nAll LOCAL-OVERRIDE e2e smoke tests passed.\n');
 fs.rmSync(tmp, { recursive: true, force: true });

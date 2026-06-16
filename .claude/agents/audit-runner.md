@@ -5,6 +5,8 @@ tools: Read, Glob, Grep, Bash, Edit, Write, TodoWrite
 model: opus
 ---
 
+**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
 ## IMPORTANT — Inline execution only
 
 **Do NOT invoke this agent via the `Agent` tool.** It must always run in the current session so the TodoWrite task list is visible to the user and progress is trackable.
@@ -368,7 +370,4 @@ See also: `architect.md` § *Test gates are CI-only — never put them in a plan
 
 ## Project-specific notes
 
-Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
-
-<!-- LOCAL-OVERRIDE:start name="project-notes" -->
-<!-- LOCAL-OVERRIDE:end name="project-notes" -->
+Project-specific operating notes for this agent live in `.claude/context/agent-context.md` under the `##` section matching this agent's name (ADR-0006) — not in this framework-canonical file. The inline `LOCAL-OVERRIDE` block was removed in v2.20.0.
