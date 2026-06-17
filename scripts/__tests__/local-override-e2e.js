@@ -155,6 +155,11 @@ pass('framework can add new override blocks without disturbing consumer override
 // blocks. Agents are framework-canonical; project-specific notes live in .claude/context/agent-context.md.
 // (The mechanism above remains valid for NON-agent managed files — docs/principles.md exercised it.)
 {
+  // The exact uniform read-instruction. A bare 'agent-context.md' mention is NOT enough —
+  // every agent also names the file in its footer pointer, so checking for the string would
+  // pass an agent that lost the frontmatter-adjacent read-first instruction. Assert the exact
+  // text AND that it is the first body line immediately after the frontmatter close.
+  const READ_INSTRUCTION = '**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else';
   const agentsDir = path.join(realFwRoot, '.claude', 'agents');
   const offenders = [];
   const missingReadInstruction = [];
@@ -163,11 +168,22 @@ pass('framework can add new override blocks without disturbing consumer override
     // Match a REAL opening marker (start + whitespace + name=), not prose/grep examples that
     // mention the marker shape (e.g. validate-setup's own gate instruction).
     if (/LOCAL-OVERRIDE:start\s+name=/.test(body)) offenders.push(f);
-    if (!body.includes('agent-context.md')) missingReadInstruction.push(f);
+    // Read-instruction must be present AND be the first non-blank body line after frontmatter.
+    const lines = body.split('\n');
+    let ok = false;
+    if (lines[0].trim() === '---') {
+      let end = -1;
+      for (let i = 1; i < lines.length; i++) { if (lines[i].trim() === '---') { end = i; break; } }
+      if (end !== -1) {
+        const firstBody = lines.slice(end + 1).find(l => l.trim() !== '') || '';
+        ok = firstBody.startsWith('**Project context (read first).**') && body.includes(READ_INSTRUCTION);
+      }
+    }
+    if (!ok) missingReadInstruction.push(f);
   }
   assert.deepStrictEqual(offenders, [], `framework agents must not declare LOCAL-OVERRIDE blocks (ADR-0006); offenders: ${offenders.join(', ')}`);
-  assert.deepStrictEqual(missingReadInstruction, [], `every framework agent must carry the agent-context.md read-instruction; missing in: ${missingReadInstruction.join(', ')}`);
-  pass('framework agents are LOCAL-OVERRIDE-free and all reference agent-context.md (ADR-0006)');
+  assert.deepStrictEqual(missingReadInstruction, [], `every framework agent must carry the EXACT read-instruction as its first body line after frontmatter; missing/misplaced in: ${missingReadInstruction.join(', ')}`);
+  pass('framework agents are LOCAL-OVERRIDE-free and carry the exact frontmatter read-instruction (ADR-0006)');
 }
 
 process.stdout.write('\nAll LOCAL-OVERRIDE e2e smoke tests passed.\n');

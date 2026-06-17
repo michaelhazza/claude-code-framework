@@ -61,13 +61,13 @@ grep -rlE 'LOCAL-OVERRIDE:[s]tart[[:space:]]+name=' .claude/agents/ || true
 
 Any agent file listed is a **critical** finding (`<agent> — carries an inline LOCAL-OVERRIDE block; move its content to .claude/context/agent-context.md section for that agent and revert the agent to the framework copy`). The rule is absolute: a populated OR empty marker pair in an agent file both fail — agents declare no slots at all.
 
-**3a.2 — Every agent reads the context file.** Run:
+**3a.2 — Every agent carries the exact uniform read-instruction.** A bare mention of `agent-context.md` is NOT sufficient — every migrated agent also names the file in its footer pointer, so a `grep -l agent-context.md` would pass an agent that lost the frontmatter-adjacent read-first instruction. Assert the exact instruction text instead (fixed-string match, so regex metacharacters are literal):
 
 ```bash
-grep -rL "agent-context.md" .claude/agents/*.md || true
+grep -rLF '**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else' .claude/agents/*.md || true
 ```
 
-Any agent file listed does NOT carry the uniform read-instruction — a **critical** finding (`<agent> — missing the agent-context.md read-instruction; re-sync from the framework`).
+Any agent file listed does NOT carry the exact uniform read-instruction — a **critical** finding (`<agent> — missing the frontmatter read-first instruction; re-sync from the framework`). The instruction MUST be the first body line immediately after the frontmatter closing `---`; spot-check position on any agent the grep does not catch but that looks malformed. The automated equivalent is `scripts/__tests__/local-override-e2e.js` STEP 5.
 
 **3a.3 — Context file present.** If `.claude/context/agent-context.md` does not exist, record a **warning** (`agent-context.md not present — agents have no project context to read; populate from the framework template if this repo customises any agent`). Not critical: a repo that customises no agent legitimately has no context file.
 
