@@ -6,7 +6,7 @@ This file is the **only** place to add project-specific behaviour for a framewor
 
 - Agent `.md` files are framework-canonical and are **never edited per-repo** — no inline `LOCAL-OVERRIDE` blocks, no out-of-marker drift. Project notes go here instead.
 - Add a `## <agent-name>` section **only** for an agent you actually need to customise. Agents with no project notes need no section.
-- The heading MUST exactly match the agent's name (the `name:` field in `.claude/agents/<agent-name>.md`).
+- The heading MUST exactly match the agent's name — its `name:` frontmatter field, which equals the filename stem (e.g. `## architect` for `architect.md`).
 - Keep sections tight. If one section grows long (a CI command table, a large allowlist), move the detail to a `references/<topic>.md` file and leave a 2-line pointer here.
 - This file is `adopt-only`: the framework deploys it once, then never overwrites it. It is yours to maintain.
 
@@ -14,13 +14,15 @@ Distinct from the reviewer `PROJECT_CONTEXT` system (`context/` at the framework
 
 ---
 
-## Worked example (delete or replace)
+## Worked example
 
-The format is a level-2 heading per agent, then prose / bullets / tables as needed:
+The format is a level-2 heading whose text is a real agent name, then prose / bullets / tables as needed. The example below uses a **non-agent placeholder name** and is wrapped in an HTML comment, so it can never be read as binding project context — delete it or replace it with your real `## <agent-name>` sections.
 
-> ## finalisation-coordinator
->
-> **G5 CI-parity gate.** This repo's CI jobs, gate shards, and escape-hatch paths are in [`references/g5-ci-parity-commands.md`](../../references/g5-ci-parity-commands.md). Run that command set locally before applying the `ready-to-merge` label.
+<!--
+## example-agent-name
+
+**Some project rule.** Describe a project-specific behaviour for this agent. If the detail is long (a CI command table, a large allowlist), move it to a `references/<topic>.md` file and leave a short pointer here instead of inlining it.
+-->
 
 ---
 

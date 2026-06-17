@@ -262,7 +262,7 @@ git commit -m "feat: adopt claude-code-framework v2.2.0 as submodule"
 - The framework ships `.claude/context/agent-context.md` as an `adopt-only` template (deployed once, never clobbered). Populate the `## <agent-name>` sections your repo needs; agents with no project notes need no section.
 - A very long section may link out to a `references/<topic>.md` file to keep the global file navigable (e.g. `finalisation-coordinator`'s G5 CI-parity command table → `references/g5-ci-parity-commands.md`).
 - This is the fleet-wide analogue of `CLAUDE.md`: one file the whole agent fleet reads, owned by the repo, never overwritten by a sync.
-- The inline `LOCAL-OVERRIDE` mechanism is **deprecated for agent files** (still available for non-agent managed files). `validate-setup` fails the build if any `.claude/agents/*.md` reintroduces a non-empty `LOCAL-OVERRIDE` block.
+- The inline `LOCAL-OVERRIDE` mechanism is **deprecated for agent files** (still available for non-agent managed files). `validate-setup` fails the build if any `.claude/agents/*.md` reintroduces a `LOCAL-OVERRIDE` block (populated or empty — agents declare no slots at all).
 
 Full rationale: `docs/decisions/0006-no-inline-agent-overrides.md`. Distinct from the reviewer `PROJECT_CONTEXT` system in `context/` — see `context/README.md`.
 

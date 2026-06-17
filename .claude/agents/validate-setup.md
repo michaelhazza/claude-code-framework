@@ -29,9 +29,12 @@ Emit a TodoWrite with this list:
 6. Check FRAMEWORK_VERSION matches CHANGELOG
 7. Check doc-sync.md mentions every reference doc
 8. Check hooks are registered in settings.json
+8z. Run any project-specific checks declared in `.claude/context/agent-context.md` § validate-setup
 9. Print findings report
 
 Mark each `in_progress` before, `completed` after. Standard discipline.
+
+**Project-specific checks (mandatory fold-in).** Before emitting the skeleton, read `.claude/context/agent-context.md`. If its `## validate-setup` section declares additional checks (e.g. a config security scan, a custom gate), add each as its own TodoWrite item at the position the section specifies — run them after Step 8 (hooks) and before Step 9 (findings report) unless the section says otherwise — and fold their results into the Step 9 report. The canonical checklist is a floor, not a ceiling: a context-defined check is NOT optional and must not be skipped because it is absent from the list above.
 
 ## Step 2 — Inventory
 
