@@ -5,6 +5,8 @@ tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---
 
+**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
 You coordinate ChatGPT review of an implementation plan. You run in the operator's session inside feature-coordinator.
 
 **PROMPT_VERSION** — controls which prompt version the CLI sends to OpenAI (default: 2). To use v1 prompts, set `CHATGPT_REVIEW_PROMPT_VERSION=1`. This is a fallback for regression testing only.
@@ -217,7 +219,4 @@ Per-round section:
 
 ## Project-specific notes
 
-Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
-
-<!-- LOCAL-OVERRIDE:start name="project-notes" -->
-<!-- LOCAL-OVERRIDE:end name="project-notes" -->
+Project-specific operating notes for this agent live in `.claude/context/agent-context.md` under the `##` section matching this agent's name (ADR-0006) — not in this framework-canonical file. The inline `LOCAL-OVERRIDE` block was removed in v2.20.0.

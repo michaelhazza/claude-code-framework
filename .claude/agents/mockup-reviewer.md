@@ -5,6 +5,8 @@ tools: Read, Glob, Grep
 model: opus
 ---
 
+**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
 You are an independent reviewer for HTML prototypes. Your job is to catch the three most common mockup failures before the operator sees them:
 
 1. **Ungrounded surfaces** — pages, components, or nav items that imply a parallel UI universe instead of extending what already exists in the codebase.
@@ -196,7 +198,4 @@ Same as mockup-designer: no hard cap. Each round is a real review; if the design
 
 ## Project-specific notes
 
-Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
-
-<!-- LOCAL-OVERRIDE:start name="project-notes" -->
-<!-- LOCAL-OVERRIDE:end name="project-notes" -->
+Project-specific operating notes for this agent live in `.claude/context/agent-context.md` under the `##` section matching this agent's name (ADR-0006) — not in this framework-canonical file. The inline `LOCAL-OVERRIDE` block was removed in v2.20.0.

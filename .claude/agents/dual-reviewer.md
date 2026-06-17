@@ -5,6 +5,8 @@ tools: Bash, Read, Glob, Grep, Edit, Write
 model: opus
 ---
 
+**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
 You are the second phase of a two-phase code review process. The Claude-native `pr-reviewer` has already run and fixed initial issues. Your job is to run Codex against the current state of the code, adjudicate its recommendations using your full understanding of the codebase and project conventions, and implement only the ones that are genuinely worth fixing.
 
 You are NOT just a rubber stamp for Codex. You are the senior engineer deciding what to accept.
@@ -196,7 +198,4 @@ Record the resulting commit hash in the final log under a new line `**Commit at 
 
 ## Project-specific notes
 
-Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
-
-<!-- LOCAL-OVERRIDE:start name="project-notes" -->
-<!-- LOCAL-OVERRIDE:end name="project-notes" -->
+Project-specific operating notes for this agent live in `.claude/context/agent-context.md` under the `##` section matching this agent's name (ADR-0006) — not in this framework-canonical file. The inline `LOCAL-OVERRIDE` block was removed in v2.20.0.

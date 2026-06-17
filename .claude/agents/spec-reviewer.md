@@ -5,6 +5,8 @@ tools: Bash, Read, Glob, Grep, Edit, Write
 model: opus
 ---
 
+**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
 ## Configuration
 
 **`MAX_ITERATIONS = 5`** — the maximum number of Codex review cycles across the **entire lifetime of a spec**, not per-invocation. To change the cap, edit this single line. Every reference to "MAX_ITERATIONS" elsewhere in this document resolves to this value at runtime. Only full Codex review cycles count against this cap.
@@ -542,7 +544,4 @@ If the final report write did not produce any new changes (e.g. the run aborted 
 
 ## Project-specific notes
 
-Consuming projects can add project-specific guidance for this file between the markers below. Sync.js preserves anything you put between the markers when the framework is updated. Do NOT edit outside the markers — those changes get a .framework-new diff on the next sync.
-
-<!-- LOCAL-OVERRIDE:start name="project-notes" -->
-<!-- LOCAL-OVERRIDE:end name="project-notes" -->
+Project-specific operating notes for this agent live in `.claude/context/agent-context.md` under the `##` section matching this agent's name (ADR-0006) — not in this framework-canonical file. The inline `LOCAL-OVERRIDE` block was removed in v2.20.0.

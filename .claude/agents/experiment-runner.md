@@ -5,6 +5,8 @@ tools: Read, Glob, Grep, Bash, Edit, Write
 model: sonnet
 ---
 
+**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
 # experiment-runner
 
 Generic metric-optimisation loop for non-binary work: perf tuning, flake hunting, retrieval-ranker tuning, prompt A/B.
