@@ -32,6 +32,19 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.22.0 — 2026-06-18 — PR-review hunt targets: persisted-output hygiene, claim/condition consistency, service-wiring test gaps
+
+**Highlights:** Folded three review heuristics into the canonical PR-review prompt (`scripts/chatgpt-reviewPure.ts`, `USER_PROMPT_PR_V2` Hunt targets). They were originally learned during a consumer-repo build and written into that repo's local copy of the script — drift that this release upstreams so every framework consumer gets them and the consumer can re-sync back to canonical. Prompt-content only; no API, schema, or agent-contract change.
+
+**Added:**
+- *Durable-storage / persisted-output hygiene* hunt target — flag upstream- or external-derived strings (readiness reasons, upstream status text, third-party error messages, raw model output) copied verbatim into durable or user-visible storage without an allowlist or content-class guard; recommend a closed enum + counts or an allowlisted projection.
+- *Claim/condition consistency* hunt target — flag a finding, log line, label, or persisted message that asserts a specific cause while its trigger predicate only checks a broader proxy.
+
+**Changed:**
+- *Test quality* hunt target extended — also flag security/permission-critical SERVICE WIRING (permission flags such as `includeRawContent:false`, tenant-scoped id passthrough, dedupe scope, no-raw-body guarantees) left untested when the pure logic is thoroughly covered.
+
+---
+
 ## 2.21.0 — 2026-06-18 — Retire `reality-checker` from the review cascade
 
 **Highlights:** Retired the `reality-checker` agent after a cross-repo review-cascade redundancy audit (8 recent multi-tier builds) found it produced **zero net-new findings** in every build it ran, plus one false-assurance pass. Its only real function — refusing to mark a build done without supplied evidence — is retained as a `feature-coordinator` step; the actual code is already verified by `pr-reviewer`, `dual-reviewer`, and `adversarial-reviewer`. The Phase-2 branch-level review pass drops from `… → pr-reviewer → reality-checker → dual-reviewer` to `… → pr-reviewer → dual-reviewer`.
