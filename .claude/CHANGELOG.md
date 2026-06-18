@@ -32,6 +32,18 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.23.0 — 2026-06-18 — `/fix-ci-gate-debt` command + finalisation gate-debt flag
+
+**Highlights:** A new operator-triggered slash command that exhaustively clears CI gate debt at the root (production code, not the tests/baselines) via a bounded audit→fix→re-audit loop, plus a finalisation-coordinator change that surfaces (never auto-runs) the command when a build merges past inherited trunk-health gate failures. Motivated by a consumer-repo build whose feature branch inherited main's accumulated gate debt (npm-audit, no-direct-boss-work, error-code-taxonomy baseline regressions) on merge and had to admin-squash past it. Generic across repos — the command discovers gates dynamically from each repo's CI workflow(s) and gate manifest; nothing repo-specific is hardcoded.
+
+**Added:**
+- `/fix-ci-gate-debt` (`.claude/commands/fix-ci-gate-debt.md`) — bounded (≤5 iteration) audit→fix→re-audit loop. Un-gameable by design: acceptance is a separate read-only auditor (`scripts/ci-gate-debt-audit.sh`, bootstrapped per-repo on first run) that enumerates gates by parsing the repo's CI config — the fixer cannot move the goalposts. Hard rules: baselines move DOWN only and only with the paired code fix; tests are never weakened/skipped; orphans deleted only after proof; root cause classified (production-bug vs test-bug vs false-positive vs accepted-external-debt) before any fix; cap-reached/stuck escalates rather than games.
+
+**Changed:**
+- `finalisation-coordinator` Step 13 — new §13.3 "Outstanding CI gate-debt flag": when a build completes with any required check still failing (typically inherited trunk-health debt surfaced by the S2/S3 merge, not introduced by the PR), the end-of-phase summary classifies each failure PR-introduced vs inherited and surfaces the `/fix-ci-gate-debt` command for the operator to run manually. It is NOT auto-invoked — debt cleanup is its own reviewable unit, so a feature PR never absorbs repo-wide debt it did not create. A matching plain-English line is added to the §13.1 CEO-summary "Further action required" rule.
+
+---
+
 ## 2.22.0 — 2026-06-18 — PR-review hunt targets: persisted-output hygiene, claim/condition consistency, service-wiring test gaps
 
 **Highlights:** Folded three review heuristics into the canonical PR-review prompt (`scripts/chatgpt-reviewPure.ts`, `USER_PROMPT_PR_V2` Hunt targets). They were originally learned during a consumer-repo build and written into that repo's local copy of the script — drift that this release upstreams so every framework consumer gets them and the consumer can re-sync back to canonical. Prompt-content only; no API, schema, or agent-contract change.

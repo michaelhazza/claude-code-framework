@@ -899,7 +899,7 @@ On finalisation, emit / refresh the `REVIEW_GAP` entries from the handoff as a t
 - 4-8 dot points TOTAL across the four sections. If you have more than 8, cut to the highest-impact ones — the operator can read the build artefacts if they want full detail.
 - **No internal jargon.** Forbidden words: "Phase 1/2/3", "G1/G2/G4 gate", "spec-conformance", "pr-reviewer", "REVIEW_GAP", "chunk", "handoff", "builder", any agent name. Translate any of those to plain English (e.g. "code review" not "pr-reviewer", "main branch" not "trunk", "shipped" not "merged-and-deployed").
 - **No file paths.** The operator does not need to see `server/services/foo.ts` in a CEO summary. Describe what changed in terms of user-facing behaviour, not files.
-- **"Further action required" is YES or NO, not a hedge.** If nothing's pending, say so explicitly — do not list "monitor for issues" or similar non-actions.
+- **"Further action required" is YES or NO, not a hedge.** If nothing's pending, say so explicitly — do not list "monitor for issues" or similar non-actions. If the §13.3 gate-debt flag will fire (inherited CI checks left failing), include one plain-English line here pointing to it, e.g. "Some repo-wide code-quality checks are failing on the main branch (not caused by this change) — run /fix-ci-gate-debt to clear them."
 - **"Added to backlog" lists only NEW items from this build's diff, not the entire backlog.** If the squash diff for `tasks/todo.md` is empty (nothing added), print "Nothing new deferred" — never invent items.
 - **Benefits are user-facing, not technical.** "Operators can now retry a failed run in one click" — yes. "Refactored retry logic into a reusable hook" — no.
 
@@ -920,6 +920,28 @@ Print verbatim:
 > Deferred backlog from this build: see `tasks/todo.md` (search for `{slug}` origin tag).
 >
 > Session ends here.
+
+### 13.3 — Outstanding CI gate-debt flag (print LAST, only if any gate/check was failing)
+
+**When to print:** if, at finalisation completion, ANY required CI check or local gate was failing — including the case where the build merged past pre-existing failures (trunk-health gate debt NOT introduced by this PR), or where the G5 / Step 11 loop could not drive a gate green. If every required check was green at merge, SKIP this block entirely.
+
+**Classify first.** For each failing gate, label it **PR-introduced** (this branch's diff regressed it) vs **inherited** (already failing on trunk before this branch, e.g. surfaced by the S2/S3 merge of trunk). PR-introduced failures are the build's own responsibility — they should have been fixed in Step 8c / Step 11, and if any remain they are a blocker, not a candidate for this flag (resolve them or record an explicit `REVIEW_GAP`). This flag is ONLY for the inherited / trunk-health failures the build legitimately does not own.
+
+**Print verbatim (fill the list):**
+
+> ⚠ **Outstanding repository CI gate debt — surfaced, not auto-fixed.**
+> The following checks were failing and were left for a dedicated cleanup because they are pre-existing trunk-health debt, not caused by this PR:
+> {one bullet per failing gate/check — its name, a one-line reason, and the PR-introduced | inherited label}
+>
+> These will keep blocking the next branch that merges trunk. To clear them all in one bounded audit→fix→re-audit pass (its own reviewable PR), run:
+>
+> ```
+> /fix-ci-gate-debt
+> ```
+>
+> Run it when convenient — it does not need to happen now, and it is operator-triggered by design.
+
+**Do NOT auto-invoke `/fix-ci-gate-debt`** from finalisation. The coordinator only surfaces the command; the operator runs it manually as a separate cleanup. (Rationale: a feature PR should change the feature, not absorb repo-wide debt it did not create; debt cleanup is its own reviewable unit.)
 
 Mark the final TodoWrite item complete and stop.
 
