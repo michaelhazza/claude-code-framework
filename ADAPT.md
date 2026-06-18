@@ -54,7 +54,7 @@ Have these ready before starting — Phase 2 substitutes them everywhere:
 | `{{STACK_DESCRIPTION}}` | `Node + Express + Drizzle ORM (PostgreSQL) + React` | Comma-separated. Stack-name level, not version-pinned. |
 | `{{COMPANY_NAME}}` | `Acme Inc` | Optional. If empty, lines containing it are deleted. |
 
-Plus the **profile selection**: MINIMAL (4 agents) / STANDARD (11) / FULL (24). See § 11.
+Plus the **profile selection**: MINIMAL (4 agents) / STANDARD (10) / FULL (23). See § 11.
 
 ---
 
@@ -87,7 +87,7 @@ After Phase 1, the target repo's lint/typecheck should still pass — the framew
 
 ## 6. Phase 1.5 — Profile selection + agent pruning
 
-Ask the operator: "Which profile? MINIMAL (4) / STANDARD (11) / FULL (24)."
+Ask the operator: "Which profile? MINIMAL (4) / STANDARD (10) / FULL (23)."
 
 Delete agent files NOT in the chosen profile from `.claude/agents/`. See § 11 for the per-profile list.
 
@@ -293,13 +293,13 @@ For future upgrades, see `.claude-framework/SYNC.md` — the guided upgrade walk
 
 Use when the project is small, the operator is solo, and the goal is "capture ideas + independent review of my own changes." No coordinator pipeline.
 
-### STANDARD (11 agents) — small team / structured solo
+### STANDARD (10 agents) — small team / structured solo
 
-MINIMAL 4 plus: `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator` (the three-coordinator pipeline), `spec-conformance`, `builder`, `hotfix`, `reality-checker`.
+MINIMAL 4 plus: `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator` (the three-coordinator pipeline), `spec-conformance`, `builder`, `hotfix`.
 
 Use when the project has multiple in-flight features and benefits from spec → plan → build phase separation. Default for most projects.
 
-### FULL (24 agents) — large project / multi-stream development
+### FULL (23 agents) — large project / multi-stream development
 
 STANDARD 11 plus: `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`, `mockup-coordinator`, `mockup-reviewer`.
 

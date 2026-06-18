@@ -69,8 +69,8 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 Pick at adoption time:
 
 - **MINIMAL (4)** — `triage-agent`, `pr-reviewer`, `architect`, `spec-reviewer`. Solo dev, self-review baseline.
-- **STANDARD (11)** — MINIMAL + `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator`, `spec-conformance`, `builder`, `hotfix`, `reality-checker`. Default for most projects.
-- **FULL (24)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`, `mockup-coordinator`, `mockup-reviewer`. Large projects with capacity for the overhead.
+- **STANDARD (10)** — MINIMAL + `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator`, `spec-conformance`, `builder`, `hotfix`. Default for most projects.
+- **FULL (23)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`, `mockup-coordinator`, `mockup-reviewer`. Large projects with capacity for the overhead.
 
 ## Upgrading from a previous framework version
 

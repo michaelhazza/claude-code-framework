@@ -1,6 +1,6 @@
 ---
 name: feature-coordinator
-description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (automated default; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk G1 (builder runs scoped lint on touched files plus builder-owned targeted pure-function tests where applicable; coordinator re-runs scoped lint as a backup check). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
+description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (automated default; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk G1 (builder runs scoped lint on touched files plus builder-owned targeted pure-function tests where applicable; coordinator re-runs scoped lint as a backup check). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -102,7 +102,7 @@ After architect returns, review the plan for:
 
 **Plan-revision rounds capped at 3.** On the fourth revision request: write `phase_status: PHASE_2_PAUSED_PLAN` to `tasks/builds/{slug}/handoff.md`, escalate to the operator, and stop.
 
-Once the plan passes review, expand TodoWrite item 6 (Per-chunk loop) into one sub-item per chunk. Expand item 8 (Branch-level review pass) into sub-items: spec-conformance, adversarial-reviewer, pr-reviewer, reality-checker, fix-loop, dual-reviewer.
+Once the plan passes review, expand TodoWrite item 6 (Per-chunk loop) into one sub-item per chunk. Expand item 8 (Branch-level review pass) into sub-items: spec-conformance, adversarial-reviewer, pr-reviewer, fix-loop, dual-reviewer.
 
 ## Step 3a — claude-plan-review
 
@@ -460,34 +460,11 @@ git diff origin/main...HEAD --name-only | \
 Invoke `pr-reviewer` as a sub-agent with the full branch diff (`git diff origin/main...HEAD`). Extract the `pr-review-log` fenced block verbatim and write it to `tasks/review-logs/pr-review-log-{slug}-{timestamp}.md`. Record the log path in `progress.md`.
 
 Verdict handling:
-- `APPROVED` → proceed to reality-checker (§8.4)
-- `CHANGES_REQUESTED` → enter fix-loop (§8.5)
+- `APPROVED` → proceed to dual-reviewer (§8.5); if Blocking findings exist, enter the fix-loop (§8.4) first
+- `CHANGES_REQUESTED` → enter fix-loop (§8.4)
 - `NEEDS_DISCUSSION` → escalate per failure paths; do not enter fix-loop without operator direction
 
-### 8.4 — reality-checker (Significant/Major only)
-
-**Skip gate:** if the task class is Trivial or Standard, skip with note in `progress.md`: `reality-checker: skipped — task class Trivial/Standard (per GRADED policy)`. Do not invoke reality-checker for those classes.
-
-For Significant and Major tasks, invoke `reality-checker` as a sub-agent with:
-- The implementer's stated success criteria (from the plan or spec acceptance section).
-- The implementer's claimed evidence: paths to test logs, pasted log excerpts, paths to screenshot files, or deterministic-check descriptions.
-
-Extract the `reality-check-log` fenced block verbatim and write it to `tasks/review-logs/reality-check-log-{slug}-{timestamp}.md`. Record the log path in `progress.md`.
-
-Verdict handling:
-- `READY` → proceed to dual-reviewer (§8.6)
-- `NEEDS_WORK` → send the unverified criteria back to a fresh `builder` invocation to supply missing evidence or fix failing criteria. After the builder returns, **re-invoke `reality-checker`** on the updated evidence; do not proceed until the verdict becomes `READY`. Cap at 2 fix rounds. On the third: escalate per failure paths.
-- `NEEDS_DISCUSSION` → escalate per failure paths; do not enter fix loop without operator direction.
-
-**Re-review check (only when the reality-checker remediation builder pass applied code edits):** if the builder pass triggered by a `NEEDS_WORK` verdict modified files (i.e. the builder verdict's `files-changed` list is non-empty and goes beyond appending evidence to logs/screenshots), the post-remediation diff is no longer the diff that `pr-reviewer` approved in §8.3. Re-invoke `pr-reviewer` on the updated branch diff so the final state has reviewer coverage. Treat the re-review verdict per the existing §8.3 / §8.5 handling:
-
-- `APPROVED` → continue
-- `CHANGES_REQUESTED` → enter the §8.5 fix-loop on the new findings (the original 3-round cap applies to this re-review pass independently)
-- `NEEDS_DISCUSSION` → escalate per failure paths
-
-If the builder pass only appended evidence (no source-file edits), skip the re-review — pr-reviewer's earlier APPROVED still covers the final code state.
-
-### 8.5 — Fix-loop with G3
+### 8.4 — Fix-loop with G3
 
 For each Blocking finding from pr-reviewer:
 
@@ -496,7 +473,7 @@ For each Blocking finding from pr-reviewer:
 3. Re-invoke pr-reviewer on the updated diff.
 4. Cap at 3 fix-loop rounds. On the fourth: escalate with all unresolved findings per failure paths.
 
-### 8.6 — dual-reviewer
+### 8.5 — dual-reviewer
 
 Codex availability check:
 
@@ -517,14 +494,14 @@ fi
 **Re-review check (only when dual-reviewer applied changes):** if dual-reviewer's verdict is `APPROVED` AND its log records any `[ACCEPT]` decisions that resulted in file edits (i.e. the "Changes Made" section of the dual-review log is non-empty), the post-dual-reviewer diff is no longer the diff that pr-reviewer approved. Re-invoke `pr-reviewer` on the updated branch diff so the final state has reviewer coverage. Treat the re-review verdict the same as §8.3:
 
 - `APPROVED` → continue
-- `CHANGES_REQUESTED` → enter the §8.5 fix-loop on the new findings (the original 3-round cap applies to this re-review pass independently)
+- `CHANGES_REQUESTED` → enter the §8.4 fix-loop on the new findings (the original 3-round cap applies to this re-review pass independently)
 - `NEEDS_DISCUSSION` → escalate per failure paths
 
 If dual-reviewer applied no changes (no `[ACCEPT]` decisions or no resulting edits), skip the re-review — pr-reviewer's earlier APPROVED already covers the final diff.
 
 If dual-reviewer was skipped (Codex unavailable), no re-review is needed — pr-reviewer's earlier APPROVED is the authoritative verdict.
 
-After §8.6 completes (or is skipped), run G3 once more to confirm integrated state is clean.
+After §8.5 completes (or is skipped), run G3 once more to confirm integrated state is clean.
 
 ## Step 9 — Doc-sync gate
 
@@ -581,7 +558,6 @@ Once all items pass, append the Phase 2 section to the existing `tasks/builds/{s
 **spec-conformance verdict:** {verdict} ({log path})
 **adversarial-reviewer verdict:** {verdict or "skipped — diff does not match §5.1.2 security surface (per GRADED policy)"} ({log path or n/a})
 **pr-reviewer verdict:** {verdict} ({log path})
-**reality-checker verdict:** {verdict or "skipped (task class Trivial/Standard)"} ({log path or n/a})
 **Fix-loop iterations:** N
 **dual-reviewer verdict:** {verdict} | {REVIEW_GAP line verbatim, or "n/a"} ({log path or n/a})
 **REVIEW_GAP entries:** {all REVIEW_GAP lines from progress.md, one per line, or "none"}
@@ -680,7 +656,7 @@ Escalate with the full list of unresolved Blocking findings and the reviewer's r
 
 ### 7. dual-reviewer Codex unavailable
 
-Skip; write the full-format `REVIEW_GAP` entry to `progress.md` (see §8.6 for exact format). Do NOT block. Continue to Step 9. The `REVIEW_GAP` entry propagates to the handoff `REVIEW_GAP entries:` field and the end-of-phase prompt.
+Skip; write the full-format `REVIEW_GAP` entry to `progress.md` (see §8.5 for exact format). Do NOT block. Continue to Step 9. The `REVIEW_GAP` entry propagates to the handoff `REVIEW_GAP entries:` field and the end-of-phase prompt.
 
 ### 8. Doc-sync gate — missing verdict
 

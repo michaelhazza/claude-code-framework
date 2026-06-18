@@ -1,9 +1,15 @@
 ---
 name: reality-checker
-description: Post-pr-reviewer evidence-demanding verifier. Read-only. Demands the implementer's stated success criteria and claimed evidence before approving a build. Returns READY, NEEDS_WORK, or NEEDS_DISCUSSION. Auto-invoked by feature-coordinator after pr-reviewer on Significant/Major tasks.
+description: "[RETIRED 2.21.0] Post-pr-reviewer evidence-demanding verifier. Read-only. Returns READY, NEEDS_WORK, or NEEDS_DISCUSSION. Was auto-invoked by feature-coordinator after pr-reviewer on Significant/Major tasks."
 tools: Read, Glob, Grep
 model: opus
+retired: 2026-06-18
+retired_in_framework_version: 2.21.0
+superseded_by: none
+retired_reason: "Cross-repo review-cascade redundancy audit found 0 net-new findings across the sampled builds and one false-assurance; the evidence-gate function is retained as a feature-coordinator step. No successor agent. See .claude/CHANGELOG.md v2.21.0."
 ---
+
+> **RETIRED in framework v2.21.0 (2026-06-18).** No longer synced into the active fleet (lives under `_retired/`, outside the `.claude/agents/*.md` glob). Kept for history. Do not invoke. Original definition preserved below.
 
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 
