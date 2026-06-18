@@ -15,7 +15,7 @@ The caller should provide:
 - Changed file list and the full or focused branch diff.
 - Build slug and task class when known.
 - Spec/plan paths when the PR is spec-driven.
-- Phase-2 reviewer outcomes when known (spec-conformance, adversarial-reviewer, reality-checker, dual-reviewer).
+- Phase-2 reviewer outcomes when known (spec-conformance, adversarial-reviewer, dual-reviewer).
 - Known accepted deviations or human decisions.
 - The Claude review log from any earlier tier, when one exists.
 - Verification evidence already produced (lint/typecheck output, targeted test logs, audit query output).

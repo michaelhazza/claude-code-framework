@@ -102,9 +102,9 @@ Run: `ls tasks/review-logs/chatgpt-pr-review-*.md 2>/dev/null | sort | tail -1`
 
    Print this BEFORE any other output. It must be the first visible line the user sees.
 5. Create the session log at `tasks/review-logs/chatgpt-pr-review-<branch-slug>-<YYYY-MM-DDThh-mm-ssZ>.md` and write the Session Info header (see Log Format)
-6. [AUTOMATED] **Verify `OPENAI_API_KEY` is set.** If not, print:
+6. [AUTOMATED] **Load `.env`, then verify `OPENAI_API_KEY` is set.** API keys live in `.env` at the repo root, not necessarily the exported shell — load it first: `set -a; [ -f .env ] && . ./.env; set +a`. If `OPENAI_API_KEY` is still empty after that, print:
 
-   `error: OPENAI_API_KEY is not set. Add it to your shell or .env file before running this agent.`
+   `error: OPENAI_API_KEY is not set (checked shell env and ./.env). Add it to .env at the repo root before running this agent.`
 
    and stop.
 

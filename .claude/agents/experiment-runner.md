@@ -90,9 +90,8 @@ Canonical name: `consecutive-counter`. Tracks consecutive non-keep outcomes.
 
 ## 5. Recommendation surfaces
 
-The following three agent surfaces recommend `experiment-runner` when relevant. Wiring details live in Chunk 4 of the build plan; the surfaces are named here for operator orientation.
+The following two agent surfaces recommend `experiment-runner` when relevant. Wiring details live in Chunk 4 of the build plan; the surfaces are named here for operator orientation.
 
-- **`reality-checker`:** when verdict is `NEEDS_WORK` and the claimed success criterion contains a numeric threshold the actual value missed, includes `next_action: experiment-runner` in the return block with the gap pre-filled.
 - **`triage-agent`:** tags items `experiment-eligible` when the capture phrase contains keywords such as "slow", "flaky", "p95", "p99", "latency", "perf", "ranker", or "quality regression". The triage queue pass appends a recommendation for tagged items.
 - **`bug-fixer`:** in fix mode (Step 0), when the target issue carries a label matching `flake:*` or `perf:*`, prints a non-blocking one-liner recommending `experiment-runner` before continuing its normal flow.
 

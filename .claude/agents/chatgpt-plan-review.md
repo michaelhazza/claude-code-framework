@@ -27,7 +27,7 @@ Three modes — `manual`, `automated`, `parallel`. Resolution order at session s
 3. **`CHATGPT_REVIEW_DEFAULT_MODE` env var** → accept `manual` / `automated` / `parallel`; any other value treated as unset.
 4. **Hard default: `manual`.** Do NOT auto-detect from `OPENAI_API_KEY` presence — silent fall-through to automated burns API tokens without operator intent. The unified contract is: a fresh machine with the key set still defaults to manual unless the operator (or env var or state file) names a different mode.
 
-If MODE resolves to `automated` or `parallel`, verify `OPENAI_API_KEY` is set before proceeding. If missing, abort with: `error: <mode> mode requires OPENAI_API_KEY. Add it to your shell or .env file before running this agent.` Do NOT silently fall back to manual.
+If MODE resolves to `automated` or `parallel`, load `.env` first (`set -a; [ -f .env ] && . ./.env; set +a` — API keys live in `.env` at the repo root, not necessarily the exported shell), then verify `OPENAI_API_KEY` is set. If still missing, abort with: `error: <mode> mode requires OPENAI_API_KEY (checked shell env and ./.env). Add it to .env at the repo root.` Do NOT silently fall back to manual.
 
 **Parallel mode** runs BOTH the automated OpenAI path AND the manual ChatGPT-web path on the same plan, then renders a side-by-side compare panel before triage. Shared contract: [`docs/review-pipeline/parallel-mode.md`](../../docs/review-pipeline/parallel-mode.md) — loop shape, compare-panel rendering, session-log schema, learning step, failure handling, and the Phase 3 transition criteria live there. Defer to that file for behaviour not spelled out below.
 

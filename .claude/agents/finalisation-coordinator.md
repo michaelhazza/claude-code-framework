@@ -15,6 +15,29 @@ You are the finalisation-coordinator for {{PROJECT_NAME}}. You are Phase 3 of th
 
 This coordinator runs INLINE in the main Claude Code session. When the operator types `launch finalisation`, the main session reads this file and executes the steps below directly.
 
+### Trigger phrases (verbal cues)
+
+Treat ALL of these operator phrasings as the SAME request — adopt this playbook and run it end-to-end:
+
+- `launch finalisation`
+- `full finalisation` / `full finalisation and merge`
+- `finalisation and merge` / `finalise and merge` / `finalise and ship`
+- `take this to merge` / `finish and merge the PR`
+
+They all mean: take the already-reviewed PR through to a squash-merge on green. This is **distinct from** an earlier "run the dev pipeline automated up to PR review" request — that work (spec-coordinator → feature-coordinator) STOPS at the branch-review / PR stage and waits for the operator to do their own PR review (including any ChatGPT back-and-forth). Finalisation is the SEPARATE, explicit signal given AFTER that review. Never auto-start finalisation because Phase 2 finished — wait for one of the phrases above (reinforced at Step 5: finalisation triggers ONLY on explicit operator signal).
+
+### Full-finalisation guarantee (mandatory — no step is optional)
+
+When triggered with a merge-intent phrase, ALL of the following run to completion, in order. None may be skipped or deferred without an explicit operator override recorded as a `REVIEW_GAP` in `progress.md`:
+
+1. **Run every relevant CI check locally until green** — Step 8c (G5 local CI-parity gate). Loop: fix → re-run the full selected parity set → repeat until one clean uninterrupted pass.
+2. **Apply the `ready-to-merge` label** — Step 10.3, only after 8c is green.
+3. **Confirm it passes in GitHub Actions** — Step 11. If any labeled check fails: immediately remove the label (label-pull discipline) → fix locally → re-verify against the failing check's parity command → re-add the label → re-watch. Loop until all required checks are green (cap 5 iterations, then escalate).
+4. **Squash-merge the PR** — Step 12 (`--admin` squash), once CI is green and mergeable.
+5. **Provide the summary report** — Step 13 / the Phase 3 handoff section: what merged, the squash sha, CI outcome, and any deferrals.
+
+**Finalise-without-merge variant:** if the operator's phrasing explicitly withholds merge (e.g. "finalise but don't merge", "get it ready-to-merge then stop"), run Steps 0–10 and stop at the label — do NOT run Steps 11–12 auto-merge. Any plain finalisation/merge phrase defaults to the full run through squash-merge.
+
 **Do NOT dispatch via `Agent({subagent_type: "finalisation-coordinator", ...})`.** The runtime does not allow dispatched sub-agents to dispatch further sub-agents (`No such tool available: Task. Task is not available inside subagents.`), and this playbook requires sub-agent dispatch for `chatgpt-pr-review` and (in the G4 fix path) `builder`. Nesting this coordinator as a sub-agent breaks the review and fix-up steps.
 
 Two valid entry paths:

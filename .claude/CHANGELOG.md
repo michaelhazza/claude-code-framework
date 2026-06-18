@@ -32,6 +32,25 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.21.0 — 2026-06-18 — Retire `reality-checker` from the review cascade
+
+**Highlights:** Retired the `reality-checker` agent after a cross-repo review-cascade redundancy audit (8 recent multi-tier builds) found it produced **zero net-new findings** in every build it ran, plus one false-assurance pass. Its only real function — refusing to mark a build done without supplied evidence — is retained as a `feature-coordinator` step; the actual code is already verified by `pr-reviewer`, `dual-reviewer`, and `adversarial-reviewer`. The Phase-2 branch-level review pass drops from `… → pr-reviewer → reality-checker → dual-reviewer` to `… → pr-reviewer → dual-reviewer`.
+
+**Breaking:** STANDARD-profile repos lose `reality-checker`. Profile counts: STANDARD 11→10, FULL 24→23. Any automation that invokes `reality-checker` or parses `reality-check-log-*` verdicts must drop it. Historical `reality-check-log-*` files are unaffected.
+
+**Removed:**
+- `.claude/agents/reality-checker.md` — moved to `.claude/agents/_retired/reality-checker-2026-06-18.md` (kept for history per Agent lifecycle; no successor).
+- `feature-coordinator.md` §8.4 (reality-checker invocation step) and its handoff verdict line; former §8.5/§8.6 renumbered to §8.4/§8.5.
+
+**Changed:**
+- `experiment-runner.md` — recommendation surfaces 3→2 (`reality-checker` numeric-gap surface removed).
+- `pr-reviewer.md` — caller-input contract no longer lists `reality-checker`.
+- `.claude/context/agent-context.md` valid-names list; `ADAPT.md` and `README.md` profile lists + counts.
+- `chatgpt-pr-review.md`, `chatgpt-spec-review.md`, `chatgpt-plan-review.md` — the `OPENAI_API_KEY` check now **loads `.env` first** (`set -a; [ -f .env ] && . ./.env; set +a`) before deciding the key is missing. Fixes the recurring false "OPENAI_API_KEY not set" abort when the key lives in `.env` but isn't exported into the shell.
+- `finalisation-coordinator.md` — Invocation section gains an explicit **Trigger phrases** list (`full finalisation`, `finalisation and merge`, etc. all map to the same end-to-end run) and a **Full-finalisation guarantee** block making the mandatory step chain unmissable: run all relevant CI locally (G5) → loop to green → apply `ready-to-merge` → watch Actions, on failure pull-label/fix/re-add/loop → squash-merge → summary report. Documents the finalise-without-merge variant and the distinction from "automated up to PR review."
+
+**Why:** Frontier models plus the existing pr-reviewer / dual-reviewer / adversarial passes already verify the code; the evidence-meta-gate added no net signal. Full evidence and overlap matrix in the consuming repo's `tasks/audits/review-cascade-prune-2026-06-18.md`. The `.env` and finalisation-cue changes are operator-reported papercuts folded into the same version.
+
 ## 2.20.0 — 2026-06-17 — Agent files are framework-canonical: per-repo overrides move to a global agent-context file
 
 **Highlights:** Two changes. **(Part B, main)** Agent `.md` files under `.claude/agents/` are now framework-canonical and MUST NOT be edited per-repo (ADR-0006). The inline `LOCAL-OVERRIDE` mechanism is **deprecated for agent files** — all project-specific operating notes for an agent move to the consuming repo's new `.claude/context/agent-context.md`, under a `## <agent-name>` section, which every framework agent reads at the start of every run and treats as binding project context. This is the fleet-wide analogue of `CLAUDE.md`: one file the whole agent fleet reads, owned by the repo, never overwritten by a sync. A long section may link out to a `references/<topic>.md` file. Every framework agent gained one uniform, greppable read-instruction line after its frontmatter, and every agent's inline `project-notes` override slot was removed. **(Part A, small)** ChatGPT-PR review's "always write the diff file every round" mandate is hoisted into a prominent `### Diff-file discipline (manual + parallel)` invariant in `chatgpt-pr-review.md` and the per-round/On-Start steps are relabelled `[MANUAL + PARALLEL]`, closing a discoverability gap where `parallel` mode was covered only by inference; `finalisation-coordinator` Step 5's contract bullet was strengthened to match.
