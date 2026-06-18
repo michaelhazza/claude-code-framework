@@ -1233,6 +1233,14 @@ Hunt targets:
   gate is bypassable by anyone with the admin token, including the admin
   themselves via a mis-aimed curl or a stale tab on a different version
   of the UI. Flag the server endpoint as the gap, not the UI.
+- Durable-storage / persisted-output hygiene: upstream- or external-derived
+  strings (readiness reasons, upstream status text, third-party error messages,
+  raw model output) copied verbatim into durable or user-visible storage
+  (findings, audit rows, notifications, labels) without an allowlist or
+  content-class guard are a raw-leak vector — the producer's content hygiene is
+  not the consumer's guarantee, and it silently rots if the upstream later emits
+  dynamic text. Flag the persist site; recommend a closed enum + counts or an
+  allowlisted projection.
 - RLS and transactions: new transactions touching tenant tables must establish
   the correct org context first or use the canonical scoped helper; jobs resolve
   tenant context before scoped DB access.
@@ -1257,9 +1265,19 @@ Hunt targets:
   without ranking, tests relying on object/key/order accidents.
 - Validation: new artifact/payload/schema branches validate discriminants and
   body shape, not just a base envelope.
+- Claim/condition consistency: a finding, log line, label, or persisted message
+  that asserts a specific CAUSE ("indirect-only", "linked via taskId", "because
+  X failed") must be gated on a condition that actually verifies that cause — not
+  a broader proxy (e.g. a status enum that merely correlates with it). Flag
+  emitted text whose asserted cause its trigger predicate does not check; the fix
+  is to gate on the precise signal the text names.
 - Test quality: vacuous tests, tests passing with zero fixtures, shallow-clone
   assumptions, missing pure-helper tests for new pure logic, snapshots tied to
-  incidental coordinates.
+  incidental coordinates. Also flag security/permission-critical SERVICE WIRING
+  (permission flags such as includeRawContent:false, tenant-scoped id
+  passthrough, dedupe scope, no-raw-body guarantees) left untested when the pure
+  logic is thoroughly covered — the sensitive contract lives in the wrapper, so
+  pure-only coverage gives false confidence.
 - Gate correctness: shell scripts handle exit codes, shallow clones, quoting,
   file names, baselines, warning-vs-error semantics.
 - UI state: optimistic state vs projection polling, pending indicators that
