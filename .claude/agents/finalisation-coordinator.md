@@ -925,13 +925,22 @@ Print verbatim:
 
 **When to print:** if, at finalisation completion, ANY required CI check or local gate was failing — including the case where the build merged past pre-existing failures (trunk-health gate debt NOT introduced by this PR), or where the G5 / Step 11 loop could not drive a gate green. If every required check was green at merge, SKIP this block entirely.
 
-**Classify first.** For each failing gate, label it **PR-introduced** (this branch's diff regressed it) vs **inherited** (already failing on trunk before this branch, e.g. surfaced by the S2/S3 merge of trunk). PR-introduced failures are the build's own responsibility — they should have been fixed in Step 8c / Step 11, and if any remain they are a blocker, not a candidate for this flag (resolve them or record an explicit `REVIEW_GAP`). This flag is ONLY for the inherited / trunk-health failures the build legitimately does not own.
+**Classify first (mandatory gate before printing anything).** For each failing gate, label it **PR-introduced** (this branch's diff regressed it — confirmed by diffing the gate result against `origin/main`: it was green on trunk and is red here) vs **inherited** (already failing on trunk before this branch, surfaced by the S2/S3 merge). These two classes have SEPARATE, non-interchangeable paths below — the debt flag is for inherited failures ONLY, and a PR-introduced failure can never be printed as "debt."
 
-**Print verbatim (fill the list):**
+**Path A — any PR-introduced failure remains (hard blocker, NOT the debt flag).** A PR-introduced red gate at finalisation completion is a contract violation: it should have been fixed in Step 8c / Step 11 or recorded as an explicit `REVIEW_GAP` before merge. If you find one here, do NOT print the gate-debt block and do NOT present the build as cleanly shipped. Instead print:
+
+> 🚨 **Blocker — this build introduced a failing check that was not resolved before merge:**
+> {one bullet per PR-introduced failing gate — name + one-line reason}
+>
+> This is the build's own regression, not repository debt. It must be fixed on this branch (or carry an explicit, operator-accepted `REVIEW_GAP`). Do NOT run `/fix-ci-gate-debt` for these — that command is for repo-wide inherited debt, not for a regression this PR caused.
+
+Then stop and escalate to the operator. `/fix-ci-gate-debt` is NEVER offered for a PR-introduced failure.
+
+**Path B — only inherited failures remain → the debt flag.** Print this block ONLY when every remaining failure is classified `inherited` (zero PR-introduced):
 
 > ⚠ **Outstanding repository CI gate debt — surfaced, not auto-fixed.**
-> The following checks were failing and were left for a dedicated cleanup because they are pre-existing trunk-health debt, not caused by this PR:
-> {one bullet per failing gate/check — its name, a one-line reason, and the PR-introduced | inherited label}
+> The following checks were already failing on the main branch before this build (inherited trunk-health debt, not caused by this PR):
+> {one bullet per INHERITED failing gate — name + one-line reason. Inherited-only by construction; if a bullet would be PR-introduced, it belongs in Path A.}
 >
 > These will keep blocking the next branch that merges trunk. To clear them all in one bounded audit→fix→re-audit pass (its own reviewable PR), run:
 >

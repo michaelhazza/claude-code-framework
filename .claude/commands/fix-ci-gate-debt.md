@@ -30,8 +30,8 @@ A bounded audit→fix→re-audit loop, capped at **5 iterations**:
 Success = "auditor green via legitimate root-cause fixes" OR "honest, justified residuals." Never "green by any means."
 
 ## Step 0 — Set up + take an objective baseline
-1. Sync the trunk (`git fetch && git checkout <default-branch> && git pull --ff-only`). Create a branch `chore/ci-gate-debt-cleanup`.
-2. Run / bootstrap the read-only auditor `scripts/ci-gate-debt-audit.sh`. If absent in this repo, author it per the **Audit script contract** below (and commit it with this cleanup), then run it. It must enumerate gates by PARSING this repo's CI workflow file(s) and any gate manifest/shard config — never a hand-typed list — and run each gate with the SAME command + env CI uses. Output: `gate | command | violations | baseline | PASS/FAIL`, and a final all-green / N-failing line + exit code.
+1. **Require a clean worktree FIRST.** Run `git status --short`; if there are ANY uncommitted or untracked changes, STOP and ask the operator to commit, stash, or run this from a clean worktree. This command must never mix repo-health cleanup with unrelated in-flight work. Only once clean: sync the trunk (`git fetch && git checkout <default-branch> && git pull --ff-only`) and create a branch `chore/ci-gate-debt-cleanup`.
+2. **Bootstrap + freeze the read-only auditor.** Run `scripts/ci-gate-debt-audit.sh`. If absent in this repo, author it per the **Audit script contract** below — then **commit it as its OWN standalone commit BEFORE any fix commit**, and do NOT edit it again for the rest of this run. The fixer must not be able to weaken its own judge mid-run; any later change to the auditor is a separate, separately-reviewed change. The auditor must enumerate gates by PARSING this repo's CI workflow file(s) and any gate manifest/shard config — never a hand-typed list — and run each gate with the SAME command + env CI uses. It must PRINT the inventory of gates it parsed (coverage proof, so a reviewer can confirm it dropped none). Output: `gate | command | violations | baseline | PASS/FAIL`, and a final all-green / N-failing line + exit code.
 3. **Provision a local test DB if any gates/jobs are DB-backed** so they actually run (use the repo's integration-fixture seeder + the CI env). "DB-backed" is not an automatic skip — only record a residual if a local DB is provably impossible, with the exact reason.
 4. The auditor output is the worklist. Do not work from memory.
 
@@ -69,7 +69,9 @@ After genuinely REDUCING a gate's violations, lower that gate's baseline to the 
 ## Deliverable
 1. Every PR-gating gate passing locally (verified by the auditor), baselines lowered to lock the wins.
 2. `tasks/ci-gate-debt/report.md`: per-gate root-cause classification, before→after counts with file references, and any genuinely-deferred item with a concrete reason + follow-up.
-3. Open a PR titled `chore: clear CI gate debt (repo-health)`, run the full local CI-parity set once more, confirm the auditor is all-green, and hand back for review. **Do NOT merge.**
+3. Open a PR titled `chore: clear CI gate debt (repo-health)` **ONLY when the auditor exits green** — every gate PASS, with the ONLY permitted non-green entries being sanctioned allowlisted **external-debt** residuals (each with a dated justification + tracking note). Run the full local CI-parity set once more, confirm the auditor, and hand back for review. **Do NOT merge.**
+
+**Terminal-state contract (explicit):** an unresolved *fixable* gate is NOT a residual — only sanctioned allowlisted external debt (e.g. a high CVE with no upstream patch) is a legitimate non-green exception. If the iteration cap is reached, or a gate is stuck, with ANY unresolved fixable gate, **escalate to the operator and do NOT open a "cleared" PR** — opening a green-titled PR over still-failing fixable gates is itself a way of gaming this task. In that case, hand back a diagnosis-only report and stop.
 
 ## Audit script contract (`scripts/ci-gate-debt-audit.sh`)
 If absent, author it (commit it with this cleanup) to this contract:
