@@ -540,8 +540,18 @@ Failure to update a relevant doc is a blocking issue. Escalate to the operator �
 - [ ] G2 passed (lint + typecheck + build:server/build:client as applicable on integrated branch state)
 - [ ] spec-conformance verdict is CONFORMANT or CONFORMANT_AFTER_FIXES
 - [ ] pr-reviewer verdict is APPROVED
+- [ ] (Significant/Major) Evidence gate — every success criterion in the plan/spec acceptance section has supplied evidence recorded in progress.md
 - [ ] Doc-sync gate verdicts recorded for all registered docs
 ```
+
+**Evidence gate (Significant/Major only) — the completion-evidence check formerly held by `reality-checker`.** Before writing the handoff, list every success criterion from the plan/spec acceptance section and map each to its evidence, written to `tasks/builds/{slug}/progress.md` under `## Evidence check`:
+
+- `passing test output` — path/excerpt of a test that covers the criterion.
+- `log excerpt` — runtime/build/server output showing the claimed behaviour.
+- `deterministic check` — file exists / export present / config value set / migration present, verifiable here by Read or Grep.
+- `manual-verification screenshot` — a screenshot path **plus a one-line textual claim of what it proves** (screenshot existence alone is not evidence).
+
+Any criterion with no evidence (or a screenshot with no textual claim) blocks the handoff — fix or supply evidence, do not proceed. For Trivial/Standard tasks, skip this gate (note `Evidence gate: skipped — task class Trivial/Standard` in `progress.md`). This is a lightweight inline checklist, not a sub-agent dispatch.
 
 Once all items pass, append the Phase 2 section to the existing `tasks/builds/{slug}/handoff.md`:
 
