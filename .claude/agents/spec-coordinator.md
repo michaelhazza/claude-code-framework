@@ -396,7 +396,7 @@ Steps within a round:
 
 **No iteration cap.** Every round (whether triggered by reviewer NEEDS_REWORK or operator feedback) runs through the full designer + reviewer pair before reaching the operator. Each round's input/output is appended to `tasks/builds/{slug}/mockup-log.md` (designer) and a fresh `mockup-review-log-round-N-*.md` (reviewer) so the audit trail survives.
 
-When the loop exits, record the final mockup paths in `tasks/builds/{slug}/handoff.md` under a `mockups:` field. These paths become the design source of truth for spec authoring.
+When the loop exits, record the final mockup paths in `tasks/builds/{slug}/handoff.md` under a `mockups:` field, alongside the capture manifest (`prototypes/{slug}/_captures/manifest.json`) and behaviour manifest (`tasks/builds/{slug}/behaviour-manifest.md`) the designer produced this round. These artifacts become the design source of truth for spec authoring; persist all three so none is dropped between the mockup loop and Phase 2.
 
 ## Step 6 — Spec authoring
 
@@ -470,6 +470,8 @@ Every Standard+ spec must include this block inside the spec body:
 **Sizing restriction:** the `Sizing` column must be exactly one of `S`, `M`, or `L`. **Numeric estimates are prohibited** (false-precision class — they imply precision the estimate does not have). No half-buckets, no ranges, no numeric values. This is binding per spec §7.3.
 
 If the brief was UI-touching and mockups were produced, the spec MUST reference the prototype paths in its UI section and treat the mockups as the design source of truth.
+
+**Interaction behaviour pull-through.** When a UI-touching spec is authored AND a behaviour manifest exists for the slug (`tasks/builds/{slug}/behaviour-manifest.md`, authored by `mockup-designer` Step 3c), pull its content into the spec under an `## Interaction behaviour` section. Layout lives in the mockups; this section carries the *behaviour contract* (reveal model, interactive states, async states, transitions, primary-action feedback, input behaviour) into Phase 2 so the plan and the builder honour it, instead of the behaviour being lost between the mockup round and the build. This is the load-bearing link; do not skip it when a behaviour manifest is present.
 
 ## Step 6a — claude-spec-review
 
@@ -596,6 +598,8 @@ Write `tasks/builds/{slug}/handoff.md` with this exact shape:
 **Build slug:** {slug}
 **UI-touching:** yes | no
 **Mockup paths:** [list, or "n/a"]
+**Capture manifest:** prototypes/{slug}/_captures/manifest.json (or "n/a")
+**Behaviour manifest:** tasks/builds/{slug}/behaviour-manifest.md (or "n/a")
 **Spec-reviewer iterations used:** N / 5
 **Claude spec review log:** tasks/review-logs/claude-spec-review-log-{slug}-{timestamp}.md (or "skipped — <reason>")
 **Claude spec review iterations used:** N / 3 (D5 cap)
