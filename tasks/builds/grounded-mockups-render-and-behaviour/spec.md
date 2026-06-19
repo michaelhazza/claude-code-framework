@@ -92,7 +92,7 @@ Reuse over rebuild: the script must import the existing UI-test server/auth setu
 
 ### 4.3 Capture manifest artifact
 
-Per build, `prototypes/{slug}/_captures/manifest.json` records, for each captured screen: `screenId`, `route`, `role`, `capturedAt` (UTC ISO 8601), the viewport list, screenshot paths, the token sheet, the DOM outline digest, and a `captureStatus` of `captured | fallback_source_read | failed`. The manifest is the contract `mockup-reviewer` reads in Axis 1.
+Per build, `prototypes/{slug}/_captures/manifest.json` records, for each captured screen: `screenId`, `route`, `role`, `capturedAt` (UTC ISO 8601), the viewport list, screenshot paths, the token sheet, the structured DOM outline (real nav / tabs / headings / column headers / primary buttons / status pills, not a digest), and a `captureStatus` of `captured | fallback_source_read | failed`. The manifest is the contract `mockup-reviewer` reads in Axis 1.
 
 ### 4.4 `mockup-designer` changes (Step 0a upgrade)
 

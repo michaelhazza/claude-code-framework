@@ -32,9 +32,11 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
-## 2.24.0 — 2026-06-19 — Render-grounded mockups + behaviour capture
+## Unreleased — Render-grounded mockups + behaviour capture
 
-**Highlights:** The mockup pipeline now grounds designs in the *real rendered current state* of the surfaces they extend, not in a reading of the source code, and pins *interaction behaviour* as a first-class written deliverable. A new Playwright-driven capture script reuses each consuming repo's existing UI-test server + storageState auth to capture, per extended surface, a real screenshot (375/768/1280), a de-duplicated page-wide token sheet, and a structured DOM outline (real nav/tabs/headings/column-headers/status-pills). `mockup-reviewer` verifies the mockup against that observed capture (Axis 1) instead of re-reading the same source, closing the "designer and reviewer both trust the same wrong inference" loop. A behaviour manifest (fixed checklist) captures reveal model, interactive/async states, transitions, primary-action feedback, and input behaviour, gated for completeness (Axis 4) and pulled into the spec. Render-grounding is default-on when renderable, always degradable, never a hard gate. Generic across repos: the capture script references conventional consuming-repo paths only (ADR-0006) and degrades to source-read grounding where no UI-test harness exists. Rationale: ADR-0007. (Also closes the prior `frameworkVersion` 2.20.0 / `FRAMEWORK_VERSION` 2.23.0 manifest drift.)
+> Version intentionally not assigned in this PR — the framework version + manifest bump are deferred so numbering can be coordinated with concurrent framework work in another session. The next framework release assigns this entry its version.
+
+**Highlights:** The mockup pipeline now grounds designs in the *real rendered current state* of the surfaces they extend, not in a reading of the source code, and pins *interaction behaviour* as a first-class written deliverable. A new Playwright-driven capture script reuses each consuming repo's existing UI-test server + storageState auth to capture, per extended surface, a real screenshot (375/768/1280), a de-duplicated page-wide token sheet, and a structured DOM outline (real nav/tabs/headings/column-headers/status-pills). `mockup-reviewer` verifies the mockup against that observed capture (Axis 1) instead of re-reading the same source, closing the "designer and reviewer both trust the same wrong inference" loop. A behaviour manifest (fixed checklist) captures reveal model, interactive/async states, transitions, primary-action feedback, and input behaviour, gated for completeness (Axis 4) and pulled into the spec. Render-grounding is default-on when renderable, always degradable, never a hard gate. Generic across repos: the capture script references conventional consuming-repo paths only (ADR-0006) and degrades to source-read grounding where no UI-test harness exists. Rationale: ADR-0007.
 
 **Added:**
 - `scripts/mockup/capture-surface.ts` — impure Playwright orchestrator (attaches to the consuming repo's UI-test server, captures existing surfaces only, atomic screenshot writes, graceful degradation). Shipped; exercised live in consuming repos.
@@ -50,6 +52,8 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 - `mockup-coordinator` — per-round + Step 8 artifact discipline persists the capture and behaviour manifests alongside the existing mockup logs.
 - `docs/frontend-design-principles.md` — new "Ground in the real render" + "Interaction behaviour" subsections.
 - `docs/mobile-capability-principles.md` — hover-only and keyboard-handling rules cross-link the behaviour checklist.
+
+**Deferred:** framework version + `manifest.json frameworkVersion` bump (coordinated with concurrent work in another session). The new `managedFiles` entries for the capture scripts, tests, behaviour-manifest template, and ADR-0007 ARE included so the files sync; only the version number is held back.
 
 ---
 

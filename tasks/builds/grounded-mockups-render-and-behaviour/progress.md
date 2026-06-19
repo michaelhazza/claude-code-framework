@@ -83,6 +83,11 @@ REVIEW_GAP: dual-reviewer | task-class: Significant | reason: Codex CLI availabi
 - **MEDIUM — stale-auth false-positive capture.** A redirect to a login/unauthorized page (or a present-but-stale storageState) could be captured as the requested surface. **Fix:** added a pure `navigatedAwayFromRoute` guard (login/unauthorized redirect or lost route prefix → downgrade `route_unreachable_as_{role}`) plus an optional `requireSelector` per screen for the inline-render (no-URL-change) case.
 - New tests: `validateScreenEntry` (rejects all-empty captured), `navigatedAwayFromRoute` (5 cases). Re-verified in automation-v1: **34 Vitest pass, ESLint clean, tsc clean.** Pushed to PR #27.
 
+### Operator PR review round 3 (APPROVED_WITH_NIT → applied; merge authorised)
+- **Nit:** spec.md §4.3 still said "DOM outline digest" — corrected to "structured DOM outline (… not a digest)" to match the final contract.
+- **Version bump DEFERRED per operator:** numbering is being coordinated with concurrent framework work in another session. Reverted `FRAMEWORK_VERSION` → 2.23.0 and `manifest.json frameworkVersion` → 2.20.0 (both back to pre-PR/main values — this PR introduces NO version change). CHANGELOG entry relabelled `## Unreleased` with a note; the next framework release assigns the number. The new `managedFiles` entries are RETAINED (needed for sync); only the version number is held back.
+- **Merge:** operator authorised squash-merge after this round.
+
 ## Log
 
 - Setup: framework branch created, spec copied into build dir, review mode = parallel.
