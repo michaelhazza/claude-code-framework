@@ -1,4 +1,4 @@
-# ADR-0007: Parallel Worktree Builders for Independent Chunks
+# ADR-0008: Parallel Worktree Builders for Independent Chunks
 
 **Status:** accepted
 **Date:** 2026-06-19

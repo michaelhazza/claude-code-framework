@@ -24,3 +24,9 @@ Active backlog. Items captured here are queued for work; resolved items move to 
 ## Sections
 
 [Add sections as items accrue. Keep section headings stable so grep-by-origin works across the file.]
+
+## PR Review deferred items
+
+### PR #27 — claude-build-grounded-mockups (2026-06-19)
+
+- [ ] Assert capture-surface degradation in the A1/A2 live-capture run: `browser_unavailable` launch failure produces all-`failed` manifest entries (OAI-PR-001) and manifest `screenshotPaths` are repo-relative POSIX, never absolute (OAI-PR-002). Code fixes landed in this PR; the assertions extend the existing intentional A1/A2 REVIEW_GAP (no browser in the framework repo). [auto]

@@ -30,7 +30,8 @@ Before writing any prototype:
 
 1. **Identify the existing UI surfaces the new capability touches.** Search `client/src/pages/` and `client/src/components/` for the page(s) and component(s) the new feature extends. The brief should name them; if it doesn't, ask the caller before drafting. Do NOT rely on a single-keyword search of the codebase — kanban-style UIs may live under names like `WorkspaceBoardPage.tsx`, not `KanbanBoard.tsx`. Enumerate the files in `client/src/pages/` directly and identify candidates by responsibility, not by literal name match.
 2. **Read those files in full** (Read tool). Look at the actual layout structure, component composition, tab labels, status pill text, vocabulary, visual conventions. Do NOT infer from name alone.
-3. **Enumerate per screen in the round summary.** In the `mockup-log.md` Round entry, EACH screen produced this round MUST name the exact file(s) under `client/src/pages/` or `client/src/components/` it extends. A claim of "I grounded the codebase" without per-screen filename enumeration is incomplete; the round is rejected and must be redone. Beyond per-screen filenames, also list the round-wide vocabulary inherited (class names, tab labels, status pill text) quoted from the codebase.
+2a. **Capture the real rendered current state (render-grounding) — BEFORE drafting any HTML.** Reading source (item 2) infers a page's shape; capture *observes* it. Run `scripts/mockup/capture-surface.ts` for the surfaces identified in item 1 (route + role + viewports 375 / 768 / 1280). On success: Read the captured screenshots and the token sheet, and ground the draft in the **captured tokens** (real colours / spacing / fonts) and the **captured DOM outline** (real tab labels, status-pill text, column headers) under `prototypes/{slug}/_captures/`. The Before view of any Before/After pairing is the real capture, not a hand-drawn approximation. If capture fails or the surface is non-renderable, **fall back** to source-read grounding (item 2) and record the downgrade with its reason — one of `server_unavailable`, `route_unreachable_as_{role}`, `data_absent`, `n/a_new_surface`. Capture is best-effort grounding input, **never a gate**: a failed capture only downgrades grounding to source-read, explicitly logged. "Grounded" now means *grounded against the capture, or explicitly fell back with a reason*. Render-grounding feeds the five hard rules / mobile-shape mandate better inputs; it does not relax them.
+3. **Enumerate per screen in the round summary.** In the `mockup-log.md` Round entry, EACH screen produced this round MUST name the exact file(s) under `client/src/pages/` or `client/src/components/` it extends, AND cite its capture status (`captured` / `fallback_source_read` / `failed`) plus, when captured, the capture paths under `prototypes/{slug}/_captures/`. A claim of "I grounded the codebase" without per-screen filename enumeration AND capture status is incomplete; the round is rejected and must be redone. Beyond per-screen filenames, also list the round-wide vocabulary inherited (class names, tab labels, status pill text) quoted from the capture (or the source file when fallen back).
 4. **If you're proposing a new dedicated page,** explicitly justify in the round summary why an existing surface cannot be extended. The default answer is "extend, don't replace."
 5. **For Phase N+1 work that builds on Phase N prototypes,** also Read the Phase N prototypes (`prototypes/{prior-slug}/`) for visual conventions to inherit.
 
@@ -41,14 +42,15 @@ The most common failure modes this step prevents: inventing a parallel UI univer
 Emit at start of each round:
 
 1. Context loading (Step 0) — frontend AND mobile principles
-2. Codebase grounding pass (Step 0a) — Read the existing UI surfaces being extended
+2. Codebase grounding pass (Step 0a) — Read the existing UI surfaces being extended AND render-capture them (Step 0a item 2a) before drafting
 3. Format decision (round 1 only) or read prior round's format
 4. Read operator feedback (rounds 2+)
 5. Apply five hard rules check
 6. Apply mobile capability rules (Step 3b) — mobile shape mandatory
 7. Edit prototype file(s)
-8. Append round summary to mockup-log.md (include Step 0a per-screen filename list AND Step 3b mobile shape check)
-9. Return to caller
+8. Author/update behaviour manifest (Step 3c) — complete the checklist per screen
+9. Append round summary to mockup-log.md (include Step 0a per-screen filename + capture status, Step 3b mobile shape check, and Step 3c behaviour-manifest reference)
+10. Return to caller
 
 ## Step 2 — Format decision (round 1 only)
 
@@ -160,6 +162,23 @@ If the brief asks for a screen the spec author believes is desktop-only (rare; s
 
 **Failure mode:** missing mobile shape on any screen is 🔴 Blocking. Page-level horizontal overflow at 375px is 🔴 Blocking. Fixed-width modal exceeding 375px on a mobile shape is 🔴 Blocking. Hover-only interaction without a tap equivalent is 🔴 Blocking. Touch target below 44px on a primary action is 🟡 Should-fix unless it's on a high-traffic surface.
 
+## Step 3c — Behaviour manifest (EVERY ROUND)
+
+Layout says *where* things sit; the behaviour manifest says *how* they behave. Unspecified behaviour is guessed by the builder later, and "looks right but feels wrong" is exactly the rework this step prevents.
+
+After drafting layout this round, author or update `tasks/builds/{slug}/behaviour-manifest.md` — one block per screen produced this round — completing the behaviour checklist. Use the template at `docs/behaviour-manifest-template.md` as the row set. Each row is answered or marked `n/a` with a one-line reason; an unanswered row is an incomplete manifest (the reviewer's Axis 4 gates this).
+
+The checklist, per screen:
+
+- **Reveal model** — scroll-driven vs click-driven vs always-visible for each major section; which content is progressive-disclosure (tab, drawer, expand-on-click) vs on first paint.
+- **Interactive states** — for every interactive control: default, hover, focus, pressed/active, disabled, loading. Hover states MUST declare their tap equivalent (reuses the mobile hover-only rule).
+- **Async states** — for every data region: loading (skeleton vs spinner vs nothing), empty, error, populated. Prevents the happy-path-only mockup; pairs with the Step 3a capability-failure-state rule.
+- **Transitions and motion** — any animation, transition, or scroll behaviour the design depends on (smooth-scroll, sticky-on-scroll, sheet/drawer slide-in, optimistic-then-reconcile). Name the *intended behaviour*, not a library (a library may be named as a reference only).
+- **Primary-action feedback** — what the operator sees after the one primary action fires: inline state change (preferred, per the inline-state hard rule), toast, navigation, or modal.
+- **Input behaviour** — validation timing (on-blur vs on-submit), coupled-field enable/disable (reuses the coupled-field-invariant rule), mobile keyboard-open handling.
+
+The manifest is the contract. The prototype MAY demonstrate a behaviour inline (hover styles, click-to-expand, skeleton-then-content) where cheap — encouraged but never required; where it does, annotate the element so the reviewer can map demonstration to manifest row. The round summary references the manifest and lists any `n/a` rows.
+
 ## Step 4 — Round summary
 
 Append to `tasks/builds/{slug}/mockup-log.md`:
@@ -169,9 +188,9 @@ Append to `tasks/builds/{slug}/mockup-log.md`:
 **Operator feedback:** [the operator's input, or "initial draft" for round 1]
 
 **Codebase grounding (Step 0a) — PER SCREEN (mandatory):**
-For EACH screen produced this round, name the file(s) it extends. A round without this list is incomplete and will be rejected.
-- {screen-id-1}: extends `client/src/pages/{path}.tsx` (+ {components touched})
-- {screen-id-2}: extends `client/src/components/{path}.tsx`
+For EACH screen produced this round, name the file(s) it extends AND its capture status. A round without this list is incomplete and will be rejected.
+- {screen-id-1}: extends `client/src/pages/{path}.tsx` (+ {components touched}); capture = captured | fallback_source_read ({reason}) | failed ({reason}); capture paths = `prototypes/{slug}/_captures/{screen-id-1}-{375,768,1280}.png` (or n-a when fallen back)
+- {screen-id-2}: extends `client/src/components/{path}.tsx`; capture = ...
 - ... (one row per screen produced this round)
 
 **Codebase grounding — round-wide:**
@@ -191,6 +210,10 @@ For EACH screen produced this round, name the file(s) it extends. A round withou
 For EACH screen produced this round, confirm the mobile shape. A round without this list is incomplete and will be rejected.
 - {screen-id-1}: format = responsive | mobile-variant-file; tier (per mobile-capability-principles.md) = 1 | 2 | 3; navigation = bottom-tab | More-sheet | hamburger | full-screen | n-a; tables = cards | sticky-first | column-hide | n-a; modals = bottom-sheet | full-screen | none; horizontal overflow at 375px = none | constrained-to-region | FAIL; hover-only interactions = none | FAIL
 - {screen-id-2}: ... (one row per screen)
+**Behaviour manifest (Step 3c) — reference:**
+- Manifest: `tasks/builds/{slug}/behaviour-manifest.md` (updated this round: yes/no)
+- Screens covered this round: [list]
+- `n/a` rows (with reason): [list, or "none"]
 **Rule violations flagged:** [list, or "none"]
 **Files modified:** [list]
 ```

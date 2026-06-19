@@ -89,7 +89,7 @@ Within each round, branch on the reviewer's verdict (returned from Step 4 of the
 
 **Iteration cap:** soft. If the same Blocking finding survives three rounds, escalate to NEEDS_DISCUSSION and surface to the operator. Looping a fourth time on the same finding is a sign the reviewer's interpretation and the designer's interpretation diverge — the operator must arbitrate.
 
-**Per-round artefact discipline:** every round writes a fresh `mockup-review-log-round-{N}-*.md`. The mockup-designer's `mockup-log.md` round summary contains the per-screen filename enumeration mockup-reviewer audits against — never skip it.
+**Per-round artefact discipline:** every round writes a fresh `mockup-review-log-round-{N}-*.md`. The mockup-designer's `mockup-log.md` round summary contains the per-screen filename enumeration mockup-reviewer audits against — never skip it. The designer also produces, each round, a capture manifest (`prototypes/{slug}/_captures/manifest.json`, render-grounding) and a behaviour manifest (`tasks/builds/{slug}/behaviour-manifest.md`); persist both alongside the mockup logs — never discard them, they are the grounding and interaction contracts the spec and builder consume.
 
 ## Step 6 — Present to operator
 
@@ -127,6 +127,8 @@ When the operator confirms completion:
 
    followed by the prose `## Final state — {YYYY-MM-DD HH:MM}` heading and a list of:
    - Final prototype paths
+   - Capture manifest path (`prototypes/{slug}/_captures/manifest.json`) if render-grounding ran, else n-a — preserved alongside the mockup log
+   - Behaviour manifest path (`tasks/builds/{slug}/behaviour-manifest.md`) — preserved alongside the mockup log
    - Total rounds (designer + reviewer pairs)
    - Total operator feedback rounds
    - Any deferred concerns the operator wants surfaced in the eventual spec

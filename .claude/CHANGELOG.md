@@ -32,7 +32,7 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
-## 2.24.0 — 2026-06-19 — Parallel worktree builders for independent chunks
+## 2.25.0 — 2026-06-19 — Parallel worktree builders for independent chunks
 
 **Highlights:** Adds opt-in concurrent chunk dispatch to the `feature-coordinator` Step 6 build loop. Provably-independent chunks (disjoint `declared_files`, no shared `exclusive_resources`, no `depends_on` edge) can now build concurrently, each in its own git worktree, and integrate back to the feature branch serially in stable chunk-id order. Two new pure modules drive scheduling: `computeWaves.ts` (deterministic wave scheduler, unit-tested) and `validatePlanMetadata.ts` (plan-metadata validator, unit-tested). Architect now emits a snake_case `id`, `declared_files`, `depends_on`, `exclusive_resources` per chunk. File identity is compared case-insensitively (Windows/macOS-safe), and the diff-apply merge-back uses intent-to-add so a builder's untracked new files are integrated. The strict-sequential default is preserved byte-identically (A8 by non-execution: the new machinery is unreachable without an explicit opt-in). Integration uses `git apply --3way` (diff-apply, not `git merge`). Rollout: opt-in via `launch feature coordinator parallel` for the first 3 builds; then a one-line maintainer change flips the default.
 
@@ -41,7 +41,7 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 - `scripts/build-scheduler/__tests__/computeWaves.test.ts` — Vitest unit tests (A1-A5, A8 support, cap-spill, cycle, unknown-dep-id, serialisedReasons priority).
 - `scripts/build-scheduler/validatePlanMetadata.ts` — pure plan-metadata validator + `parsePlanMetadata` (single snake_case-to-camelCase normalisation point). Path canonicalisation: backslash-to-slash, collapse double-slashes, resolve `.` segments, case-fold for intersection; rejects absolute paths, `..` segments, empty strings.
 - `scripts/build-scheduler/__tests__/validatePlanMetadata.test.ts` — Vitest unit tests (A6, snake_case fixture, path-canonicalisation cases, dangling deps, duplicate ids).
-- `docs/decisions/0007-parallel-worktree-builders.md` — ADR capturing the decision, safety argument, and alternatives considered.
+- `docs/decisions/0008-parallel-worktree-builders.md` — ADR capturing the decision, safety argument, and alternatives considered.
 
 **Changed:**
 - `.claude/agents/architect.md` — per-chunk output spec now requires an `id:`, `declared_files:`, `depends_on:`, `exclusive_resources:` YAML block and a `## Build parallelism` section. Conservative-default stance and singleton-survey instruction added.
@@ -49,11 +49,36 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 - `.claude/agents/claude-plan-review.md` — under-declared `declared_files` hunt target added.
 - `.claude/agents/chatgpt-plan-review.md` — same under-declared-`declared_files` hunt target mirrored.
 - `.claude/agents/builder.md` — worktree-awareness note added (§6.1): builder may run inside an isolated git worktree; no behavioural change required.
-- `docs/decisions/README.md` — ADR-0007 row added; local-ADR reservation moved from 0007 to 0008.
+- `docs/decisions/README.md` — ADR-0008 row added; local-ADR reservation moved to 0009 (ADR-0007 was taken by the concurrently-merged grounded-mockups work).
 - `docs/doc-sync.md` — trigger row added for build-loop orchestration and chunk-metadata format changes.
-- `manifest.json` — `frameworkVersion` reconciled from 2.20.0 to 2.24.0; ADR-0007 row registered.
+- `manifest.json` — `frameworkVersion` reconciled from 2.20.0 to 2.25.0; ADR-0008 row registered.
 
 **Breaking:** none. Strict-sequential mode is the default. No existing workflow changes without the explicit opt-in phrase.
+
+---
+
+## 2.24.0 — 2026-06-19 — Render-grounded mockups + behaviour capture
+
+> Version assigned during the coordinated reconcile with the parallel-worktree-builders work (which merged second and took 2.25.0). The grounded-mockups change merged first and takes 2.24.0; its files synced at merge time, the version number is finalised here.
+
+**Highlights:** The mockup pipeline now grounds designs in the *real rendered current state* of the surfaces they extend, not in a reading of the source code, and pins *interaction behaviour* as a first-class written deliverable. A new Playwright-driven capture script reuses each consuming repo's existing UI-test server + storageState auth to capture, per extended surface, a real screenshot (375/768/1280), a de-duplicated page-wide token sheet, and a structured DOM outline (real nav/tabs/headings/column-headers/status-pills). `mockup-reviewer` verifies the mockup against that observed capture (Axis 1) instead of re-reading the same source, closing the "designer and reviewer both trust the same wrong inference" loop. A behaviour manifest (fixed checklist) captures reveal model, interactive/async states, transitions, primary-action feedback, and input behaviour, gated for completeness (Axis 4) and pulled into the spec. Render-grounding is default-on when renderable, always degradable, never a hard gate. Generic across repos: the capture script references conventional consuming-repo paths only (ADR-0006) and degrades to source-read grounding where no UI-test harness exists. Rationale: ADR-0007.
+
+**Added:**
+- `scripts/mockup/capture-surface.ts` — impure Playwright orchestrator (attaches to the consuming repo's UI-test server, captures existing surfaces only, atomic screenshot writes, graceful degradation). Shipped; exercised live in consuming repos.
+- `scripts/mockup/capture-surfacePure.ts` + `scripts/__tests__/capture-surfacePure.test.ts` — pure token-sheet de-dup + DOM-outline pruning, Vitest-tested.
+- `scripts/mockup/capture-manifestPure.ts` + `scripts/__tests__/capture-manifestPure.test.ts` — capture-manifest contract (discriminated-union per-screen entry) + validator, Vitest-tested. The gate `mockup-reviewer` Axis 1 trusts.
+- `docs/behaviour-manifest-template.md` — fixed, grep-able interaction-behaviour checklist (`adopt-only`).
+- `docs/decisions/0007-ground-mockups-in-real-render.md` — ADR for the methodology choice (synced).
+
+**Changed:**
+- `mockup-designer` — Step 0a gains a render-capture sub-step (capture before drafting; ground in captured tokens + DOM outline; explicit logged fallback) and per-screen capture-status enumeration; new Step 3c authors the behaviour manifest.
+- `mockup-reviewer` — Axis 1 gains capture-aware checks (capture-present-or-downgrade-justified, mockup-matches-captured-vocabulary, token fidelity, fallback-explicit); new Axis 4 gates behaviour-manifest completeness; preamble + tier lists updated to four axes.
+- `spec-coordinator` — Step 6 pulls the behaviour manifest into an `## Interaction behaviour` spec section; Step 5/Step 9 handoff records the capture + behaviour manifests.
+- `mockup-coordinator` — per-round + Step 8 artifact discipline persists the capture and behaviour manifests alongside the existing mockup logs.
+- `docs/frontend-design-principles.md` — new "Ground in the real render" + "Interaction behaviour" subsections.
+- `docs/mobile-capability-principles.md` — hover-only and keyboard-handling rules cross-link the behaviour checklist.
+
+**Version:** assigned 2.24.0 in the coordinated reconcile (see the 2.25.0 entry above). The `managedFiles` entries for the capture scripts, tests, behaviour-manifest template, and ADR-0007 sync as registered; `frameworkVersion` is reconciled to 2.25.0 (the latest of the two coordinated releases).
 
 ---
 

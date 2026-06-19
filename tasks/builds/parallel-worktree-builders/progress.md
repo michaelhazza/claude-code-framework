@@ -54,7 +54,14 @@ Build order (bootstrap: old sequential coordinator builds the scheduler): 1 → 
 ## Doc-sync
 ADR-0007, CHANGELOG 2.24.0, FRAMEWORK_VERSION + manifest frameworkVersion (2.24.0), manifest registrations (4 modules + ADR), doc-sync.md trigger, README 0008 reservation — all done. CHANGELOG updated post-review for the `id` field + case-insensitive identity + intent-to-add.
 
-## Phase 3 — STOP at PR (no merge, no ready-to-merge label) per operator directive.
+## Phase 3 — Finalisation (operator authorised full finalisation after chatgpt-pr-review)
+- **chatgpt-pr-review round 3** (A8 regression from r2's probe move): fixed — Step 2a checks opt-in phrase BEFORE the probe; absent it, force effectiveCap=1 → 2b with no probe/progress-write (commit `cce1662`).
+- **Branch sync / version reconcile (S2):** grounded-mockups merged first (`43f1221`), deferring its version ("Unreleased") for coordination with this build. Merged origin/main; resolved 4 conflicts:
+  - **Version:** grounded-mockups finalised to **2.24.0** (merged first); parallel-worktree-builders takes **2.25.0** (merged second). `FRAMEWORK_VERSION` + manifest `frameworkVersion` → 2.25.0.
+  - **ADR collision:** both claimed 0007. Theirs keeps `0007-ground-mockups-in-real-render`; mine renumbered to **`0008-parallel-worktree-builders`** (file, title, README row, reservation note → 0009, manifest `0008-*.md` registration).
+  - **manifest:** merged both `managedFiles` sets (4 build-scheduler + 5 capture entries), deduped the template.example line; valid JSON.
+  - **CHANGELOG:** my 2.25.0 entry on top, their finalised 2.24.0 entry below.
+- **Post-merge verification:** full combined Vitest suite **196 passed** (build-scheduler 60 + grounded-mockups capture + chatgpt-review + framework tests).
 - [ ] Build chunks 1→6 sequentially (scheduler does not exist until ch1 lands; bootstrap order 1-2-3-4-5-6).
 - [ ] G2 (consuming-repo CI post-sync) + pr-reviewer.
 
