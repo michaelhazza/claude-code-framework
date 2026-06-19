@@ -104,6 +104,11 @@ async function screenshotAtomic(page: Page, finalPath: string): Promise<void> {
   }
 }
 
+/** Remove screenshots written for a screen that ends up degrading/failing, so no orphan PNG remains. */
+async function removePartials(paths: string[]): Promise<void> {
+  await Promise.all(paths.map((p) => rm(p, { force: true }).catch(() => undefined)));
+}
+
 /** Read computed styles (sampled, capped) + tagged outline candidates off the live page. Runs in the browser. */
 function collectPageData(maxElements: number): { styles: ComputedStyleRecord[]; outline: OutlineCandidate[] } {
   const styles: ComputedStyleRecord[] = [];
@@ -181,10 +186,14 @@ async function captureOneScreen(
   }
 
   const context = await browser.newContext({ storageState: storageStatePath });
+  // Screenshots written so far for THIS screen — removed if the screen degrades or throws,
+  // so a non-`captured` entry never leaves an orphan PNG on disk (keeps A2 true at the file-tree level).
+  const written: string[] = [];
   try {
     const screenshotPaths: Record<number, string> = {};
-    let lastStyles: ComputedStyleRecord[] = [];
-    let lastOutline: OutlineCandidate[] = [];
+    let widestStyles: ComputedStyleRecord[] = [];
+    let widestOutline: OutlineCandidate[] = [];
+    let widestSeen = -1;
 
     for (const viewport of viewports) {
       const page = await context.newPage();
@@ -193,19 +202,25 @@ async function captureOneScreen(
       const response = await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS });
       if (response && response.status() >= 400) {
         await page.close();
+        await removePartials(written);
         return fallbackEntry(input, viewports, `route_unreachable_as_${input.role}`);
       }
       await page.waitForTimeout(opts.settleMs);
 
       const finalPath = join(opts.outDir, `${input.screenId}-${viewport}.png`);
       await screenshotAtomic(page, finalPath);
+      written.push(finalPath);
       screenshotPaths[viewport] = finalPath;
 
-      // Extract from the widest viewport (last in the default 375/768/1280 order) so the
-      // outline reflects the fullest desktop layout; cheap to re-read each pass.
+      // Ground the token sheet / outline in the WIDEST captured viewport (fullest
+      // desktop layout), regardless of the order viewports were supplied in — the
+      // viewport set is caller-parameterised (§9 decision 2) and may be unsorted.
       const data = await page.evaluate(collectPageData, MAX_COMPUTED_ELEMENTS);
-      lastStyles = data.styles;
-      lastOutline = data.outline;
+      if (viewport > widestSeen) {
+        widestSeen = viewport;
+        widestStyles = data.styles;
+        widestOutline = data.outline;
+      }
       await page.close();
     }
 
@@ -217,9 +232,14 @@ async function captureOneScreen(
       viewports,
       captureStatus: 'captured',
       screenshotPaths,
-      tokenSheet: extractTokenSheet(lastStyles),
-      domOutline: pruneDomOutline(lastOutline),
+      tokenSheet: extractTokenSheet(widestStyles),
+      domOutline: pruneDomOutline(widestOutline),
     };
+  } catch (err) {
+    // Unrecoverable mid-screen error — drop any partial screenshots before the
+    // caller records this screen as `failed` (which must carry no captured-shape fields).
+    await removePartials(written);
+    throw err;
   } finally {
     await context.close();
   }

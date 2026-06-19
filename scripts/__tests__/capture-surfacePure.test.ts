@@ -47,6 +47,11 @@ describe('extractTokenSheet', () => {
     const sheet = extractTokenSheet([]);
     expect(sheet).toEqual({ colors: [], fontFamilies: [], fontSizes: [], fontWeights: [], spacing: [], radii: [], shadows: [] });
   });
+
+  it('caps each token array at MAX_PER_BUCKET (60) so a pathological page cannot run away', () => {
+    const records: ComputedStyleRecord[] = Array.from({ length: 61 }, (_, i) => ({ color: `#${(i + 1).toString(16).padStart(6, '0')}` }));
+    expect(extractTokenSheet(records).colors).toHaveLength(60);
+  });
 });
 
 describe('pruneDomOutline', () => {
@@ -83,5 +88,12 @@ describe('pruneDomOutline', () => {
 
   it('returns empty-but-valid structure for empty input', () => {
     expect(pruneDomOutline([])).toEqual({ navItems: [], tabLabels: [], headings: [], tableColumnHeaders: [], primaryButtons: [], statusPills: [] });
+  });
+
+  it('silently drops candidates with an unknown kind without throwing', () => {
+    const candidates = [{ kind: 'sidebar' as OutlineCandidate['kind'], text: 'X' }, { kind: 'tab', text: 'Active' }] as OutlineCandidate[];
+    const outline = pruneDomOutline(candidates);
+    expect(outline.tabLabels).toEqual(['Active']);
+    expect(outline).toEqual({ navItems: [], tabLabels: ['Active'], headings: [], tableColumnHeaders: [], primaryButtons: [], statusPills: [] });
   });
 });

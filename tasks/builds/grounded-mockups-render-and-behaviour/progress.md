@@ -49,6 +49,23 @@ REVIEW_GAP: live-capture-verification (A1/A2) | task-class: Significant | reason
 - **Chunk 6** (docs/version/ADR/manifest): two frontend subsections, mobile cross-links, ADR-0007, FRAMEWORK_VERSION 2.24.0, manifest frameworkVersion 2.24.0 (closes 2.20.0 drift) + 7 managedFiles entries, CHANGELOG 2.24.0, doc-sync trigger row. **A7 grep green.**
 - **Acceptance:** A3, A4, A5, A6, A7, A8 verified. A1/A2 = REVIEW_GAP (live capture, post-sync in automation-v1). ADR-0006 compliance verified (no project names in agent edits; LOCAL-OVERRIDE retained in docs).
 
+## Branch review
+
+- **spec-conformance:** CONFORMANT — 34 requirements, zero gaps (log `tasks/review-logs/spec-conformance-log-...-2026-06-19T03-26-53Z.md`, pushed 792be63).
+- **pr-reviewer:** APPROVED (0 blocking). F1 auto-applied by reviewer (widest-viewport extraction). F2/F3/F4 (should-fix, technical) applied by coordinator: orphan-PNG cleanup on degrade + two missing tests. Re-verified in automation-v1: 25 Vitest pass, ESLint clean, tsc clean.
+- **adversarial-reviewer:** skipped per GRADED — no schema/migration/RLS/auth/tenant-data surface (spec §10).
+- **dual-reviewer:** REVIEW_GAP — see below.
+
+### Deferred (pr-reviewer Consider, F5–F8 — not applied)
+- F5: `isIsoTimestamp` accepts any Date.parse-able string (only producer is toISOString; tighten only for external edits).
+- F6: `primaryButton` selector tags all buttons; field name over-promises (harmless grounding input).
+- F7: `parseArgs` casts JSON.parse without shape validation (CLI-only; degrades safely).
+- F8: `isServerReachable` treats 4xx root as reachable (intentional liveness; comment-only).
+
+```
+REVIEW_GAP: dual-reviewer | task-class: Significant | reason: Codex CLI availability not confirmed in this session; framework build is internal authoring tooling, risk_domain none | operator-override: no | remediation: optional — run dual-reviewer manually if Codex is available; pr-reviewer + spec-conformance already passed on a none-risk-domain diff
+```
+
 ## Log
 
 - Setup: framework branch created, spec copied into build dir, review mode = parallel.
