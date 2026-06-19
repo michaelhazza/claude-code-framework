@@ -74,6 +74,16 @@ boundaries without ordering imports; chunk touching >10 files or >500 lines;
 chunk mixing schema + business logic + UI + orchestration without a cohesive
 reason; multiple unrelated objectives bundled.
 
+### Under-declared `declared_files`
+Any chunk whose `declared_files` looks under-specified relative to its
+`spec_sections`: a chunk that, by its stated scope, must touch a file it did
+not declare. This is the under-declaration that would wrongly let two chunks
+run in parallel when they actually share a file. Apply risk-weighted priority:
+any chunk touching migrations, shared singletons (for example `manifest.json`
+or a lockfile), or many files is a priority sample for this check. Emit a
+finding when the stated scope implies an undeclared file, naming the missing
+path, the chunk id, and the parallelism risk it creates.
+
 ### Cross-chunk invariant safety
 Broken state between chunk N and N+1 (column added without backfill while an
 intermediate path references it; UI before its API; flag rolled out before the

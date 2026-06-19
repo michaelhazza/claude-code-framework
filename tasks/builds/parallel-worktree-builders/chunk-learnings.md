@@ -28,5 +28,13 @@
 - **Plan gaps surfaced:** none
 - **Watch-out for future chunks:** Step 6 is now: inner routine (today's per-chunk body, verbatim, re-levelled to `####`) + Step 2a/2b/2c/2d mode machinery. Preserved invariants verified present: commit-integrity invariant (×3), `plan-declared ⊇ builder-reported` (×2), mandatory builder dispatch, chunk-learnings, Steps 7/8/10 untouched. Chunk 6's CHANGELOG/ADR should reference the strict-sequential default + diff-apply transaction. The pr-reviewer/spec-conformance branch pass must run the preserve-every-invariant checklist against this file.
 
+## Chunk 5 — Plan-review under-declared-files hunt target
+
+- **Files touched:** .claude/agents/claude-plan-review.md, .claude/agents/chatgpt-plan-review.md, **scripts/chatgpt-reviewPure.ts** (deliberate scope expansion — see below)
+- **G1 failures resolved:** none (grep self-check green; `scripts/__tests__/chatgpt-reviewPure.test.ts` 102/102 still green after the prompt edit)
+- **Plan gaps surfaced:** none
+- **Scope expansion (documented):** the plan declared only the two `.md` plan-review agents, but the **automated** OpenAI plan-review tier's prompt lives in `scripts/chatgpt-reviewPure.ts` (`SYSTEM_PROMPT_PLAN_V2`). Builder correctly flagged (not smuggled) that editing only the `.md` files leaves the default automated/parallel tier without the new hunt target — i.e. the feature would be half-wired. Coordinator folded the hunt-target bullet into `SYSTEM_PROMPT_PLAN_V2`'s Hunt targets list so ALL three plan-review tiers (claude, manual ChatGPT-web, automated OpenAI) carry it. Test asserts only placeholder-substitution, not prompt content → safe; verified green. Chunk 6 manifest note: `scripts/chatgpt-reviewPure.ts` is already a registered managed file, so no new manifest entry needed.
+- **Watch-out for future chunks:** none.
+
 
 

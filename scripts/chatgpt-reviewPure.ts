@@ -1014,6 +1014,12 @@ Hunt targets:
   where useful; late integration chunks split into contract/substrate and UI halves.
 - Contract pinning: each chunk names exact files, functions, types, tables,
   routes, events, queues, singleton keys, idempotency keys, and ownership.
+- Under-declared declared_files: any chunk whose declared_files looks
+  under-specified relative to its spec_sections, a chunk that by its stated scope
+  must touch a file it did not declare. This is the under-declaration that would
+  wrongly allow two chunks to run in parallel when they actually share a file.
+  Priority-sample any chunk touching migrations, shared singletons (e.g.
+  manifest.json), or many files.
 - Primitive reuse: prefer existing local primitives (queue worker wrappers,
   scoped transaction helpers, scoped DB helpers, pure helpers, route conventions)
   over raw equivalents.
