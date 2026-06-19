@@ -452,3 +452,57 @@ describe('parsePlanMetadata — malformed non-string array entries', () => {
     expect(pathErrors.some((e) => e.field === 'declaredFiles')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fix 1: scalar (non-array) values for depends_on / exclusive_resources /
+// declared_files must fail closed with a pathError, not be silently dropped.
+// Fix 2: null block entry and non-array raw must produce structured errors
+// and NEVER throw.
+// ---------------------------------------------------------------------------
+
+describe('parsePlanMetadata — scalar fields and non-object guards (Fix 1 + Fix 2)', () => {
+  it('scalar exclusive_resources (string, not list) → non-empty pathErrors (serialisation guard)', () => {
+    const { pathErrors } = parsePlanMetadata([
+      { id: '1', declared_files: ['a.ts'], depends_on: [], exclusive_resources: 'migration:v2.24.0' },
+    ]);
+    expect(pathErrors.length).toBeGreaterThan(0);
+    expect(pathErrors.some((e) => e.field === 'exclusiveResources')).toBe(true);
+  });
+
+  it('scalar depends_on (string, not list) → non-empty pathErrors (dependency-edge guard)', () => {
+    const { pathErrors } = parsePlanMetadata([
+      { id: '1', declared_files: ['a.ts'], depends_on: 'chunk-0', exclusive_resources: [] },
+    ]);
+    expect(pathErrors.length).toBeGreaterThan(0);
+    expect(pathErrors.some((e) => e.field === 'dependsOn')).toBe(true);
+  });
+
+  it('scalar declared_files (string, not list) → non-empty pathErrors', () => {
+    const { pathErrors } = parsePlanMetadata([
+      { id: '1', declared_files: 'a.ts', depends_on: [], exclusive_resources: [] },
+    ]);
+    expect(pathErrors.length).toBeGreaterThan(0);
+    expect(pathErrors.some((e) => e.field === 'declaredFiles')).toBe(true);
+  });
+
+  it('null block entry → structured error, does NOT throw', () => {
+    expect(() => parsePlanMetadata([null])).not.toThrow();
+    const { chunks, pathErrors } = parsePlanMetadata([null]);
+    expect(chunks).toHaveLength(0);
+    expect(pathErrors.some((e) => e.field === 'metadata')).toBe(true);
+    expect(pathErrors[0].chunkId).toBe('<unknown>');
+  });
+
+  it('non-array raw (object) → structured error, does NOT throw', () => {
+    expect(() => parsePlanMetadata({ id: '1' })).not.toThrow();
+    const { chunks, pathErrors } = parsePlanMetadata({ id: '1' });
+    expect(chunks).toHaveLength(0);
+    expect(pathErrors.some((e) => e.field === 'metadata')).toBe(true);
+  });
+
+  it('non-array raw (string) → structured error, does NOT throw', () => {
+    expect(() => parsePlanMetadata('not an array')).not.toThrow();
+    const { pathErrors } = parsePlanMetadata('not an array');
+    expect(pathErrors.some((e) => e.field === 'metadata')).toBe(true);
+  });
+});

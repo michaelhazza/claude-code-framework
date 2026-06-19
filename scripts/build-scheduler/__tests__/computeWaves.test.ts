@@ -321,6 +321,23 @@ describe('invalid cap', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fix 3: numeric-aware chunk-id ordering (1, 2, 10 — not 1, 10, 2)
+// ---------------------------------------------------------------------------
+
+describe('Fix 3 — numeric-aware chunk-id ordering', () => {
+  it('disjoint chunks with ids 10, 2, 1 (cap >= 10) → waves[0].chunkIds equals [1, 2, 10]', () => {
+    const chunks = [
+      chunk('10', ['src/j.ts']),
+      chunk('2', ['src/b.ts']),
+      chunk('1', ['src/a.ts']),
+    ];
+    const result = computeWaves(input(chunks, 10));
+    expect(result.waves).toHaveLength(1);
+    expect(result.waves[0].chunkIds).toEqual(['1', '2', '10']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Wave ordering stability
 // ---------------------------------------------------------------------------
 

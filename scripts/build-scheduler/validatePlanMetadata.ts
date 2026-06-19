@@ -114,26 +114,46 @@ function canonicalisePath(raw: string): { canonical: string; caseFolded: string 
  * This function NEVER throws.
  */
 export function parsePlanMetadata(
-  raw: Array<Record<string, unknown>>,
+  raw: unknown,
 ): { chunks: RawChunkMetadata[]; pathErrors: ValidationError[] } {
   const chunks: RawChunkMetadata[] = [];
   const pathErrors: ValidationError[] = [];
 
+  if (!Array.isArray(raw)) {
+    pathErrors.push({
+      chunkId: '<unknown>',
+      field: 'metadata',
+      message: 'plan metadata must be an array',
+    });
+    return { chunks, pathErrors };
+  }
+
   for (const item of raw) {
-    const id = typeof item['id'] === 'string' ? item['id'] : undefined;
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+      pathErrors.push({
+        chunkId: '<unknown>',
+        field: 'metadata',
+        message: `chunk metadata block must be an object: ${safeStringify(item)}`,
+      });
+      continue;
+    }
+
+    const rec = item as Record<string, unknown>;
+    const id = typeof rec['id'] === 'string' ? rec['id'] : undefined;
     const chunkId: string | '<unknown>' = id ?? '<unknown>';
 
     // snake_case → camelCase mapping.
-    const specSections = Array.isArray(item['spec_sections'])
-      ? (item['spec_sections'] as unknown[]).filter((s): s is string => typeof s === 'string')
-      : Array.isArray(item['specSections'])
-        ? (item['specSections'] as unknown[]).filter((s): s is string => typeof s === 'string')
+    const specSections = Array.isArray(rec['spec_sections'])
+      ? (rec['spec_sections'] as unknown[]).filter((s): s is string => typeof s === 'string')
+      : Array.isArray(rec['specSections'])
+        ? (rec['specSections'] as unknown[]).filter((s): s is string => typeof s === 'string')
         : undefined;
 
     // depends_on: collect string entries; surface non-string entries as errors
     // rather than silently dropping them. A dropped dependency edge is a safety
     // hole — the chunk would be scheduled concurrently with one it depends on.
-    const rawDependsOn = item['depends_on'] ?? item['dependsOn'];
+    // A scalar (non-array) value is also an error — fail closed, not silently.
+    const rawDependsOn = rec['depends_on'] ?? rec['dependsOn'];
     let dependsOn: string[] | undefined;
     if (Array.isArray(rawDependsOn)) {
       const kept: string[] = [];
@@ -149,11 +169,18 @@ export function parsePlanMetadata(
         }
       }
       dependsOn = kept;
+    } else if (rawDependsOn !== undefined) {
+      pathErrors.push({
+        chunkId,
+        field: 'dependsOn',
+        message: `depends_on must be a list, got: ${safeStringify(rawDependsOn)}`,
+      });
     }
 
     // exclusive_resources: same treatment — non-string entries are errors, not
     // silently erased, so a malformed singleton claim cannot weaken serialisation.
-    const rawExclusiveResources = item['exclusive_resources'] ?? item['exclusiveResources'];
+    // A scalar (non-array) value is also an error — fail closed, not silently.
+    const rawExclusiveResources = rec['exclusive_resources'] ?? rec['exclusiveResources'];
     let exclusiveResources: string[] | undefined;
     if (Array.isArray(rawExclusiveResources)) {
       const kept: string[] = [];
@@ -169,10 +196,16 @@ export function parsePlanMetadata(
         }
       }
       exclusiveResources = kept;
+    } else if (rawExclusiveResources !== undefined) {
+      pathErrors.push({
+        chunkId,
+        field: 'exclusiveResources',
+        message: `exclusive_resources must be a list, got: ${safeStringify(rawExclusiveResources)}`,
+      });
     }
 
     // Canonicalise declared_files entries.
-    const rawDeclaredFiles = item['declared_files'] ?? item['declaredFiles'];
+    const rawDeclaredFiles = rec['declared_files'] ?? rec['declaredFiles'];
     let declaredFiles: string[] | undefined;
 
     if (Array.isArray(rawDeclaredFiles)) {
@@ -226,6 +259,12 @@ export function parsePlanMetadata(
       }
 
       declaredFiles = canonicalised;
+    } else if (rawDeclaredFiles !== undefined) {
+      pathErrors.push({
+        chunkId,
+        field: 'declaredFiles',
+        message: `declared_files must be a list, got: ${safeStringify(rawDeclaredFiles)}`,
+      });
     }
 
     chunks.push({

@@ -48,6 +48,16 @@ export interface ComputeWavesResult {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Numeric-aware chunk-id comparator. Sorts "1", "2", "10" in numeric order
+ * rather than lexicographic order ("1", "10", "2"). The architect contract
+ * uses heading-number ids (e.g. "4") and the ADR promises stable chunk-id
+ * order matching plan order; lexicographic sort breaks with 10+ chunks.
+ */
+function compareChunkIds(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
 /** Returns true when the two chunks share at least one exclusive resource. */
 function hasResourceConflict(a: ChunkNode, b: ChunkNode): boolean {
   const aRes = new Set(a.exclusiveResources ?? []);
@@ -108,7 +118,7 @@ function topologicalLayers(chunks: ChunkNode[]): ChunkNode[][] {
   const placed = new Set<string>();
   let frontier = chunks
     .filter((c) => (indegree.get(c.id) ?? 0) === 0)
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) => compareChunkIds(a.id, b.id));
 
   while (frontier.length > 0) {
     layers.push(frontier);
@@ -131,7 +141,7 @@ function topologicalLayers(chunks: ChunkNode[]): ChunkNode[][] {
         frontier.push(chunk);
       }
     }
-    frontier.sort((a, b) => a.id.localeCompare(b.id));
+    frontier.sort((a, b) => compareChunkIds(a.id, b.id));
   }
 
   // Cycle detection.
@@ -139,7 +149,7 @@ function topologicalLayers(chunks: ChunkNode[]): ChunkNode[][] {
     const cycleIds = chunks
       .filter((c) => !placed.has(c.id))
       .map((c) => c.id)
-      .sort((a, b) => a.localeCompare(b));
+      .sort((a, b) => compareChunkIds(a, b));
     throw new Error(`dependency cycle: ${cycleIds.join(', ')}`);
   }
 
@@ -270,7 +280,7 @@ export function computeWaves(input: ComputeWavesInput): ComputeWavesResult {
     // Emit waves for this layer in sub-wave creation order, chunk ids sorted ascending.
     for (const sw of subWaves) {
       waves.push({
-        chunkIds: sw.map((c) => c.id).sort((a, b) => a.localeCompare(b)),
+        chunkIds: sw.map((c) => c.id).sort((a, b) => compareChunkIds(a, b)),
       });
     }
   }
