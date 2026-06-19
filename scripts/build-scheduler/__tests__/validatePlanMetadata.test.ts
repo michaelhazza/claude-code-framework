@@ -100,6 +100,21 @@ describe('validatePlanMetadata', () => {
     // null-ish fields — should not throw.
     expect(() => validatePlanMetadata([{ id: undefined, declaredFiles: undefined, dependsOn: undefined }])).not.toThrow();
   });
+
+  it('missing id → ok:false with an id error (scheduler keys on id)', () => {
+    const result = validatePlanMetadata([{ declaredFiles: ['scripts/a.ts'], dependsOn: [] }]);
+    expect(result.ok).toBe(false);
+    const err = result.errors.find((e) => e.field === 'id');
+    expect(err).toBeDefined();
+    expect(err!.chunkId).toBe('<unknown>');
+    expect(err!.message).toMatch(/id is required/);
+  });
+
+  it('empty-string id → ok:false with an id error', () => {
+    const result = validatePlanMetadata([{ id: '', declaredFiles: ['scripts/a.ts'], dependsOn: [] }]);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.field === 'id')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -373,5 +388,67 @@ describe('parsePlanMetadata — path canonicalisation', () => {
     // All three resolve to 'src/a.ts'; only one should survive.
     expect(chunks[0].declaredFiles).toHaveLength(1);
     expect(chunks[0].declaredFiles![0]).toBe('src/a.ts');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parsePlanMetadata — malformed depends_on / exclusive_resources entries
+// must surface as errors, never be silently dropped (a dropped dependency
+// edge would let a dependent chunk schedule concurrently — a safety hole).
+// ---------------------------------------------------------------------------
+
+describe('parsePlanMetadata — malformed non-string array entries', () => {
+  it('non-string depends_on entry surfaces a pathError and is not silently dropped', () => {
+    const { chunks, pathErrors } = parsePlanMetadata([
+      {
+        id: 'c2',
+        declared_files: ['src/b.ts'],
+        depends_on: [1, 'c1'],
+      },
+    ]);
+
+    const err = pathErrors.find((e) => e.field === 'dependsOn');
+    expect(err).toBeDefined();
+    expect(err!.chunkId).toBe('c2');
+    expect(err!.message).toMatch(/not a string/);
+    // The valid string entry is still kept.
+    expect(chunks[0].dependsOn).toEqual(['c1']);
+  });
+
+  it('non-string exclusive_resources entry surfaces a pathError', () => {
+    const { chunks, pathErrors } = parsePlanMetadata([
+      {
+        id: 'c1',
+        declared_files: ['src/a.ts'],
+        depends_on: [] as string[],
+        exclusive_resources: ['migration:v1', 42],
+      },
+    ]);
+
+    const err = pathErrors.find((e) => e.field === 'exclusiveResources');
+    expect(err).toBeDefined();
+    expect(err!.message).toMatch(/not a string/);
+    expect(chunks[0].exclusiveResources).toEqual(['migration:v1']);
+  });
+
+  it('NEVER throws when a malformed entry is non-JSON-serialisable (BigInt / circular)', () => {
+    const circular: Record<string, unknown> = {};
+    circular['self'] = circular;
+    expect(() =>
+      parsePlanMetadata([
+        {
+          id: 'c1',
+          declared_files: ['src/a.ts', BigInt(7) as unknown as string],
+          depends_on: [circular],
+          exclusive_resources: [BigInt(9) as unknown as string],
+        },
+      ]),
+    ).not.toThrow();
+
+    const { pathErrors } = parsePlanMetadata([
+      { id: 'c1', declared_files: [BigInt(7) as unknown as string], depends_on: [] as string[] },
+    ]);
+    // The malformed entry is reported, not silently dropped.
+    expect(pathErrors.some((e) => e.field === 'declaredFiles')).toBe(true);
   });
 });

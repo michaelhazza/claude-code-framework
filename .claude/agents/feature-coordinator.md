@@ -458,11 +458,17 @@ For each chunk C in ascending sorted order:
 
 0. **Clean-branch precondition.** Assert `git status --porcelain` on the feature branch is empty before touching C. If it is dirty, a prior merge-back was interrupted: run `git reset --hard HEAD && git clean -fd`, verify `git status --porcelain` is empty, then let per-chunk resume detection re-dispatch the affected chunk. Never apply onto a dirty feature branch.
 
-1. Collect C's result (SUCCESS / PLAN_GAP / G1_FAILED) and reported `Files changed`; compute the worktree change set with `git -C <worktree> diff --name-only HEAD`.
+1. **Stage-untracked-for-diff (intent-to-add).** Builders never commit and never stage, so a newly-CREATED file in the worktree is untracked — and `git diff HEAD` (both `--name-only` and `--binary`) omits untracked files entirely. Mark them intent-to-add so they appear in the diff without staging content:
+
+   ```bash
+   git -C <worktree> add -AN
+   ```
+
+   `-AN` (`--all --intent-to-add`) records every untracked file as a zero-content add, so the subsequent `git diff HEAD` includes them. Without this step the merge-back silently drops every new declared file and the chunk commits without the files it created. Then compute C's result (SUCCESS / PLAN_GAP / G1_FAILED) and reported `Files changed`; compute the worktree change set with `git -C <worktree> diff --name-only HEAD` (now includes the intent-to-add untracked files).
 
 2. **Commit-integrity check** on the worktree diff (`plan-declared ⊇ builder-reported ⊇ worktree-changed`) — unchanged semantics.
 
-3. **Integration primitive — diff-apply, NOT `git merge`.** Builders never commit, so there is no worktree branch to merge; transfer the uncommitted diff:
+3. **Integration primitive — diff-apply, NOT `git merge`.** Builders never commit, so there is no worktree branch to merge; transfer the uncommitted diff (the step-1 intent-to-add ensures new files are included):
 
    ```bash
    git -C <worktree> diff --binary HEAD | git -C <feature-branch-root> apply --3way

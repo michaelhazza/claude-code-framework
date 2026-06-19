@@ -161,6 +161,8 @@ For each chunk:
 - **Chunk metadata block** — every chunk emits the following three fields as a YAML block immediately after the chunk heading. These are machine-readable by the build scheduler and the plan-metadata validator.
 
   ```yaml
+  id: "4"                    # stable chunk id; matches the chunk heading number and is
+                             # the key the scheduler and merge-back loop use throughout
   declared_files:
     - path/to/file-a.ts      # exhaustive create/modify set — the same set the
     - path/to/file-b.ts      # commit-integrity invariant already relies on; now explicit + machine-readable
@@ -171,8 +173,9 @@ For each chunk:
   ```
 
   **Field rules:**
+  - `id`: required, unique across the plan. The stable chunk id the scheduler (`computeWaves`) and the serialised merge-back loop key on — builder handles are keyed by it and merge-back iterates ids in ascending sorted order. Every `depends_on` entry MUST reference an `id` declared on some chunk in this plan. Use the chunk's heading number (e.g. heading "Chunk 4 — …" → `id: "4"`) so the human-readable plan and the machine-readable block never disagree. Without `id`, the metadata block cannot be scheduled.
   - `declared_files`: required, non-empty. Exhaustive — every file this chunk creates or modifies. Under-declaration is the primary correctness risk, hunted by plan-review (spec §4). If a file is touched, it must appear here.
-  - `depends_on`: required (empty array `[]` is valid). List the chunk ids of chunks that must be fully merged to the feature branch before this chunk starts. Do not invent edges; do not omit real ones.
+  - `depends_on`: required (empty array `[]` is valid). List the chunk `id`s of chunks that must be fully merged to the feature branch before this chunk starts. Do not invent edges; do not omit real ones.
   - `exclusive_resources`: omit or set to `[]` when this chunk claims no singleton. Include every singleton this chunk touches — migration prefixes, shared codegen outputs, singleton registry files such as `manifest.json`, lockfiles. The scheduler uses this to serialise chunks that would otherwise look file-disjoint.
 
   **Conservative-default stance (§12.3):** If unsure whether two chunks are independent, add a `depends_on` edge to serialise them. Do actively mark clearly-disjoint chunks as independent (empty `depends_on`, disjoint files) — do not chain everything — but never chase parallelism at the cost of provable safety.

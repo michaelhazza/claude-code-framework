@@ -43,6 +43,26 @@ export interface ValidatePlanResult {
 }
 
 // ---------------------------------------------------------------------------
+// Internal: error-message formatting
+// ---------------------------------------------------------------------------
+
+/**
+ * Formats an arbitrary value for inclusion in a ValidationError message without
+ * ever throwing. `JSON.stringify` throws on BigInt and on circular references;
+ * this module's parse/validate functions are contractually NEVER-throws, so all
+ * value interpolation in error messages MUST route through here.
+ */
+function safeStringify(value: unknown): string {
+  try {
+    const out = JSON.stringify(value);
+    // JSON.stringify returns undefined for functions/symbols/undefined.
+    return out ?? String(value);
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Internal: path canonicalisation
 // ---------------------------------------------------------------------------
 
@@ -110,15 +130,46 @@ export function parsePlanMetadata(
         ? (item['specSections'] as unknown[]).filter((s): s is string => typeof s === 'string')
         : undefined;
 
+    // depends_on: collect string entries; surface non-string entries as errors
+    // rather than silently dropping them. A dropped dependency edge is a safety
+    // hole — the chunk would be scheduled concurrently with one it depends on.
     const rawDependsOn = item['depends_on'] ?? item['dependsOn'];
-    const dependsOn = Array.isArray(rawDependsOn)
-      ? (rawDependsOn as unknown[]).filter((s): s is string => typeof s === 'string')
-      : undefined;
+    let dependsOn: string[] | undefined;
+    if (Array.isArray(rawDependsOn)) {
+      const kept: string[] = [];
+      for (const entry of rawDependsOn as unknown[]) {
+        if (typeof entry === 'string') {
+          kept.push(entry);
+        } else {
+          pathErrors.push({
+            chunkId,
+            field: 'dependsOn',
+            message: `depends_on entry is not a string: ${safeStringify(entry)}`,
+          });
+        }
+      }
+      dependsOn = kept;
+    }
 
+    // exclusive_resources: same treatment — non-string entries are errors, not
+    // silently erased, so a malformed singleton claim cannot weaken serialisation.
     const rawExclusiveResources = item['exclusive_resources'] ?? item['exclusiveResources'];
-    const exclusiveResources = Array.isArray(rawExclusiveResources)
-      ? (rawExclusiveResources as unknown[]).filter((s): s is string => typeof s === 'string')
-      : undefined;
+    let exclusiveResources: string[] | undefined;
+    if (Array.isArray(rawExclusiveResources)) {
+      const kept: string[] = [];
+      for (const entry of rawExclusiveResources as unknown[]) {
+        if (typeof entry === 'string') {
+          kept.push(entry);
+        } else {
+          pathErrors.push({
+            chunkId,
+            field: 'exclusiveResources',
+            message: `exclusive_resources entry is not a string: ${safeStringify(entry)}`,
+          });
+        }
+      }
+      exclusiveResources = kept;
+    }
 
     // Canonicalise declared_files entries.
     const rawDeclaredFiles = item['declared_files'] ?? item['declaredFiles'];
@@ -133,7 +184,7 @@ export function parsePlanMetadata(
           pathErrors.push({
             chunkId,
             field: 'declaredFiles',
-            message: `declared_files entry is not a string: ${JSON.stringify(entry)}`,
+            message: `declared_files entry is not a string: ${safeStringify(entry)}`,
           });
           continue;
         }
@@ -212,6 +263,16 @@ export function validatePlanMetadata(chunks: RawChunkMetadata[]): ValidatePlanRe
       ? chunk.id
       : '<unknown>';
 
+    // id: required, non-empty. The scheduler (computeWaves) and the merge-back
+    // loop key on it; a missing id cannot be scheduled deterministically.
+    if (chunkId === '<unknown>') {
+      errors.push({
+        chunkId,
+        field: 'id',
+        message: 'id is required but missing or empty',
+      });
+    }
+
     // Duplicate id check.
     if (chunkId !== '<unknown>') {
       if (seenIds.has(chunk.id as string)) {
@@ -274,7 +335,7 @@ export function validatePlanMetadata(chunks: RawChunkMetadata[]): ValidatePlanRe
             errors.push({
               chunkId,
               field: 'exclusiveResources',
-              message: `exclusiveResources entry must be a non-empty string: ${JSON.stringify(res)}`,
+              message: `exclusiveResources entry must be a non-empty string: ${safeStringify(res)}`,
             });
           }
         }
