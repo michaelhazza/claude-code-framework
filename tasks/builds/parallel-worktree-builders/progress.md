@@ -46,6 +46,10 @@ Build order (bootstrap: old sequential coordinator builds the scheduler): 1 → 
   - MEDIUM: `parsePlanMetadata` not truly never-throws → guards non-array `raw` + null/non-object block entries → structured PLAN_GAP, not a coordinator crash.
   - MEDIUM: numeric chunk ids sorted lexicographically (1,10,2) → numeric-aware `compareChunkIds` at all 4 computeWaves sort sites + merge-back prose aligned.
   - Tests 50→57 (7 new); all probed green.
+- **chatgpt-pr-review round 2** on PR #28. CHANGES_REQUESTED, 1 HIGH + 1 MEDIUM + 1 LOW, all fixed (commit `eb7f3f0`):
+  - HIGH: `computeWaves` was passed the raw operator `concurrencyCap`, not the resolved `effectiveCap` (min of operator/default/worktree caps) → a lowered cap wouldn't constrain dispatch. Now passes `effectiveCap`; records it in progress.
+  - MEDIUM: worktree probe ran AFTER waves computed+recorded → stale wave data on fallback. Moved probe into step 2a (effectiveCap resolution) — probe failure → strict-sequential, waves never computed; no stale data possible.
+  - LOW: `validatePlanMetadata` honoured "never throws" only for well-formed arrays → now guards non-array/null/non-object input like `parsePlanMetadata`. Tests 57→60.
 
 ## Doc-sync
 ADR-0007, CHANGELOG 2.24.0, FRAMEWORK_VERSION + manifest frameworkVersion (2.24.0), manifest registrations (4 modules + ADR), doc-sync.md trigger, README 0008 reservation — all done. CHANGELOG updated post-review for the `id` field + case-insensitive identity + intent-to-add.
