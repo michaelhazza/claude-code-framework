@@ -51,7 +51,9 @@
     { "path": "scripts/__tests__/audit-context-packs.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/project-registries.json.template.example.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/build-scheduler/computeWaves.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/build-scheduler/__tests__/computeWaves.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" }
+    { "path": "scripts/build-scheduler/__tests__/computeWaves.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/build-scheduler/validatePlanMetadata.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/build-scheduler/__tests__/validatePlanMetadata.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" }
   ],
   "removedFiles": [
     { "path": ".claude/agents/reality-checker.md", "removedIn": "2.21.0", "action": "warn-only" }
