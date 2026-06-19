@@ -4,7 +4,7 @@
 **Iterations run:** 3/3
 **Timestamp:** 2026-06-19T05:09:02Z
 **Reviewer:** Codex (gpt-5.5, xhigh) via `codex review`; sandbox forced to `danger-full-access` because the default Windows sandbox cannot spawn git (`CreateProcessWithLogonW failed: 1326`).
-**Commit at finish:** <filled-after-commit>
+**Commit at finish:** 8cf19f7ca11e6f88b59a93edfcaf4944bf8dd995
 
 ---
 
