@@ -41,7 +41,11 @@ Build order (bootstrap: old sequential coordinator builds the scheduler): 1 → 
 - **adversarial-reviewer:** SKIPPED — no schema/RLS/auth/tenant-data surface (spec §13); orchestration-correctness covered by unit tests + merge-back guard. Correct GRADED not-applicable skip, not a REVIEW_GAP.
 - **pr-reviewer:** found PR-001 BLOCKING (case-fold file-disjointness — `src/Foo.ts`≡`src/foo.ts` co-scheduled) + PR-002 masking test. Fixed (computeWaves case-insensitive file identity; original casing kept for git; A3b regression test; gate prose aligned). Re-review: APPROVED.
 - **dual-reviewer (Codex, 3 iterations):** APPROVED. Found + fixed 4: P1 merge-back data-loss (`git diff --binary HEAD` omits untracked files → added `git add -AN` intent-to-add); P1 missing chunk `id` in architect contract + validator; P2 silent dependency-edge loss → validation error; P2 never-throw regression → safeStringify. Tests 45→50.
-- **chatgpt-pr-review (Phase 3):** NOT run — operator directed "stop at final PR for review." Deferred to operator on the PR. (REVIEW_GAP: chatgpt-pr-review | task-class: Major | reason: operator-directed stop at PR | operator-override: yes-2026-06-19 | remediation: operator runs chatgpt-pr-review on the PR if desired before merge.)
+- **chatgpt-pr-review (Phase 3):** RAN on PR #28 (operator-driven). CHANGES_REQUESTED, 1 HIGH + 2 MEDIUM, all fixed (commit `bab418a`):
+  - HIGH: present-but-scalar `depends_on`/`exclusive_resources`/`declared_files` silently dropped (singleton-serialisation hole) → now fail closed with a structured error (generalised across all 3 fields, broader than the flagged `exclusive_resources` alone).
+  - MEDIUM: `parsePlanMetadata` not truly never-throws → guards non-array `raw` + null/non-object block entries → structured PLAN_GAP, not a coordinator crash.
+  - MEDIUM: numeric chunk ids sorted lexicographically (1,10,2) → numeric-aware `compareChunkIds` at all 4 computeWaves sort sites + merge-back prose aligned.
+  - Tests 50→57 (7 new); all probed green.
 
 ## Doc-sync
 ADR-0007, CHANGELOG 2.24.0, FRAMEWORK_VERSION + manifest frameworkVersion (2.24.0), manifest registrations (4 modules + ADR), doc-sync.md trigger, README 0008 reservation — all done. CHANGELOG updated post-review for the `id` field + case-insensitive identity + intent-to-add.
