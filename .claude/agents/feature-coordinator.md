@@ -392,15 +392,18 @@ This section is rewritten in place each chunk — only the most recent snapshot 
 
 #### Step 2a — Effective concurrency
 
-Before any chunk work begins, determine `effectiveCap`:
+Before any chunk work begins, determine `effectiveCap`. **The opt-in phrase is checked FIRST, before any probe or progress write, so strict-sequential runs zero new machinery (A8):**
 
-```
-effectiveCap = min(operator cap, current-default cap, worktree-availability cap)
-```
+1. **No opt-in phrase → force `effectiveCap = 1` and jump straight to step 2b.** If the operator invocation phrase is NOT exactly `launch feature coordinator parallel`, set `effectiveCap = 1` and go to strict-sequential mode (2b) immediately. **Do NOT run the worktree probe, do NOT write to `progress.md`, do NOT call any new module.** An invocation without the phrase therefore executes none of the new code path — A8 byte-identical, by non-execution.
 
-**Worktree-availability probe (runs here, as part of resolving `effectiveCap`):**
+2. **Opt-in phrase present → resolve the cap (the ONLY path that touches the new machinery):**
 
-Verify that `isolation: "worktree"` actually provisions a worktree in this environment (confirm-on-first-run per spec §12.2). If the probe FAILS: set worktree-availability cap = 1, which forces `effectiveCap == 1`. Log `parallelism: disabled — worktree unavailable` in `progress.md` and proceed with step 2b. **`computeWaves` and the wave-recording step never run**, so no stale wave data is possible.
+   ```
+   effectiveCap = min(operator cap, current-default cap, worktree-availability cap)
+   ```
+
+   - Default cap **3**; operator may override at the plan-gate.
+   - **Worktree-availability probe (runs here, ONLY because the operator opted in):** verify that `isolation: "worktree"` actually provisions a worktree in this environment (confirm-on-first-run per spec §12.2). If the probe FAILS: set worktree-availability cap = 1, which forces `effectiveCap == 1`; log `parallelism: disabled — worktree unavailable` in `progress.md` and proceed with step 2b. (This probe + log run only under the opt-in phrase, so they are expected behaviour, not an A8 violation.)
 
 **Parallel mode is engaged ONLY when ALL of the following hold:**
 
@@ -408,7 +411,7 @@ Verify that `isolation: "worktree"` actually provisions a worktree in this envir
 2. The worktree-availability probe (step 2a) succeeds.
 3. `effectiveCap >= 2`.
 
-If any condition fails, the build runs in strict-sequential mode (step 2b). The default cap is **3**; operator may override at the plan-gate.
+If any condition fails, the build runs in strict-sequential mode (step 2b).
 
 #### Step 2b — Strict-sequential mode (the default)
 
