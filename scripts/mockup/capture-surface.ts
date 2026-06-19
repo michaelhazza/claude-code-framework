@@ -30,7 +30,7 @@
 
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
 
 import {
@@ -78,6 +78,19 @@ const MAX_COMPUTED_ELEMENTS = 2000;
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/**
+ * Manifest paths are repo-relative POSIX (review OAI-PR-002): the manifest is
+ * committed (§9 decision 3), so an absolute path would make it machine-specific
+ * and could leak a local username/workspace layout. The PNG is still WRITTEN to
+ * its absolute filesystem location; only the value persisted into `screenshotPaths`
+ * is normalised. A path outside `projectRoot` (custom `outDir`) is left as-is.
+ */
+function toRepoRelative(absPath: string, projectRoot: string): string {
+  const rel = relative(projectRoot, absPath);
+  if (rel === '' || rel.startsWith('..')) return absPath;
+  return rel.split('\\').join('/');
 }
 
 function isServerReachable(baseURL: string): Promise<boolean> {
@@ -177,7 +190,7 @@ async function captureOneScreen(
   browser: Browser,
   input: CaptureInput,
   viewports: number[],
-  opts: Required<Pick<CaptureOptions, 'slug' | 'baseURL' | 'authDir' | 'outDir' | 'settleMs'>>,
+  opts: Required<Pick<CaptureOptions, 'slug' | 'baseURL' | 'authDir' | 'outDir' | 'settleMs'>> & { projectRoot: string },
 ): Promise<CaptureScreenEntry> {
   const storageStatePath = join(opts.authDir, `${input.role}.json`);
   if (!existsSync(storageStatePath)) {
@@ -210,7 +223,9 @@ async function captureOneScreen(
       const finalPath = join(opts.outDir, `${input.screenId}-${viewport}.png`);
       await screenshotAtomic(page, finalPath);
       written.push(finalPath);
-      screenshotPaths[viewport] = finalPath;
+      // Persist a repo-relative POSIX path in the committed manifest (OAI-PR-002);
+      // the PNG itself is written to `finalPath` on the local filesystem.
+      screenshotPaths[viewport] = toRepoRelative(finalPath, opts.projectRoot);
 
       // Ground the token sheet / outline in the WIDEST captured viewport (fullest
       // desktop layout), regardless of the order viewports were supplied in — the
@@ -255,7 +270,7 @@ export async function captureSurfaces(inputs: CaptureInput[], options: CaptureOp
   const authDir = join(projectRoot, options.authDir ?? DEFAULT_AUTH_DIR);
   const outDir = options.outDir ?? join(projectRoot, 'prototypes', options.slug, '_captures');
   const settleMs = options.settleMs ?? DEFAULT_SETTLE_MS;
-  const resolved = { slug: options.slug, baseURL, authDir, outDir, settleMs };
+  const resolved = { slug: options.slug, baseURL, authDir, outDir, settleMs, projectRoot };
 
   const screens: CaptureScreenEntry[] = [];
 
@@ -268,7 +283,23 @@ export async function captureSurfaces(inputs: CaptureInput[], options: CaptureOp
     return writeManifest(outDir, options.slug, screens);
   }
 
-  const browser = await chromium.launch();
+  // Launching the browser can itself fail (no installed Chromium binary, sandbox
+  // denied). That is not a per-screen failure — it means the whole capture cannot
+  // run — but capture is NEVER a gate (§4.6), so every screen degrades to
+  // source-read grounding rather than rejecting the round. `browser_unavailable`
+  // is recorded as a per-screen `failed` reason (no captured-shape fields), so the
+  // designer falls back explicitly and the manifest is still written.
+  let browser: Browser;
+  try {
+    browser = await chromium.launch();
+  } catch (err) {
+    const reason = `browser_unavailable: ${err instanceof Error ? err.message : String(err)}`;
+    for (const input of inputs) {
+      screens.push(failedEntry(input, input.viewports ?? DEFAULT_VIEWPORTS, reason));
+    }
+    return writeManifest(outDir, options.slug, screens);
+  }
+
   try {
     for (const input of inputs) {
       const viewports = input.viewports ?? DEFAULT_VIEWPORTS;
