@@ -7,9 +7,9 @@
  * Public contract: ChunkNode, ComputeWavesInput, Wave, ComputeWavesResult,
  * computeWaves(). Everything else is an implementation detail.
  *
- * Path precondition: declaredFiles values are already canonicalised +
- * case-folded by parsePlanMetadata (Chunk 2). computeWaves does NOT
- * re-canonicalise — canonicalisation lives in exactly one place (Chunk 2).
+ * Path storage: declaredFiles values are stored in their original casing
+ * (required so the coordinator's `git add` is correct on case-sensitive Linux
+ * CI). File-identity comparison is case-insensitive (Windows/macOS-safe).
  */
 
 export interface ChunkNode {
@@ -57,11 +57,11 @@ function hasResourceConflict(a: ChunkNode, b: ChunkNode): boolean {
   return false;
 }
 
-/** Returns true when the two chunks share at least one declared file. */
+/** Returns true when the two chunks share at least one declared file (case-insensitive). */
 function hasFileConflict(a: ChunkNode, b: ChunkNode): boolean {
-  const aFiles = new Set(a.declaredFiles);
+  const aFiles = new Set(a.declaredFiles.map((f) => f.toLowerCase()));
   for (const f of b.declaredFiles) {
-    if (aFiles.has(f)) return true;
+    if (aFiles.has(f.toLowerCase())) return true;
   }
   return false;
 }

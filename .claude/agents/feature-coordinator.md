@@ -440,7 +440,7 @@ For each wave produced by `computeWaves`:
 
   **Independence gate (MANDATORY, both intersections).** Before dispatch, the coordinator MUST re-verify pairwise across the wave's chunks:
 
-  (a) `declared_files` intersection: any non-empty pairwise intersection pulls the offending chunk into a later sequential slot and logs the serialisation reason.
+  (a) `declared_files` intersection (case-insensitive — matches `computeWaves` semantics; `src/Foo.ts` and `src/foo.ts` are the same file): any non-empty pairwise intersection pulls the offending chunk into a later sequential slot and logs the serialisation reason.
 
   (b) Wave-internal exclusive-resource check: pairwise-compare each chunk's declared `exclusive_resources` (migration prefixes, singleton registry files, etc.); any shared resource serialises those two chunks into separate slots.
 

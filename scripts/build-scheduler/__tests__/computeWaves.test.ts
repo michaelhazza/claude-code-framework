@@ -107,6 +107,32 @@ describe('A3 — shared declared file forces serialisation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// A3b (regression): case-insensitive file identity — src/Foo.ts vs src/foo.ts
+// ---------------------------------------------------------------------------
+
+describe('A3b — case-insensitive file identity (Windows/macOS safety)', () => {
+  it('places chunk A (src/Foo.ts) and chunk B (src/foo.ts) into different waves', () => {
+    const chunks = [
+      chunk('A', ['src/Foo.ts']),
+      chunk('B', ['src/foo.ts']),
+    ];
+    const result = computeWaves(input(chunks, 2));
+    // Must NOT be co-scheduled — two separate waves required.
+    expect(result.waves).toHaveLength(2);
+    // A and B must never appear in the same wave.
+    for (const wave of result.waves) {
+      const hasA = wave.chunkIds.includes('A');
+      const hasB = wave.chunkIds.includes('B');
+      expect(hasA && hasB).toBe(false);
+    }
+    // B is serialised after A; its reason must be file-overlap conflicting with A.
+    const reason = result.serialisedReasons.find((r) => r.chunkId === 'B');
+    expect(reason?.reason).toBe('file-overlap');
+    expect(reason?.conflictsWith).toBe('A');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // A4: shared exclusive resource → serialised
 // ---------------------------------------------------------------------------
 

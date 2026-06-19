@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { parsePlanMetadata, validatePlanMetadata } from '../validatePlanMetadata.js';
+import { computeWaves } from '../computeWaves.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -252,7 +253,10 @@ describe('parsePlanMetadata — path canonicalisation', () => {
     expect(chunks[0].declaredFiles).toHaveLength(1);
   });
 
-  it('src/Foo.ts in chunkA and src/foo.ts in chunkB resolve to the same canonical path', () => {
+  it('src/Foo.ts in chunkA and src/foo.ts in chunkB are treated as the same file by computeWaves (serialised into separate waves)', () => {
+    // Verifies the intra-parse path preserves original casing AND that
+    // computeWaves enforces file-identity case-insensitively across chunks.
+    // See computeWaves.test.ts A3b for the end-to-end case-fold regression.
     const { chunks, pathErrors } = parsePlanMetadata([
       {
         id: 'chunkA',
@@ -267,11 +271,20 @@ describe('parsePlanMetadata — path canonicalisation', () => {
     ]);
 
     expect(pathErrors).toHaveLength(0);
-    // Both canonicalise to their original casing (not mutated), but
-    // case-folded forms are equal — so computeWaves would treat them as same.
-    const aLower = chunks[0].declaredFiles![0].toLowerCase();
-    const bLower = chunks[1].declaredFiles![0].toLowerCase();
-    expect(aLower).toBe(bLower);
+    // Original casing is preserved in storage (required for git on Linux CI).
+    expect(chunks[0].declaredFiles![0]).toBe('src/Foo.ts');
+    expect(chunks[1].declaredFiles![0]).toBe('src/foo.ts');
+
+    // Route through computeWaves: chunkA and chunkB must be serialised.
+    const result = computeWaves({ chunks, concurrencyCap: 2 });
+    expect(result.waves).toHaveLength(2);
+    for (const wave of result.waves) {
+      const hasA = wave.chunkIds.includes('chunkA');
+      const hasB = wave.chunkIds.includes('chunkB');
+      expect(hasA && hasB).toBe(false);
+    }
+    const reason = result.serialisedReasons.find((r) => r.chunkId === 'chunkB');
+    expect(reason?.reason).toBe('file-overlap');
   });
 
   it('absolute path (Unix /absolute/path.ts) → ValidationError (not accepted)', () => {

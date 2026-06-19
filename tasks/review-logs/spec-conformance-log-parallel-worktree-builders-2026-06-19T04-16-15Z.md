@@ -8,6 +8,7 @@
 **Scope:** all of spec (6 chunks, completed implementation — caller-confirmed all-of-spec coverage)
 **Changed-code set:** 14 files (2 pure modules + 2 tests, 5 agent `.md`, 1 helper prompt, ADR + README + doc-sync, CHANGELOG + FRAMEWORK_VERSION + manifest.json)
 **Run at:** 2026-06-19T04:16:15Z
+**Commit at finish:** `131feaf366941272aea24b4d5c86b44dfe2a9d55`
 
 ---
 
