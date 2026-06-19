@@ -35,12 +35,14 @@ import { chromium, type Browser, type Page } from 'playwright';
 
 import {
   validateCaptureManifest,
+  validateScreenEntry,
   type CaptureManifest,
   type CaptureScreenEntry,
   type FallbackReason,
 } from './capture-manifestPure';
 import {
   extractTokenSheet,
+  navigatedAwayFromRoute,
   pruneDomOutline,
   type ComputedStyleRecord,
   type OutlineCandidate,
@@ -52,6 +54,13 @@ export interface CaptureInput {
   role: string;
   /** Defaults to DEFAULT_VIEWPORTS (375/768/1280) when omitted. */
   viewports?: number[];
+  /**
+   * Optional selector that MUST be present on the target surface (e.g. a page
+   * heading or a data-testid). If supplied and absent after navigation, the
+   * capture downgrades — guards against a stale-auth redirect or a 200
+   * login/unauthorized page being captured as the requested surface.
+   */
+  requireSelector?: string;
 }
 
 export interface CaptureOptions {
@@ -220,6 +229,18 @@ async function captureOneScreen(
       }
       await page.waitForTimeout(opts.settleMs);
 
+      // Auth/route guard (review: stale-auth false-positive). A redirect away from
+      // the requested route (e.g. to a login page), or a missing required selector,
+      // means we are NOT on the target surface — downgrade rather than ground the
+      // mockup in the wrong page.
+      const offTarget = navigatedAwayFromRoute(page.url(), input.route);
+      const selectorMissing = input.requireSelector ? (await page.$(input.requireSelector)) === null : false;
+      if (offTarget || selectorMissing) {
+        await page.close();
+        await removePartials(written);
+        return fallbackEntry(input, viewports, `route_unreachable_as_${input.role}`);
+      }
+
       const finalPath = join(opts.outDir, `${input.screenId}-${viewport}.png`);
       await screenshotAtomic(page, finalPath);
       written.push(finalPath);
@@ -239,7 +260,7 @@ async function captureOneScreen(
       await page.close();
     }
 
-    return {
+    const captured: CaptureScreenEntry = {
       screenId: input.screenId,
       route: input.route,
       role: input.role,
@@ -250,6 +271,18 @@ async function captureOneScreen(
       tokenSheet: extractTokenSheet(widestStyles),
       domOutline: pruneDomOutline(widestOutline),
     };
+
+    // The screenshots succeeded, but the page may have yielded an all-empty token
+    // sheet or DOM outline (a blank/loading/unusual surface). A `captured` entry
+    // that fails the contract would make writeManifest() throw and kill the whole
+    // round — capture is NEVER a gate (§4.6). Validate the would-be entry against
+    // the SAME contract the writer enforces; if it does not qualify as `captured`,
+    // drop the screenshots and downgrade to a clean `data_absent` fallback.
+    if (validateScreenEntry(captured).valid) {
+      return captured;
+    }
+    await removePartials(written);
+    return fallbackEntry(input, viewports, 'data_absent');
   } catch (err) {
     // Unrecoverable mid-screen error — drop any partial screenshots before the
     // caller records this screen as `failed` (which must carry no captured-shape fields).

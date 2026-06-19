@@ -49,6 +49,35 @@ export interface OutlineCandidate {
 /** Cap per bucket/token array so a pathological page cannot produce a runaway manifest. */
 const MAX_PER_BUCKET = 60;
 
+const AUTH_ROUTE_HINTS = ['/login', '/signin', '/sign-in', '/auth', '/unauthorized', '/forbidden'];
+
+/**
+ * True if, after navigation, the page is no longer on the requested surface — a
+ * stale-auth redirect to a login/unauthorized page, or any redirect that drops
+ * the requested route prefix. Guards against capturing the WRONG surface as
+ * `captured` (the reviewer trusts the capture as observed truth). Catches server
+ * redirects; an SPA that renders a login wall inline WITHOUT changing the URL is
+ * caught instead by the orchestrator's optional `requireSelector`.
+ */
+export function navigatedAwayFromRoute(finalUrl: string, requestedRoute: string): boolean {
+  let finalPath: string;
+  try {
+    finalPath = new URL(finalUrl).pathname.toLowerCase();
+  } catch {
+    return false;
+  }
+  let wantPath: string;
+  try {
+    wantPath = new URL(requestedRoute, 'http://x').pathname.toLowerCase();
+  } catch {
+    wantPath = requestedRoute.toLowerCase();
+  }
+  const wantIsAuth = AUTH_ROUTE_HINTS.some((h) => wantPath.startsWith(h));
+  if (!wantIsAuth && AUTH_ROUTE_HINTS.some((h) => finalPath.startsWith(h))) return true;
+  if (wantPath !== '/' && !finalPath.startsWith(wantPath)) return true;
+  return false;
+}
+
 /** Computed values that carry no design signal — dropped from the token sheet. */
 const NOISE_VALUES = new Set([
   '',

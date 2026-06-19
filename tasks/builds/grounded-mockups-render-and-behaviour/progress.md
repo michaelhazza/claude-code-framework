@@ -78,6 +78,11 @@ REVIEW_GAP: dual-reviewer | task-class: Significant | reason: Codex CLI availabi
 - **Doc-sync verdict:** frontend-design-principles + mobile-capability-principles updated; behaviour-manifest-template + ADR-0007 added; CHANGELOG + FRAMEWORK_VERSION + manifest bumped to 2.24.0; doc-sync trigger row added; `docs/capabilities.md`: n/a — internal tooling only.
 - **STOPPED before merge** per operator instruction: no `ready-to-merge` label, no auto-merge. PR awaits operator review.
 
+### Operator PR review round 2 (CHANGES_REQUESTED → 2 findings, both applied)
+- **BLOCKER — capture could hard-fail the round after successful screenshots.** `captureOneScreen` returned `captured` unconditionally; if a page yielded an all-empty token sheet or DOM outline, `writeManifest`'s validator threw and killed the whole round, violating "capture is never a hard gate" (§4.6). **Fix:** exported `validateScreenEntry` from the pure module; the orchestrator now validates the would-be `captured` entry against the same contract before returning it — if it does not qualify, it removes the screenshots and returns a clean `data_absent` fallback. Round always completes now.
+- **MEDIUM — stale-auth false-positive capture.** A redirect to a login/unauthorized page (or a present-but-stale storageState) could be captured as the requested surface. **Fix:** added a pure `navigatedAwayFromRoute` guard (login/unauthorized redirect or lost route prefix → downgrade `route_unreachable_as_{role}`) plus an optional `requireSelector` per screen for the inline-render (no-URL-change) case.
+- New tests: `validateScreenEntry` (rejects all-empty captured), `navigatedAwayFromRoute` (5 cases). Re-verified in automation-v1: **34 Vitest pass, ESLint clean, tsc clean.** Pushed to PR #27.
+
 ## Log
 
 - Setup: framework branch created, spec copied into build dir, review mode = parallel.

@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractTokenSheet,
+  navigatedAwayFromRoute,
   pruneDomOutline,
   type ComputedStyleRecord,
   type OutlineCandidate,
@@ -95,5 +96,32 @@ describe('pruneDomOutline', () => {
     const outline = pruneDomOutline(candidates);
     expect(outline.tabLabels).toEqual(['Active']);
     expect(outline).toEqual({ navItems: [], tabLabels: ['Active'], headings: [], tableColumnHeaders: [], primaryButtons: [], statusPills: [] });
+  });
+});
+
+describe('navigatedAwayFromRoute (auth/redirect guard)', () => {
+  const base = 'http://127.0.0.1:5000';
+
+  it('returns false when still on the requested route', () => {
+    expect(navigatedAwayFromRoute(`${base}/skills`, '/skills')).toBe(false);
+    expect(navigatedAwayFromRoute(`${base}/skills/active`, '/skills')).toBe(false); // prefix match
+  });
+
+  it('returns true when redirected to a login/unauthorized page', () => {
+    expect(navigatedAwayFromRoute(`${base}/login?next=/skills`, '/skills')).toBe(true);
+    expect(navigatedAwayFromRoute(`${base}/unauthorized`, '/skills')).toBe(true);
+  });
+
+  it('returns true when redirected away from the requested prefix', () => {
+    expect(navigatedAwayFromRoute(`${base}/dashboard`, '/skills')).toBe(true);
+  });
+
+  it('does not flag an intentionally-requested auth route', () => {
+    expect(navigatedAwayFromRoute(`${base}/login`, '/login')).toBe(false);
+  });
+
+  it('skips the prefix check for a root request but still catches an auth redirect', () => {
+    expect(navigatedAwayFromRoute(`${base}/anything`, '/')).toBe(false);
+    expect(navigatedAwayFromRoute(`${base}/login`, '/')).toBe(true);
   });
 });

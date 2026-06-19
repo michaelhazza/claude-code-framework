@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   validateCaptureManifest,
+  validateScreenEntry,
   type CaptureManifest,
   type CapturedScreenEntry,
 } from '../mockup/capture-manifestPure';
@@ -193,5 +194,33 @@ describe('validateCaptureManifest', () => {
     );
     expect(result.valid).toBe(false);
     if (!result.valid) expect(result.errors.some((e) => e.startsWith('screens[1]'))).toBe(true);
+  });
+});
+
+describe('validateScreenEntry (orchestrator pre-captured guard)', () => {
+  it('accepts a well-formed captured entry', () => {
+    expect(validateScreenEntry(capturedEntry())).toEqual({ valid: true });
+  });
+
+  // The orchestrator downgrades to data_absent instead of returning a captured entry
+  // that would make writeManifest throw — this is the contract that decision rests on.
+  it('rejects a captured entry whose domOutline is all-empty (would-be writeManifest throw)', () => {
+    const entry = capturedEntry({
+      domOutline: { navItems: [], tabLabels: [], headings: [], tableColumnHeaders: [], primaryButtons: [], statusPills: [] },
+    });
+    expect(validateScreenEntry(entry).valid).toBe(false);
+  });
+
+  it('rejects a captured entry with an empty token sheet', () => {
+    const entry = capturedEntry({
+      tokenSheet: { colors: [], fontFamilies: [], fontSizes: [], fontWeights: [], spacing: [], radii: [], shadows: [] },
+    });
+    expect(validateScreenEntry(entry).valid).toBe(false);
+  });
+
+  it('accepts a fallback_source_read entry', () => {
+    expect(
+      validateScreenEntry({ screenId: 's', route: '/r', role: 'org-admin', capturedAt: ISO, viewports: [375], captureStatus: 'fallback_source_read', fallbackReason: 'data_absent' }),
+    ).toEqual({ valid: true });
   });
 });

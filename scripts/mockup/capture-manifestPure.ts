@@ -291,6 +291,18 @@ function screenEntryIssues(entry: unknown, index: number): string[] {
 }
 
 /**
+ * Validate a single would-be screen entry against the contract. Used by the
+ * capture orchestrator to decide — BEFORE committing to `captured` — whether the
+ * extracted token sheet / DOM outline actually satisfy the `captured` rules; if
+ * not, it downgrades rather than letting `validateCaptureManifest` throw at write
+ * time (keeps "capture is never a hard gate" — §4.6). Never throws.
+ */
+export function validateScreenEntry(entry: unknown): ValidationResult {
+  const errors = screenEntryIssues(entry, 0);
+  return errors.length === 0 ? { valid: true } : { valid: false, errors };
+}
+
+/**
  * Validate a capture manifest. Never throws — returns a structured result even
  * for `null`/wrong-type input, so a capture round can log and degrade.
  */
