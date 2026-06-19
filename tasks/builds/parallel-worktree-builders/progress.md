@@ -31,8 +31,22 @@
   - LOW post-commit clean-state: after each merge-back commit, assert `git status --porcelain` empty before push/progress/worktree-remove; dirty → fail + reset + re-run.
 - [x] PLAN APPROVED by operator → autonomous build authorised through finalisation, STOP at PR (no merge).
 
-## Phase 2 — Construction (autonomous)
-Build order (bootstrap: scheduler does not exist yet, old sequential coordinator builds it): 1 → 2 → 3 → 4 → 5 → 6.
+## Phase 2 — Construction (autonomous) — COMPLETE
+Build order (bootstrap: old sequential coordinator builds the scheduler): 1 → 2 → 3 → 4 → 5 → 6. All committed + pushed.
+- Chunk 1 computeWaves.ts (19 tests) · Chunk 2 validatePlanMetadata+parsePlanMetadata (25) · Chunk 3 architect.md · Chunk 4 feature-coordinator.md Step 6 · Chunk 5 plan-review ×3 tiers · Chunk 6 ADR-0007/version/manifest/doc-sync.
+- G2: 152 Vitest pass (50 build-scheduler + 102 chatgpt-review); manifest valid + frameworkVersion 2.24.0; FRAMEWORK_VERSION 2.24.0.
+
+## Review pass — COMPLETE
+- **spec-conformance:** CONFORMANT (zero fixes).
+- **adversarial-reviewer:** SKIPPED — no schema/RLS/auth/tenant-data surface (spec §13); orchestration-correctness covered by unit tests + merge-back guard. Correct GRADED not-applicable skip, not a REVIEW_GAP.
+- **pr-reviewer:** found PR-001 BLOCKING (case-fold file-disjointness — `src/Foo.ts`≡`src/foo.ts` co-scheduled) + PR-002 masking test. Fixed (computeWaves case-insensitive file identity; original casing kept for git; A3b regression test; gate prose aligned). Re-review: APPROVED.
+- **dual-reviewer (Codex, 3 iterations):** APPROVED. Found + fixed 4: P1 merge-back data-loss (`git diff --binary HEAD` omits untracked files → added `git add -AN` intent-to-add); P1 missing chunk `id` in architect contract + validator; P2 silent dependency-edge loss → validation error; P2 never-throw regression → safeStringify. Tests 45→50.
+- **chatgpt-pr-review (Phase 3):** NOT run — operator directed "stop at final PR for review." Deferred to operator on the PR. (REVIEW_GAP: chatgpt-pr-review | task-class: Major | reason: operator-directed stop at PR | operator-override: yes-2026-06-19 | remediation: operator runs chatgpt-pr-review on the PR if desired before merge.)
+
+## Doc-sync
+ADR-0007, CHANGELOG 2.24.0, FRAMEWORK_VERSION + manifest frameworkVersion (2.24.0), manifest registrations (4 modules + ADR), doc-sync.md trigger, README 0008 reservation — all done. CHANGELOG updated post-review for the `id` field + case-insensitive identity + intent-to-add.
+
+## Phase 3 — STOP at PR (no merge, no ready-to-merge label) per operator directive.
 - [ ] Build chunks 1→6 sequentially (scheduler does not exist until ch1 lands; bootstrap order 1-2-3-4-5-6).
 - [ ] G2 (consuming-repo CI post-sync) + pr-reviewer.
 
