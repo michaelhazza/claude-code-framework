@@ -238,16 +238,24 @@ Present the finalised plan to the operator verbatim:
 
 ## Step 6 — Per-chunk loop
 
-Process chunks one at a time in plan order. Do not start chunk N+1 until chunk N is committed and its TodoWrite item is marked complete.
+### Overview
 
-### Resume detection
+Step 6 has two execution modes — **strict-sequential** (the default) and **parallel** (opt-in only). The inner routine described first is shared by both modes. Mode selection happens in step 2 before any chunk work begins. Steps 0–5 and 7–12 of this playbook are unchanged regardless of mode.
+
+---
+
+### Inner routine — "process one chunk"
+
+The inner routine encapsulates everything the coordinator does for a single chunk. It is called by both modes (step 2b for strict-sequential, steps 2c/2d for parallel). **None of the logic below changes between modes.**
+
+#### Resume detection
 
 Before invoking builder for each chunk, check `tasks/builds/{slug}/progress.md`. If any chunk is recorded as `done` (resume run):
 
 1. **Pre-resume typecheck:** run `npm run typecheck` ONCE before processing any chunks. If it fails: surface diagnostics, pause, require operator fix before proceeding. Do NOT skip completed chunks while the branch is type-broken.
 2. For each chunk recorded as `done`: run `git log --oneline origin/main...HEAD -- <files listed for that chunk>` to verify a commit exists. If commit exists → skip builder, mark TodoWrite complete. If NO commit → re-run builder. Do NOT skip.
 
-### Environment snapshot check (for resume)
+#### Environment snapshot check (for resume)
 
 Capture the current values:
 - `git rev-parse HEAD`
@@ -260,7 +268,7 @@ If no prior snapshot exists (fresh run, not a resume), skip the comparison — t
 
 The snapshot is (re)written at the end of every chunk loop iteration (see "Chunk-completion progress write" below) so a subsequent resume always has a baseline.
 
-### Builder invocation
+#### Builder invocation
 
 Before dispatching builder for the **first chunk only**, write the phase marker:
 
@@ -268,13 +276,9 @@ Before dispatching builder for the **first chunk only**, write the phase marker:
 mkdir -p tasks/builds/{slug} && echo -n "build" > tasks/builds/{slug}/.phase
 ```
 
-This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the
-coordinator is now in the `build` phase. Subsequent chunks do not overwrite —
-the file is already `build`.
+This signals to the phase-lock hook (`.claude/hooks/phase-lock.js`) that the coordinator is now in the `build` phase. Subsequent chunks do not overwrite — the file is already `build`.
 
-**Bootstrap note:** the v2.13.0 build that introduces these phase markers does
-not benefit from its own enforcement — the hook is not yet deployed during this
-build. New builds post-v2.13.0 adoption get the markers automatically.
+**Bootstrap note:** the v2.13.0 build that introduces these phase markers does not benefit from its own enforcement — the hook is not yet deployed during this build. New builds post-v2.13.0 adoption get the markers automatically.
 
 **HARD RULE — builder dispatch is mandatory for all chunk construction.** The coordinator MUST dispatch `builder` via the `Agent` tool for every chunk in the plan. The coordinator MUST NEVER write chunk code inline with `Edit` or `Write` in the main session. Inline construction in the main session runs on the operator's main-session model (Opus during this coordinator) instead of Sonnet, defeats the cost model that motivates the builder sub-agent, and creates an unreviewed scope-drift hole because the commit-integrity invariant below depends on builder's structured `files-changed` verdict. If a chunk feels too small to dispatch, that is a plan defect — escalate as a `PLAN_GAP` to architect rather than implementing inline.
 
@@ -294,7 +298,7 @@ Provide the sub-agent with:
 - The chunk name
 - The list of files the plan associates with this chunk
 
-### G1 — per-chunk scoped lint (builder also runs targeted pure-function tests where applicable)
+#### G1 — per-chunk scoped lint (builder also runs targeted pure-function tests where applicable)
 
 G1 has two halves. The builder sub-agent runs the inner half against the chunk it just authored (scoped `eslint` on touched files plus any targeted pure-function test the chunk newly authored — see `builder.md` Step 4). The coordinator then re-runs the lint half as a backup check against the same touched-file set in the main session:
 
@@ -307,7 +311,7 @@ Cap at 3 fix attempts per chunk. On failure: send diagnostics to a fresh `builde
 
 **Do NOT run `npm run typecheck` or `npm run build:server` / `npm run build:client` per chunk.** Those run once at G2 (Step 7), against the integrated branch state. Per-chunk execution gives earlier detection, but the wall-time and token cost across multi-chunk builds outweighs that benefit. G2 remains the required integrated type/build gate and routes any failure back through a fresh builder.
 
-### Plan-gap handling
+#### Plan-gap handling
 
 If builder reports `PLAN_GAP`:
 
@@ -327,7 +331,7 @@ If builder reports `PLAN_GAP`:
 4. Re-invoke builder with the revised plan.
 5. Cap at **2 plan-gap rounds per chunk**. On the third: escalate per failure paths.
 
-### Commit-integrity invariant
+#### Commit-integrity invariant
 
 The plan's declared files for the chunk are the canonical source of truth. The integrity chain is `plan-declared ⊇ builder-reported ⊇ working-tree`. After builder SUCCESS + G1 passes:
 
@@ -348,7 +352,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 Push after each chunk commit.
 
-### Chunk-learnings write (BEFORE the chunk commit — step 4 above)
+#### Chunk-learnings write (BEFORE the chunk commit — step 4 above)
 
 After builder reports SUCCESS for chunk N and G1 passes, extract a 5-10-line summary and append to `tasks/builds/{slug}/chunk-learnings.md` using exactly this format (Contract 3). **This write happens at step 4 of the Commit-integrity invariant — BEFORE the `git add` + `git commit`** — so the learning entry lands in the same commit as the chunk it describes. Earlier versions wrote it after the commit, leaving the file dirty between chunks and risking the last-chunk entry never landing on its own commit.
 
@@ -367,7 +371,7 @@ The `Watch-out for future chunks` line is the load-bearing line — write a conc
 
 **Forward-only bootstrap note:** the v2.13.0 build itself runs without chunk-learnings injection (this write lands in Chunk 5; chunks 1-4 had no prior file to read). New builds post-v2.13.0 get the full mechanism.
 
-### Chunk-completion progress write (environment snapshot)
+#### Chunk-completion progress write (environment snapshot)
 
 When updating `tasks/builds/{slug}/progress.md` in the chunk-completion progress write step (after `git push` — the Commit-integrity invariant step 6), write or replace a `## Environment snapshot` section so a subsequent resume run has a baseline for the resume-time comparison (see "Environment snapshot check" earlier in Step 6):
 
@@ -381,6 +385,138 @@ When updating `tasks/builds/{slug}/progress.md` in the chunk-completion progress
 ```
 
 This section is rewritten in place each chunk — only the most recent snapshot is retained.
+
+---
+
+### Step 2 — Determine mode and execute
+
+#### Step 2a — Effective concurrency
+
+Before any chunk work begins, determine `effectiveCap`:
+
+```
+effectiveCap = min(operator cap, current-default cap, worktree-availability cap)
+```
+
+**Parallel mode is engaged ONLY when ALL of the following hold:**
+
+1. The operator invocation phrase is exactly `launch feature coordinator parallel`.
+2. The worktree-availability probe (step 2c) succeeds.
+3. `effectiveCap >= 2`.
+
+If any condition fails, the build runs in strict-sequential mode (step 2b). The default cap is **3**; operator may override at the plan-gate.
+
+#### Step 2b — Strict-sequential mode (the default)
+
+**This is the default mode.** It runs when `effectiveCap == 1`, when the operator did not include the opt-in phrase `launch feature coordinator parallel`, or when the worktree-availability probe failed.
+
+In strict-sequential mode: run the inner routine (above) for each chunk in plan order. Do not start chunk N+1 until chunk N is committed and its TodoWrite item is marked complete.
+
+**In strict-sequential mode, the coordinator does NOT call `parsePlanMetadata`, `validatePlanMetadata`, `computeWaves`, the worktree probe, the independence gate, or any wave-audit write.** None of the new machinery executes — progress writes are exactly today's. This is the A8 byte-identical guarantee: the new code path does not execute at all, so nothing new can fail or mutate state.
+
+Wave preview is computed at the plan-gate (Step 5) for the operator only — never inside Step 6 execution.
+
+#### Step 2c — Parallel mode (opt-in phrase present)
+
+**Executed only when the operator phrase `launch feature coordinator parallel` is present.**
+
+**Parse and validate the plan metadata:**
+
+Call `parsePlanMetadata(raw)` — the single snake-to-camel normalisation point (Chunk 2, `scripts/build-scheduler/validatePlanMetadata.ts`). This function returns `{ chunks, pathErrors }` (NOT a flat array). Treat a non-empty `pathErrors` as a `PLAN_GAP` and route back to architect; do not proceed to wave computation. Pass `.chunks` into `validatePlanMetadata`; if `ok: false`, treat as `PLAN_GAP` and route back to architect. Then call `computeWaves({ chunks, concurrencyCap })` (Chunk 1, `scripts/build-scheduler/computeWaves.ts`) on the validated, normalised chunks. Record the chosen cap and the computed waves in `progress.md`.
+
+**Worktree-availability probe (BEFORE committing to the wave schedule):**
+
+Verify that `isolation: "worktree"` actually provisions a worktree in this environment (confirm-on-first-run per spec §12.2). **If the worktree probe FAILS: discard the wave schedule entirely and fall the WHOLE build back to strict-sequential mode (step 2b).** Do NOT attempt to run a multi-chunk wave via any other path — there is no partial fallback. Log `parallelism: disabled — worktree unavailable` in `progress.md` and proceed with step 2b.
+
+**Resume determinism:** `computeWaves` is deterministic (stable id sort, A5); per-chunk resume detection (commit exists for the chunk's files?) applies per chunk regardless of wave. On any dirty feature branch at Step 6 resume, apply the crash-safety protocol in step 2d before re-dispatching.
+
+**Per-wave loop (in order):**
+
+For each wave produced by `computeWaves`:
+
+- **Single-chunk wave:** call the inner routine directly (today's path — no worktree, no concurrency).
+
+- **Multi-chunk wave (size 2 or more):**
+
+  **Independence gate (MANDATORY, both intersections).** Before dispatch, the coordinator MUST re-verify pairwise across the wave's chunks:
+
+  (a) `declared_files` intersection: any non-empty pairwise intersection pulls the offending chunk into a later sequential slot and logs the serialisation reason.
+
+  (b) Wave-internal exclusive-resource check: pairwise-compare each chunk's declared `exclusive_resources` (migration prefixes, singleton registry files, etc.); any shared resource serialises those two chunks into separate slots.
+
+  Both checks are required. This is NOT the Step 2 branch-vs-main collision check — it is a pairwise comparison across the chunks within this wave.
+
+  **Concurrent dispatch:** issue all N `builder` Agent calls in a single message, each with `model: "sonnet"` and `isolation: "worktree"`, each given the plan path, chunk name, and declared-files list. Builders run normal Steps 0–5 including per-chunk G1 inside their own worktree.
+
+#### Step 2d — Serialised merge-back transaction
+
+**Applies only in parallel mode, after each multi-chunk wave's builders complete.**
+
+Keep the dispatched builder handles keyed by chunk id. Iterate the wave's chunk ids in **ascending sorted order** (NOT first-finished-first). When it is chunk C's turn, await C's specific builder result — never integrate a later chunk id before every earlier one in the wave has either committed or entered explicit sequential fallback.
+
+For each chunk C in ascending sorted order:
+
+0. **Clean-branch precondition.** Assert `git status --porcelain` on the feature branch is empty before touching C. If it is dirty, a prior merge-back was interrupted: run `git reset --hard HEAD && git clean -fd`, verify `git status --porcelain` is empty, then let per-chunk resume detection re-dispatch the affected chunk. Never apply onto a dirty feature branch.
+
+1. Collect C's result (SUCCESS / PLAN_GAP / G1_FAILED) and reported `Files changed`; compute the worktree change set with `git -C <worktree> diff --name-only HEAD`.
+
+2. **Commit-integrity check** on the worktree diff (`plan-declared ⊇ builder-reported ⊇ worktree-changed`) — unchanged semantics.
+
+3. **Integration primitive — diff-apply, NOT `git merge`.** Builders never commit, so there is no worktree branch to merge; transfer the uncommitted diff:
+
+   ```bash
+   git -C <worktree> diff --binary HEAD | git -C <feature-branch-root> apply --3way
+   ```
+
+   `--3way` merges against the current feature HEAD, which may have advanced as earlier siblings merged back.
+
+4. **Merge-back guard and hard cleanup.** If `git apply --3way` conflicts or fails: do NOT force-apply and do NOT rely on `git checkout -- .` or reverse-apply (these can leave unmerged index stages, conflict markers, new untracked files, or partial binary changes). Run:
+
+   ```bash
+   git reset --hard HEAD && git clean -fd
+   ```
+
+   Then verify `git status --porcelain` is empty. Fall C back to sequential re-application (re-dispatch its builder against the now-updated feature branch via the inner routine); log `INDEPENDENCE_VIOLATION` naming both chunks and the conflicting file.
+
+   **Sibling quarantine on INDEPENDENCE_VIOLATION.** A merge-back conflict disproves the wave's independence claim. Worktrees already integrated before the violation proved their disjointness and their commits stand. Every remaining unintegrated sibling worktree in this wave was built against the old wave base and is now stale: discard all of them (remove the worktrees, do NOT apply them) and re-run those chunks SEQUENTIALLY, in ascending chunk-id order, against the updated feature branch (each via the inner routine). Log the quarantine list in `progress.md` alongside the `INDEPENDENCE_VIOLATION`.
+
+5. **Coordinator-owned writes on the feature branch (NEVER inside a worktree):** chunk-learnings entry (write-before-commit + partial-write recovery as in the inner routine's commit-integrity invariant), coordinator-side backup scoped lint, `git add <declared files> tasks/builds/{slug}/chunk-learnings.md`, per-chunk commit (standard message format).
+
+   **Post-commit clean-state assertion.** Immediately after the commit, verify:
+
+   ```bash
+   git status --porcelain
+   ```
+
+   The output MUST be empty. If anything remains (residue from staging, an undeclared artefact), the transaction did not close cleanly: run `git reset --hard HEAD && git clean -fd` and re-run this chunk via the inner routine rather than letting the next chunk discover the dirtiness. Only on a clean porcelain output: push, update `progress.md`, mark TodoWrite complete. The clean commit closes the transaction — it is the only point at which C's work becomes durable feature-branch state.
+
+6. Remove the worktree.
+
+**Wave failure handling.** One builder's `G1_FAILED` re-dispatches only that chunk (siblings unaffected, file-isolated). `PLAN_GAP` pauses the wave and routes to architect; siblings already integrated (earlier sorted ids) stay committed. Per-chunk escalation ladders (plan-gap at most 2 rounds, G1 at most 3 attempts) apply within the wave, unchanged.
+
+After every wave's merge-back completes, proceed to the next wave (its `depends_on` edges are now satisfied on the feature branch).
+
+---
+
+### Step 3 — Audit trail (parallel mode only)
+
+When parallel mode is engaged, record in `progress.md` per wave: wave index, chunk ids, concurrency used, merge order, and any `INDEPENDENCE_VIOLATION` occurrences, serialisation fallbacks, or worktree-unavailable fallbacks. In strict-sequential mode there are no wave-audit writes — progress writes are exactly today's.
+
+---
+
+### Step 4 — Rollout gate
+
+**Operator-phrase-driven, no persistent build counter.**
+
+Parallel mode runs ONLY when the operator includes `launch feature coordinator parallel` in the invocation phrase. Absent that phrase, `effectiveCap` is forced to 1 (today's behaviour) while still computing and displaying the wave preview at the plan-gate (Step 5) for operator information.
+
+The coordinator stores no build-count state and does not track "build N of 3." The "opt-in for the first 3 builds, then default-on" guidance in the spec is a maintainer decision: after confidence is gained, a maintainer edits this agent's default (a one-line change flipping the absent-phrase default from concurrency=1 to wave-on), recorded in `.claude/CHANGELOG.md`. It is not an automated counter the coordinator maintains.
+
+---
+
+### Step 5 — ADR-0014 callout
+
+The coordinator MUST run inline in the main session to retain top-level `Agent` access and must NEVER be dispatched as a sub-agent. Dispatching it as a sub-agent breaks both the strict-sequential and parallel loops at the first builder dispatch (`No such tool available: Task. Task is not available inside subagents.`). ADR-0014 is the authoritative record of this constraint.
 
 ## Step 7 — G2 integrated-state gate
 

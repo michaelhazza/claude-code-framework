@@ -21,4 +21,12 @@
 - **Plan gaps surfaced:** none
 - **Watch-out for future chunks:** architect now emits snake_case `declared_files`/`depends_on`/`exclusive_resources` per chunk + a `## Build parallelism` plan section (advisory; coordinator's `computeWaves` is authoritative). The `## Build parallelism` section the architect produces is the same one Chunk 4's coordinator consumes — keep the field-name vocabulary aligned across architect.md, the validator (Chunk 2), and feature-coordinator.md (Chunk 4).
 
+## Chunk 4 — feature-coordinator.md Step 6 wave-loop rewrite
+
+- **Files touched:** .claude/agents/feature-coordinator.md (151 insertions, 15 deletions — mostly additive; deletions are `###`→`####` heading re-levelling of the extracted inner routine)
+- **G1 failures resolved:** none (grep self-check — all 11 anchors hit; lint/tests N/A for markdown)
+- **Plan gaps surfaced:** none
+- **Watch-out for future chunks:** Step 6 is now: inner routine (today's per-chunk body, verbatim, re-levelled to `####`) + Step 2a/2b/2c/2d mode machinery. Preserved invariants verified present: commit-integrity invariant (×3), `plan-declared ⊇ builder-reported` (×2), mandatory builder dispatch, chunk-learnings, Steps 7/8/10 untouched. Chunk 6's CHANGELOG/ADR should reference the strict-sequential default + diff-apply transaction. The pr-reviewer/spec-conformance branch pass must run the preserve-every-invariant checklist against this file.
+
+
 
