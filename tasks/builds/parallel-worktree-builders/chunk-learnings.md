@@ -14,3 +14,11 @@
 - **Plan gaps surfaced:** none
 - **Watch-out for future chunks:** `parsePlanMetadata(raw)` returns **`{ chunks, pathErrors }`** (NOT a flat array) — path errors are detected during canonicalisation before structural validation, surfaced structurally to honour the never-throw contract. **Chunk 4's coordinator prose must reflect this:** the wave-compute step calls `parsePlanMetadata(raw)`, treats a non-empty `pathErrors` as a `PLAN_GAP` (same as `validatePlanMetadata` `ok:false`), and passes `.chunks` into `validatePlanMetadata` then `computeWaves`. Canonicalisation (snake→camel + path normalise + case-fold) lives ENTIRELY here — Chunk 1 assumes canonical input.
 
+## Chunk 3 — architect.md metadata emission
+
+- **Files touched:** .claude/agents/architect.md
+- **G1 failures resolved:** none (markdown; grep self-check — all 5 anchors hit first pass)
+- **Plan gaps surfaced:** none
+- **Watch-out for future chunks:** architect now emits snake_case `declared_files`/`depends_on`/`exclusive_resources` per chunk + a `## Build parallelism` plan section (advisory; coordinator's `computeWaves` is authoritative). The `## Build parallelism` section the architect produces is the same one Chunk 4's coordinator consumes — keep the field-name vocabulary aligned across architect.md, the validator (Chunk 2), and feature-coordinator.md (Chunk 4).
+
+

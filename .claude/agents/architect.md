@@ -158,6 +158,29 @@ For each chunk:
   - *Public interface this chunk exposes:* the function signatures, route shapes, exported types, or service methods callers will touch — keep it small
   - *What stays hidden behind it:* internal helpers, data structures, intermediate state, retry/idempotency machinery, transformation steps, error-mapping — anything callers must not depend on
   If the hidden surface is smaller than the public surface, the chunk is shallow — re-split or absorb it into a neighbour. The point is to force capability-shaped chunks at plan time, where it is cheapest to fix.
+- **Chunk metadata block** — every chunk emits the following three fields as a YAML block immediately after the chunk heading. These are machine-readable by the build scheduler and the plan-metadata validator.
+
+  ```yaml
+  declared_files:
+    - path/to/file-a.ts      # exhaustive create/modify set — the same set the
+    - path/to/file-b.ts      # commit-integrity invariant already relies on; now explicit + machine-readable
+  depends_on: []             # chunk ids that must complete first; empty array is valid
+  exclusive_resources:
+    - migration:v2.x.y       # include when this chunk claims a singleton (migration prefix,
+    - manifest.json          # shared codegen output, singleton registry file, lockfile)
+  ```
+
+  **Field rules:**
+  - `declared_files`: required, non-empty. Exhaustive — every file this chunk creates or modifies. Under-declaration is the primary correctness risk, hunted by plan-review (spec §4). If a file is touched, it must appear here.
+  - `depends_on`: required (empty array `[]` is valid). List the chunk ids of chunks that must be fully merged to the feature branch before this chunk starts. Do not invent edges; do not omit real ones.
+  - `exclusive_resources`: omit or set to `[]` when this chunk claims no singleton. Include every singleton this chunk touches — migration prefixes, shared codegen outputs, singleton registry files such as `manifest.json`, lockfiles. The scheduler uses this to serialise chunks that would otherwise look file-disjoint.
+
+  **Conservative-default stance (§12.3):** If unsure whether two chunks are independent, add a `depends_on` edge to serialise them. Do actively mark clearly-disjoint chunks as independent (empty `depends_on`, disjoint files) — do not chain everything — but never chase parallelism at the cost of provable safety.
+
+  **Singleton survey (§12.6):** During file inventory, survey for shared singletons: migration prefix sequences, shared codegen outputs, singleton registry files (such as `manifest.json`), and lockfiles. Model each as an `exclusive_resources` entry on every chunk that touches it — even when those chunks' primary `declared_files` are otherwise disjoint. A missed singleton is an undeclared overlap; the scheduler cannot serialise what it cannot see.
+
+  **Correctness obligation:** Exhaustive `declared_files` is a correctness obligation — under-declaration is the primary risk, hunted by plan-review (spec §4). When extending a chunk's scope during planning, update `declared_files` immediately. Do not defer.
+
 - **Contracts** — interfaces, function signatures, API shapes, schema columns
 - **Error handling** — what errors are possible; how they surface (service throw shape, HTTP status codes)
 - **Test considerations** — key scenarios and edge cases the pr-reviewer should check after implementation
@@ -165,7 +188,21 @@ For each chunk:
 
 **State-based idempotency: "exists" is not "correct".** For every chunk whose contract describes state-based idempotency ("if X exists, record exists; else create X" — e.g. "is the onboarding branch already pushed?", "does the PR/secret/release already exist?"), require the plan to specify how the orchestrator verifies the EXISTING X's content matches the expected canonical content. Recording `status: 'exists'` from the existence check alone is wrong when the existing state may be partial or stale (a prior partial run leaves a half-built branch). The plan must pin three outcomes on the X-exists path: (a) content matches → record `exists`; (b) drift detected → attempt repair AND only record `exists` / `driftRepaired` on repair success; (c) repair fails → record `status: 'error'` with a typed errorCode and a `partial` audit. **"exists" status without content verification is a state lie.**
 
-### 4. UX Considerations (when applicable)
+### 4. Build parallelism
+
+Every plan must include a `## Build parallelism` section. Place it after the per-chunk detail and before risks and mitigations. It must contain:
+
+- **Dependency edges:** list every `depends_on` edge across the chunk set (e.g. `3→2, 4→{1,2}, 5→2, 6→{1,2,3,4,5}`).
+- **Exclusive resources:** list every singleton any chunk declares and which chunks share it.
+- **Topological layers:** group chunks by layer (layer 0 = no dependencies, layer 1 = depends only on layer 0, etc.).
+- **Wave table:** a table showing which chunks land in each wave, at the default concurrency cap, and why any chunk is serialised within its layer (file overlap, exclusive-resource clash, or cap-spill).
+- **Rationale:** one or two sentences explaining the real parallel win (which wave runs concurrently) and what forces serialisation within a layer.
+
+**Advisory vs. authoritative:** the architect's `## Build parallelism` section is a preview for the operator at the plan-gate. The coordinator re-derives the authoritative waves by running `computeWaves` on the emitted chunk metadata at dispatch time. If the architect's preview and the coordinator's computation disagree, the coordinator's result governs.
+
+**Purpose:** the operator sees the parallel plan before approving the build. A plan whose `## Build parallelism` section is absent or shows all-sequential waves with no rationale is a signal that `declared_files` or `exclusive_resources` may be over-declared — surface that in the plan rather than silently serialising everything.
+
+### 5. UX Considerations (when applicable)
 
 If the feature involves UI changes:
 - What does the user need to see and do?
