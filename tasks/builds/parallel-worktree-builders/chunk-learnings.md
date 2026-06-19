@@ -36,5 +36,13 @@
 - **Scope expansion (documented):** the plan declared only the two `.md` plan-review agents, but the **automated** OpenAI plan-review tier's prompt lives in `scripts/chatgpt-reviewPure.ts` (`SYSTEM_PROMPT_PLAN_V2`). Builder correctly flagged (not smuggled) that editing only the `.md` files leaves the default automated/parallel tier without the new hunt target — i.e. the feature would be half-wired. Coordinator folded the hunt-target bullet into `SYSTEM_PROMPT_PLAN_V2`'s Hunt targets list so ALL three plan-review tiers (claude, manual ChatGPT-web, automated OpenAI) carry it. Test asserts only placeholder-substitution, not prompt content → safe; verified green. Chunk 6 manifest note: `scripts/chatgpt-reviewPure.ts` is already a registered managed file, so no new manifest entry needed.
 - **Watch-out for future chunks:** none.
 
+## Chunk 6 — Docs + ADR + version + manifest finalise
+
+- **Files touched:** docs/decisions/0007-parallel-worktree-builders.md (new), docs/decisions/README.md, .claude/CHANGELOG.md, .claude/FRAMEWORK_VERSION (2.23.0→2.24.0), .claude/agents/builder.md, docs/doc-sync.md, manifest.json (frameworkVersion 2.20.0→2.24.0 + ADR-0007 row)
+- **G1 failures resolved:** none (all deterministic checks pass first run: manifest valid JSON, 4 helper entries + ADR row present, version 2.24.0, CHANGELOG/README/builder/doc-sync anchors hit)
+- **Plan gaps surfaced:** none
+- **Watch-out:** ADR-0007 references ADR-0014 (coordinator-runs-inline) which exists only in consuming repos, not the framework repo — a logical cross-reference, consistent with other ADRs. manifest `frameworkVersion` drift (2.20.0) reconciled to 2.24.0 alongside FRAMEWORK_VERSION.
+
+
 
 

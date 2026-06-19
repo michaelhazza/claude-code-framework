@@ -28,6 +28,7 @@ Enforced at finalisation by `chatgpt-pr-review` (step 6), `chatgpt-spec-review` 
 | `references/spec-review-directional-signals.md` | When `spec-reviewer` surfaces the same scope/sequencing/posture call >2 times — add a signal so the classifier catches it. |
 | `docs/incident-response.md` | When the SEV classification matrix, on-call rotation, timeline-log format, post-mortem template, or escalation paths change. |
 | `.claude/FRAMEWORK_VERSION` + `.claude/CHANGELOG.md` | Every framework-level change ships with a version bump and changelog entry. Repo-specific changes (your own architecture.md edits, your own agent additions) DO NOT bump the framework version — that tracks the agent-fleet/conventions layer only. |
+| `architect.md`, `feature-coordinator.md`, plan-review agents (`claude-plan-review.md`, `chatgpt-plan-review.md`), and the build-orchestration ADR | When the build-loop orchestration or chunk-metadata format changes (new fields in `declared_files`/`depends_on`/`exclusive_resources`, new scheduling rules, new wave-loop invariants). All four surfaces describe the same contract from different roles; a change to one must propagate to the others. |
 
 ---
 

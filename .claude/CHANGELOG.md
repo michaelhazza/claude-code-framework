@@ -32,6 +32,31 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.24.0 — 2026-06-19 — Parallel worktree builders for independent chunks
+
+**Highlights:** Adds opt-in concurrent chunk dispatch to the `feature-coordinator` Step 6 build loop. Provably-independent chunks (disjoint `declared_files`, no shared `exclusive_resources`, no `depends_on` edge) can now build concurrently, each in its own git worktree, and integrate back to the feature branch serially in stable chunk-id order. Two new pure modules drive scheduling: `computeWaves.ts` (deterministic wave scheduler, unit-tested) and `validatePlanMetadata.ts` (plan-metadata validator, unit-tested). Architect now emits snake_case `declared_files`, `depends_on`, `exclusive_resources` per chunk. The strict-sequential default is preserved byte-identically (A8 by non-execution: the new machinery is unreachable without an explicit opt-in). Integration uses `git apply --3way` (diff-apply, not `git merge`). Rollout: opt-in via `launch feature coordinator parallel` for the first 3 builds; then a one-line maintainer change flips the default.
+
+**Added:**
+- `scripts/build-scheduler/computeWaves.ts` — pure deterministic wave scheduler. Input: `ChunkNode[]` + `concurrencyCap`. Output: `Wave[]` + `serialisedReasons[]`. Algorithm: cycle detection, Kahn topological layering (stable by chunk-id), greedy pairwise-disjoint wave packing within each layer. Serialised-reason priority: `dependency` > `exclusive-resource` > `file-overlap` > `cap-spill`.
+- `scripts/build-scheduler/__tests__/computeWaves.test.ts` — Vitest unit tests (A1-A5, A8 support, cap-spill, cycle, unknown-dep-id, serialisedReasons priority).
+- `scripts/build-scheduler/validatePlanMetadata.ts` — pure plan-metadata validator + `parsePlanMetadata` (single snake_case-to-camelCase normalisation point). Path canonicalisation: backslash-to-slash, collapse double-slashes, resolve `.` segments, case-fold for intersection; rejects absolute paths, `..` segments, empty strings.
+- `scripts/build-scheduler/__tests__/validatePlanMetadata.test.ts` — Vitest unit tests (A6, snake_case fixture, path-canonicalisation cases, dangling deps, duplicate ids).
+- `docs/decisions/0007-parallel-worktree-builders.md` — ADR capturing the decision, safety argument, and alternatives considered.
+
+**Changed:**
+- `.claude/agents/architect.md` — per-chunk output spec now requires `declared_files:`, `depends_on:`, `exclusive_resources:` YAML blocks and a `## Build parallelism` section. Conservative-default stance and singleton-survey instruction added.
+- `.claude/agents/feature-coordinator.md` — Step 6 rewritten as a wave loop. Strict-sequential mode (the default) is gated off before any new machinery runs; when `effectiveCap == 1` or the opt-in phrase is absent, the old Step 6 loop runs verbatim. Parallel mode (opt-in phrase present, worktree available, `effectiveCap >= 2`): parse + validate plan metadata, compute waves, dispatch multi-chunk waves concurrently with `isolation: "worktree"`, serialise merge-back as a transaction in ascending chunk-id order using `git apply --3way`, clean-branch precondition + post-commit clean-state assertion, crash-safety resume (dirty branch on resume = reset + re-run), INDEPENDENCE_VIOLATION quarantine for remaining unintegrated siblings.
+- `.claude/agents/claude-plan-review.md` — under-declared `declared_files` hunt target added.
+- `.claude/agents/chatgpt-plan-review.md` — same under-declared-`declared_files` hunt target mirrored.
+- `.claude/agents/builder.md` — worktree-awareness note added (§6.1): builder may run inside an isolated git worktree; no behavioural change required.
+- `docs/decisions/README.md` — ADR-0007 row added; local-ADR reservation moved from 0007 to 0008.
+- `docs/doc-sync.md` — trigger row added for build-loop orchestration and chunk-metadata format changes.
+- `manifest.json` — `frameworkVersion` reconciled from 2.20.0 to 2.24.0; ADR-0007 row registered.
+
+**Breaking:** none. Strict-sequential mode is the default. No existing workflow changes without the explicit opt-in phrase.
+
+---
+
 ## 2.23.0 — 2026-06-18 — `/fix-ci-gate-debt` command + finalisation gate-debt flag
 
 **Highlights:** A new operator-triggered slash command that exhaustively clears CI gate debt at the root (production code, not the tests/baselines) via a bounded audit→fix→re-audit loop, plus a finalisation-coordinator change that surfaces (never auto-runs) the command when a build merges past inherited trunk-health gate failures. Motivated by a consumer-repo build whose feature branch inherited main's accumulated gate debt (npm-audit, no-direct-boss-work, error-code-taxonomy baseline regressions) on merge and had to admin-squash past it. Generic across repos — the command discovers gates dynamically from each repo's CI workflow(s) and gate manifest; nothing repo-specific is hardcoded.
