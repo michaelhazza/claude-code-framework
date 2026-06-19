@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.20.0",
+  "frameworkVersion": "2.25.0",
   "managedFiles": [
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
@@ -16,6 +16,7 @@
     { "path": "docs/decisions/0005-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/0006-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/0007-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
+    { "path": "docs/decisions/0008-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/README.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/decisions/_template.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/context-packs/*.md", "category": "context-pack", "mode": "sync", "substituteAt": "adoption" },
@@ -50,13 +51,17 @@
     { "path": "scripts/__tests__/experiment-runner-loopPure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/__tests__/cross-repo-scoutPure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/__tests__/audit-context-packs.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
+    { "path": ".claude/project-registries.json.template.example.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/mockup/capture-surface.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/mockup/capture-surfacePure.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/mockup/capture-manifestPure.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/__tests__/capture-surfacePure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/__tests__/capture-manifestPure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
     { "path": "docs/behaviour-manifest-template.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": ".claude/project-registries.json.template.example.md", "category": "reference", "mode": "sync", "substituteAt": "never" }
+    { "path": "scripts/build-scheduler/computeWaves.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/build-scheduler/__tests__/computeWaves.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/build-scheduler/validatePlanMetadata.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
+    { "path": "scripts/build-scheduler/__tests__/validatePlanMetadata.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" }
   ],
   "removedFiles": [
     { "path": ".claude/agents/reality-checker.md", "removedIn": "2.21.0", "action": "warn-only" }

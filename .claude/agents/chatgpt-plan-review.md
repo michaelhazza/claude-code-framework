@@ -87,7 +87,8 @@ If the CLI exits non-zero, print its stderr and stop. Exit codes: 0 ok, 2 API er
 >
 > ```
 > --- Copy into ChatGPT (and attach the plan file linked above) ---
-> Review the attached implementation plan for: phase sequencing, contracts, primitives-reuse, and chunk-sizing.
+> Review the attached implementation plan for: phase sequencing, contracts, primitives-reuse, chunk-sizing, and under-declared declared_files.
+> For the under-declared declared_files check: flag any chunk whose declared_files list looks under-specified relative to its spec_sections — a chunk that, by its stated scope, must touch a file it did not declare. This is the under-declaration that would wrongly allow two chunks to run in parallel when they actually share a file. Prioritise chunks touching migrations, shared singletons (such as manifest.json or a lockfile), or many files.
 > List findings as numbered items, each with severity (critical / high / medium / low) and a brief explanation.
 > End with verdict: APPROVED / CHANGES_REQUESTED / NEEDS_DISCUSSION.
 > --- End ---

@@ -131,6 +131,10 @@ Notes for caller: [out-of-scope observations — dead code, smells, drift; do NO
 - Never run full test gates (see Step 4 forbidden list).
 - Never `--no-verify`, never amend a commit.
 
+## Worktree awareness (§6.1)
+
+You may run inside an isolated git worktree; operate on the working tree you are given. No behavioural change: you still never commit, run scoped G1 on your touched files, and report `Files changed`.
+
 ---
 
 ## Project-specific notes
