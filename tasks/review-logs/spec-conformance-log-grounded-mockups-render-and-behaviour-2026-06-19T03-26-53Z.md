@@ -8,6 +8,7 @@
 **Scope:** all-of-spec (single completed implementation; caller-confirmed). A1/A2 live capture is a documented REVIEW_GAP, excluded from conformance per caller instruction.
 **Changed-code set:** 17 files (spec.md, plan.md, progress.md excluded)
 **Run at:** 2026-06-19T03:26:53Z
+**Commit at finish:** `9856b81`
 
 ---
 
