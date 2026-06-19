@@ -5,7 +5,7 @@
 **Classification:** Significant
 **Review mode:** parallel (set in `.claude/session-state/review-mode`)
 **Target version:** 2.24.0
-**Status:** PLAN GATE — awaiting operator approval before construction
+**Status:** PR OPEN — awaiting operator review (no merge). PR #27: https://github.com/michaelhazza/claude-code-framework/pull/27 · branch HEAD 7f0479e
 
 ## Settled decisions (binding)
 
@@ -65,6 +65,18 @@ REVIEW_GAP: live-capture-verification (A1/A2) | task-class: Significant | reason
 ```
 REVIEW_GAP: dual-reviewer | task-class: Significant | reason: Codex CLI availability not confirmed in this session; framework build is internal authoring tooling, risk_domain none | operator-override: no | remediation: optional — run dual-reviewer manually if Codex is available; pr-reviewer + spec-conformance already passed on a none-risk-domain diff
 ```
+
+## Finalisation (automated mode, stopped at PR)
+
+- **PR #27** opened into `michaelhazza/claude-code-framework` (base `main`).
+- **chatgpt-pr-review (automated, gpt-5.5):** CHANGES_REQUESTED → 3 technical findings, all auto-applied + pushed (7f0479e):
+  1. `chromium.launch()` moved inside error handling — a missing browser binary now degrades every screen gracefully (honours the spec's "capture is never a gate"), instead of crashing the round.
+  2. Manifest `screenshotPaths` now repo-relative POSIX (the manifest is committed; absolute paths leaked local workspace layout).
+  3. ADR-0007 added to `docs/decisions/README.md` index.
+  - Deferred: mocked browser tests for 1+2 (would be dead tests — no toolchain in the framework repo; folded into the live-capture REVIEW_GAP).
+- **Final verification after all fixes (automation-v1):** 25 Vitest pass, ESLint clean, `tsc --noEmit` (DOM lib) clean.
+- **Doc-sync verdict:** frontend-design-principles + mobile-capability-principles updated; behaviour-manifest-template + ADR-0007 added; CHANGELOG + FRAMEWORK_VERSION + manifest bumped to 2.24.0; doc-sync trigger row added; `docs/capabilities.md`: n/a — internal tooling only.
+- **STOPPED before merge** per operator instruction: no `ready-to-merge` label, no auto-merge. PR awaits operator review.
 
 ## Log
 
