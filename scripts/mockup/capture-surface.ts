@@ -1,0 +1,307 @@
+/**
+ * capture-surface.ts
+ *
+ * Render-grounding capture (impure orchestrator). Drives a real browser against
+ * the consuming repo's running UI-test server, reads the live DOM + computed CSS
+ * off each existing surface, and emits a capture manifest the mockup-designer
+ * grounds against and the mockup-reviewer verifies (spec §4.2/§4.3).
+ *
+ * Observe, don't guess: this script captures EXISTING surfaces only (grounding
+ * inputs). It never captures the prototype. Capture is best-effort grounding —
+ * NEVER a gate (§4.6): any failure degrades to `fallback_source_read` (or, for an
+ * unrecoverable internal error, `failed`) and the designer falls back to
+ * source-read grounding, explicitly logged.
+ *
+ * Reuse over rebuild (§4.2): this reuses the consuming repo's existing UI-test
+ * server + Playwright storageState auth rather than re-implementing login.
+ * ADR-0006 — it references CONVENTIONAL consuming-repo paths only, never a
+ * specific project's names:
+ *   - UI server:    `npm run dev:server:ui` (the operator boots it; this script
+ *                   ATTACHES to it and degrades to `server_unavailable` if absent)
+ *   - baseURL:      http://127.0.0.1:5000  (override via --base-url / CAPTURE_BASE_URL)
+ *   - auth:         .test-runs/playwright/auth/{role}.json  (Playwright storageState)
+ *
+ * Pure extraction (token-sheet de-dup, DOM-outline pruning) and the manifest
+ * contract/validator live in `capture-surfacePure.ts` / `capture-manifestPure.ts`
+ * and are unit-tested there; this orchestrator is exercised by the live A1/A2 run
+ * in the consuming repo (the framework repo has no browser — see the build's
+ * REVIEW_GAP).
+ */
+
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { chromium, type Browser, type Page } from 'playwright';
+
+import {
+  validateCaptureManifest,
+  type CaptureManifest,
+  type CaptureScreenEntry,
+  type FallbackReason,
+} from './capture-manifestPure';
+import {
+  extractTokenSheet,
+  pruneDomOutline,
+  type ComputedStyleRecord,
+  type OutlineCandidate,
+} from './capture-surfacePure';
+
+export interface CaptureInput {
+  screenId: string;
+  route: string;
+  role: string;
+  /** Defaults to DEFAULT_VIEWPORTS (375/768/1280) when omitted. */
+  viewports?: number[];
+}
+
+export interface CaptureOptions {
+  slug: string;
+  projectRoot?: string;
+  baseURL?: string;
+  /** Directory holding Playwright storageState files, `{role}.json`. */
+  authDir?: string;
+  /** Output dir for screenshots + manifest. Defaults to `prototypes/{slug}/_captures`. */
+  outDir?: string;
+  /** Settle delay after network-idle, ms. */
+  settleMs?: number;
+}
+
+/** §4.2 / §9 — mirror the mobile-shape mandate's three widths. */
+export const DEFAULT_VIEWPORTS = [375, 768, 1280];
+const DEFAULT_BASE_URL = process.env.CAPTURE_BASE_URL ?? 'http://127.0.0.1:5000';
+const DEFAULT_AUTH_DIR = '.test-runs/playwright/auth';
+const DEFAULT_SETTLE_MS = 400;
+const NAV_TIMEOUT_MS = 15_000;
+/** Cap a full-page screenshot's height so a pathological page cannot produce a giant PNG (§9 decision 3). */
+const MAX_FULLPAGE_HEIGHT = 6000;
+const MAX_COMPUTED_ELEMENTS = 2000;
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function isServerReachable(baseURL: string): Promise<boolean> {
+  return fetch(baseURL, { method: 'HEAD' })
+    .then((r) => r.ok || r.status < 500)
+    .catch(() => false);
+}
+
+/** Atomic screenshot: write to a temp path, rename on success; never leave a partial PNG (A2). */
+async function screenshotAtomic(page: Page, finalPath: string): Promise<void> {
+  await mkdir(dirname(finalPath), { recursive: true });
+  const tmpPath = `${finalPath}.tmp`;
+  try {
+    const scrollHeight = await page.evaluate(() => document.body.scrollHeight);
+    if (scrollHeight > MAX_FULLPAGE_HEIGHT) {
+      await page.screenshot({ path: tmpPath, clip: { x: 0, y: 0, width: page.viewportSize()?.width ?? 1280, height: MAX_FULLPAGE_HEIGHT } });
+    } else {
+      await page.screenshot({ path: tmpPath, fullPage: true });
+    }
+    await rename(tmpPath, finalPath);
+  } catch (err) {
+    await rm(tmpPath, { force: true }).catch(() => undefined);
+    throw err;
+  }
+}
+
+/** Read computed styles (sampled, capped) + tagged outline candidates off the live page. Runs in the browser. */
+function collectPageData(maxElements: number): { styles: ComputedStyleRecord[]; outline: OutlineCandidate[] } {
+  const styles: ComputedStyleRecord[] = [];
+  const els = Array.from(document.querySelectorAll<HTMLElement>('*')).slice(0, maxElements);
+  for (const el of els) {
+    const cs = getComputedStyle(el);
+    styles.push({
+      color: cs.color,
+      backgroundColor: cs.backgroundColor,
+      borderColor: cs.borderColor,
+      fontFamily: cs.fontFamily,
+      fontSize: cs.fontSize,
+      fontWeight: cs.fontWeight,
+      margin: cs.margin,
+      padding: cs.padding,
+      gap: cs.gap,
+      borderRadius: cs.borderRadius,
+      boxShadow: cs.boxShadow,
+    });
+  }
+
+  const outline: OutlineCandidate[] = [];
+  const text = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const push = (kind: OutlineCandidate['kind'], nodes: Iterable<Element>): void => {
+    for (const n of nodes) {
+      const t = text(n);
+      if (t) outline.push({ kind, text: t });
+    }
+  };
+
+  push('nav', document.querySelectorAll('nav a, nav button, [role="navigation"] a, [role="navigation"] button'));
+  push('tab', document.querySelectorAll('[role="tab"]'));
+  push('heading', document.querySelectorAll('h1, h2, h3'));
+  push('columnHeader', document.querySelectorAll('th, [role="columnheader"]'));
+  push('primaryButton', document.querySelectorAll('button, [role="button"]'));
+  push('statusPill', document.querySelectorAll('[class*="pill" i], [class*="badge" i], [data-status]'));
+
+  return { styles, outline };
+}
+
+function fallbackEntry(input: CaptureInput, viewports: number[], reason: FallbackReason): CaptureScreenEntry {
+  return {
+    screenId: input.screenId,
+    route: input.route,
+    role: input.role,
+    capturedAt: nowIso(),
+    viewports,
+    captureStatus: 'fallback_source_read',
+    fallbackReason: reason,
+  };
+}
+
+function failedEntry(input: CaptureInput, viewports: number[], failureReason: string): CaptureScreenEntry {
+  return {
+    screenId: input.screenId,
+    route: input.route,
+    role: input.role,
+    capturedAt: nowIso(),
+    viewports,
+    captureStatus: 'failed',
+    failureReason,
+  };
+}
+
+async function captureOneScreen(
+  browser: Browser,
+  input: CaptureInput,
+  viewports: number[],
+  opts: Required<Pick<CaptureOptions, 'slug' | 'baseURL' | 'authDir' | 'outDir' | 'settleMs'>>,
+): Promise<CaptureScreenEntry> {
+  const storageStatePath = join(opts.authDir, `${input.role}.json`);
+  if (!existsSync(storageStatePath)) {
+    // Cannot authenticate as this role — degrade, do not fail the round.
+    return fallbackEntry(input, viewports, `route_unreachable_as_${input.role}`);
+  }
+
+  const context = await browser.newContext({ storageState: storageStatePath });
+  try {
+    const screenshotPaths: Record<number, string> = {};
+    let lastStyles: ComputedStyleRecord[] = [];
+    let lastOutline: OutlineCandidate[] = [];
+
+    for (const viewport of viewports) {
+      const page = await context.newPage();
+      await page.setViewportSize({ width: viewport, height: 900 });
+      const url = new URL(input.route, opts.baseURL).toString();
+      const response = await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS });
+      if (response && response.status() >= 400) {
+        await page.close();
+        return fallbackEntry(input, viewports, `route_unreachable_as_${input.role}`);
+      }
+      await page.waitForTimeout(opts.settleMs);
+
+      const finalPath = join(opts.outDir, `${input.screenId}-${viewport}.png`);
+      await screenshotAtomic(page, finalPath);
+      screenshotPaths[viewport] = finalPath;
+
+      // Extract from the widest viewport (last in the default 375/768/1280 order) so the
+      // outline reflects the fullest desktop layout; cheap to re-read each pass.
+      const data = await page.evaluate(collectPageData, MAX_COMPUTED_ELEMENTS);
+      lastStyles = data.styles;
+      lastOutline = data.outline;
+      await page.close();
+    }
+
+    return {
+      screenId: input.screenId,
+      route: input.route,
+      role: input.role,
+      capturedAt: nowIso(),
+      viewports,
+      captureStatus: 'captured',
+      screenshotPaths,
+      tokenSheet: extractTokenSheet(lastStyles),
+      domOutline: pruneDomOutline(lastOutline),
+    };
+  } finally {
+    await context.close();
+  }
+}
+
+/**
+ * Capture the listed existing surfaces. Returns a validated manifest. A failed
+ * capture for one screen degrades that screen only; the round always completes.
+ */
+export async function captureSurfaces(inputs: CaptureInput[], options: CaptureOptions): Promise<CaptureManifest> {
+  const projectRoot = options.projectRoot ?? process.cwd();
+  const baseURL = options.baseURL ?? DEFAULT_BASE_URL;
+  const authDir = join(projectRoot, options.authDir ?? DEFAULT_AUTH_DIR);
+  const outDir = options.outDir ?? join(projectRoot, 'prototypes', options.slug, '_captures');
+  const settleMs = options.settleMs ?? DEFAULT_SETTLE_MS;
+  const resolved = { slug: options.slug, baseURL, authDir, outDir, settleMs };
+
+  const screens: CaptureScreenEntry[] = [];
+
+  const reachable = await isServerReachable(baseURL);
+  if (!reachable) {
+    // §4.6: server not running — every screen degrades, no partial artifacts written.
+    for (const input of inputs) {
+      screens.push(fallbackEntry(input, input.viewports ?? DEFAULT_VIEWPORTS, 'server_unavailable'));
+    }
+    return writeManifest(outDir, options.slug, screens);
+  }
+
+  const browser = await chromium.launch();
+  try {
+    for (const input of inputs) {
+      const viewports = input.viewports ?? DEFAULT_VIEWPORTS;
+      try {
+        screens.push(await captureOneScreen(browser, input, viewports, resolved));
+      } catch (err) {
+        // Unrecoverable per-screen error — record `failed` (no captured-shape fields), keep going.
+        screens.push(failedEntry(input, viewports, err instanceof Error ? err.message : String(err)));
+      }
+    }
+  } finally {
+    await browser.close();
+  }
+
+  return writeManifest(outDir, options.slug, screens);
+}
+
+async function writeManifest(outDir: string, slug: string, screens: CaptureScreenEntry[]): Promise<CaptureManifest> {
+  const manifest: CaptureManifest = { slug, generatedAt: nowIso(), screens };
+  const result = validateCaptureManifest(manifest);
+  if (!result.valid) {
+    // The orchestrator produced an invalid manifest — surface loudly; this is a bug, not a capture failure.
+    throw new Error(`capture-surface produced an invalid manifest:\n${result.errors.join('\n')}`);
+  }
+  await mkdir(outDir, { recursive: true });
+  await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return manifest;
+}
+
+/** Minimal CLI: `tsx capture-surface.ts --slug <slug> --screens '<json>'`. */
+function parseArgs(argv: string[]): { slug: string; screens: CaptureInput[]; baseURL?: string } {
+  const get = (flag: string): string | undefined => {
+    const i = argv.indexOf(flag);
+    return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined;
+  };
+  const slug = get('--slug');
+  const screensRaw = get('--screens');
+  if (!slug || !screensRaw) {
+    throw new Error("usage: capture-surface --slug <slug> --screens '[{\"screenId\":..,\"route\":..,\"role\":..}]' [--base-url <url>]");
+  }
+  return { slug, screens: JSON.parse(screensRaw) as CaptureInput[], baseURL: get('--base-url') };
+}
+
+// Run as a script (not when imported). `import.meta.url` guard keeps it importable for tests.
+if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, '/')}`).href) {
+  const { slug, screens, baseURL } = parseArgs(process.argv.slice(2));
+  captureSurfaces(screens, { slug, baseURL })
+    .then((m) => {
+      const statuses = m.screens.map((s) => `${s.screenId}:${s.captureStatus}`).join(', ');
+      process.stdout.write(`capture complete — ${statuses}\n`);
+    })
+    .catch((err) => {
+      process.stderr.write(`${err instanceof Error ? err.stack : String(err)}\n`);
+      process.exitCode = 1;
+    });
+}

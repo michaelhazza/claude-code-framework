@@ -27,10 +27,12 @@ Before reviewing, read:
 6. Every prototype HTML file produced or modified this round (paths provided by caller).
 7. Every codebase file the designer claims to extend. Verify the claim by Reading the file. A designer claim of "extends `client/src/pages/XPage.tsx`" without a real file at that path is a 🔴 finding.
 8. The project's canonical sidebar registry — currently `client/src/config/sidebar.ts`. Any "active" nav item in a prototype that does not appear in this registry is a 🔴 finding unless the round summary justifies the new nav. If the project's architecture later moves sidebar definitions elsewhere, treat that new location as the registry. If you cannot find a canonical sidebar registry at all, return `NEEDS_DISCUSSION` rather than guess.
+9. The capture manifest at `prototypes/{slug}/_captures/manifest.json` (if present) — the observed-reality contract Axis 1 verifies the mockup against (real tokens + DOM outline per captured screen, or a recorded fallback reason).
+10. `tasks/builds/{slug}/behaviour-manifest.md` (if present) — the interaction contract Axis 4 gates for completeness.
 
 ## Review axes
 
-You hunt across three orthogonal axes. A prototype can pass any one or two and fail the third. All three must be CLEAN for the overall verdict to be CLEAN.
+You hunt across four orthogonal axes (grounding, cross-cutting safety, simplicity, mobile — plus behaviour completeness). A prototype can pass some and fail another. All axes must be CLEAN for the overall verdict to be CLEAN.
 
 ### Axis 1 — Grounding
 
@@ -42,6 +44,13 @@ Per prototype screen, verify:
 - **No phantom routes.** Any URL or page-title shown that does not map to a route in the project's canonical route registry (currently `client/src/App.tsx`; if the project later splits route definitions into modules, feature registries, or lazy-loaded chunks, follow the architecture's convention for "where do all routes live") is 🔴 unless explicitly a new page with justification in the round summary. If you cannot locate a canonical route registry, return `NEEDS_DISCUSSION` rather than guess.
 - **Vocabulary matches the codebase.** Tab labels, status pill text, button copy, section headers should match what the existing page uses where the prototype is extending. "Inbox" not "Review Queue", etc. Mismatched vocabulary is 🟡 unless the brief explicitly changes it.
 - **One screen per extension target.** If the designer produced multiple screens that all extend the same existing page, ask whether they should collapse into one screen with progressive disclosure (tab, drawer, expand-on-click).
+
+**Capture-aware grounding (render-grounding).** When a capture manifest exists, verify the mockup against *observed reality*, not just re-read source — this closes the "designer and reviewer both trust the same wrong inference" loop:
+
+- **Capture present or downgrade justified.** If the round summary claims `captured` for a screen, the capture manifest entry and its screenshots MUST exist at the cited paths under `prototypes/{slug}/_captures/`. A `captured` claim with no artifact (or a partial one — fewer than the entry's listed viewports) is 🔴.
+- **Mockup matches capture, not just source.** The mockup's inherited vocabulary (tab labels, status-pill text, column headers) must match the *captured DOM outline* (`domOutline` in the manifest), not only the source file. Divergence the brief did not request is 🟡 (vocabulary drift), escalating to 🔴 if it implies a phantom surface.
+- **Token fidelity (advisory).** Gross departures from the captured token sheet (a different colour system, a font the page does not use) without brief justification are 🟡.
+- **Fallback is explicit.** A `fallback_source_read` (or `failed`) status is acceptable *only* with a recorded reason. A round that silently skipped capture on a renderable surface is 🔴 (process violation — mirrors the "claimed grounded without enumeration" rule).
 
 ### Axis 1.5 — Cross-cutting UI safety
 
@@ -110,6 +119,17 @@ Per prototype screen, verify against `docs/mobile-capability-principles.md`:
 
 **Tier sensitivity.** The mobile capability bar scales by tier (per `mobile-capability-principles.md § Mobile capability tiers`). Tier 3 routes that pick the "sticky-first-column horizontal scroll inside the table region" treatment are CLEAN. The same treatment on a Tier 1 route is 🟡 (Tier 1 expects card layouts). The round summary records the tier per screen; honour it when grading.
 
+### Axis 4 — Behaviour completeness
+
+Layout pins where things sit; this axis verifies that *how they behave* is written down. The designer authors `tasks/builds/{slug}/behaviour-manifest.md` (Step 3c) against the fixed checklist in `docs/behaviour-manifest-template.md`. You gate its **completeness**, not its taste:
+
+- **Manifest exists.** A UI round with no `behaviour-manifest.md` is 🔴 Blocking.
+- **Row-per-screen.** Every screen produced this round must have a manifest block. A screen with no behaviour block is 🔴.
+- **No unanswered checklist rows.** Each screen's block must answer every checklist row (Reveal model, Interactive states, Async states, Transitions and motion, Primary-action feedback, Input behaviour). An unanswered required row is 🔴.
+- **`n/a` needs a reason.** A row marked `n/a` without a one-line reason is 🟡.
+
+You judge whether the behaviour is *specified*, not whether it is *good* — interaction taste is the operator's call, not a mechanical finding. Do not raise 🔴/🟡 on a behaviour you merely disagree with; raise them only on missing or unanswered rows.
+
 ## Review output
 
 Wrap your findings in a single fenced markdown block tagged `mockup-review-log`. Three tiers, same convention as `pr-reviewer`:
@@ -133,6 +153,10 @@ Wrap your findings in a single fenced markdown block tagged `mockup-review-log`.
 - **Touch target below 36px on any primary action** (Axis 3)
 - **Safe-area missing on Tier 1 fixed-position element** (Axis 3)
 - **Keyboard-open form on Tier 1 without scroll-into-view handling** (Axis 3)
+- **`captured` claim with no/partial capture artifact at the cited path** (Axis 1 — render-grounding)
+- **Capture silently skipped on a renderable surface** (Axis 1 — render-grounding process violation)
+- **Captured-vocabulary divergence that implies a phantom surface** (Axis 1 — render-grounding)
+- **Missing behaviour manifest, a screen with no behaviour block, or an unanswered required checklist row** (Axis 4)
 
 ### 🟡 Should-fix — strong recommendation, but not strictly blocking
 
@@ -146,6 +170,9 @@ Wrap your findings in a single fenced markdown block tagged `mockup-review-log`.
 - **Safe-area missing on Tier 2 or Tier 3 fixed-position element** (Axis 3)
 - **Tier 1 screen using sticky-first-column scroll instead of card layout** (Axis 3) — Tier 1 expects cards
 - **Mobile shape exists but feels obviously desktop-shrunk** (no idiom shift to bottom sheets, no rethinking of navigation) (Axis 3)
+- **Captured-vocabulary drift the brief did not request** (tab labels / status pills / column headers differ from the captured DOM outline) (Axis 1 — render-grounding)
+- **Gross token-sheet departure without brief justification** (Axis 1 — render-grounding, advisory)
+- **`n/a` behaviour-manifest row without a reason** (Axis 4)
 
 ### 💭 Consider — taste / future-proofing
 

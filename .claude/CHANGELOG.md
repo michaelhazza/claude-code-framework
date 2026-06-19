@@ -32,6 +32,27 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.24.0 — 2026-06-19 — Render-grounded mockups + behaviour capture
+
+**Highlights:** The mockup pipeline now grounds designs in the *real rendered current state* of the surfaces they extend, not in a reading of the source code, and pins *interaction behaviour* as a first-class written deliverable. A new Playwright-driven capture script reuses each consuming repo's existing UI-test server + storageState auth to capture, per extended surface, a real screenshot (375/768/1280), a de-duplicated page-wide token sheet, and a structured DOM outline (real nav/tabs/headings/column-headers/status-pills). `mockup-reviewer` verifies the mockup against that observed capture (Axis 1) instead of re-reading the same source, closing the "designer and reviewer both trust the same wrong inference" loop. A behaviour manifest (fixed checklist) captures reveal model, interactive/async states, transitions, primary-action feedback, and input behaviour, gated for completeness (Axis 4) and pulled into the spec. Render-grounding is default-on when renderable, always degradable, never a hard gate. Generic across repos: the capture script references conventional consuming-repo paths only (ADR-0006) and degrades to source-read grounding where no UI-test harness exists. Rationale: ADR-0007. (Also closes the prior `frameworkVersion` 2.20.0 / `FRAMEWORK_VERSION` 2.23.0 manifest drift.)
+
+**Added:**
+- `scripts/mockup/capture-surface.ts` — impure Playwright orchestrator (attaches to the consuming repo's UI-test server, captures existing surfaces only, atomic screenshot writes, graceful degradation). Shipped; exercised live in consuming repos.
+- `scripts/mockup/capture-surfacePure.ts` + `scripts/__tests__/capture-surfacePure.test.ts` — pure token-sheet de-dup + DOM-outline pruning, Vitest-tested.
+- `scripts/mockup/capture-manifestPure.ts` + `scripts/__tests__/capture-manifestPure.test.ts` — capture-manifest contract (discriminated-union per-screen entry) + validator, Vitest-tested. The gate `mockup-reviewer` Axis 1 trusts.
+- `docs/behaviour-manifest-template.md` — fixed, grep-able interaction-behaviour checklist (`adopt-only`).
+- `docs/decisions/0007-ground-mockups-in-real-render.md` — ADR for the methodology choice (synced).
+
+**Changed:**
+- `mockup-designer` — Step 0a gains a render-capture sub-step (capture before drafting; ground in captured tokens + DOM outline; explicit logged fallback) and per-screen capture-status enumeration; new Step 3c authors the behaviour manifest.
+- `mockup-reviewer` — Axis 1 gains capture-aware checks (capture-present-or-downgrade-justified, mockup-matches-captured-vocabulary, token fidelity, fallback-explicit); new Axis 4 gates behaviour-manifest completeness; preamble + tier lists updated to four axes.
+- `spec-coordinator` — Step 6 pulls the behaviour manifest into an `## Interaction behaviour` spec section; Step 5/Step 9 handoff records the capture + behaviour manifests.
+- `mockup-coordinator` — per-round + Step 8 artifact discipline persists the capture and behaviour manifests alongside the existing mockup logs.
+- `docs/frontend-design-principles.md` — new "Ground in the real render" + "Interaction behaviour" subsections.
+- `docs/mobile-capability-principles.md` — hover-only and keyboard-handling rules cross-link the behaviour checklist.
+
+---
+
 ## 2.23.0 — 2026-06-18 — `/fix-ci-gate-debt` command + finalisation gate-debt flag
 
 **Highlights:** A new operator-triggered slash command that exhaustively clears CI gate debt at the root (production code, not the tests/baselines) via a bounded audit→fix→re-audit loop, plus a finalisation-coordinator change that surfaces (never auto-runs) the command when a build merges past inherited trunk-health gate failures. Motivated by a consumer-repo build whose feature branch inherited main's accumulated gate debt (npm-audit, no-direct-boss-work, error-code-taxonomy baseline regressions) on merge and had to admin-squash past it. Generic across repos — the command discovers gates dynamically from each repo's CI workflow(s) and gate manifest; nothing repo-specific is hardcoded.
