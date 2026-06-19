@@ -398,10 +398,14 @@ Before any chunk work begins, determine `effectiveCap`:
 effectiveCap = min(operator cap, current-default cap, worktree-availability cap)
 ```
 
+**Worktree-availability probe (runs here, as part of resolving `effectiveCap`):**
+
+Verify that `isolation: "worktree"` actually provisions a worktree in this environment (confirm-on-first-run per spec §12.2). If the probe FAILS: set worktree-availability cap = 1, which forces `effectiveCap == 1`. Log `parallelism: disabled — worktree unavailable` in `progress.md` and proceed with step 2b. **`computeWaves` and the wave-recording step never run**, so no stale wave data is possible.
+
 **Parallel mode is engaged ONLY when ALL of the following hold:**
 
 1. The operator invocation phrase is exactly `launch feature coordinator parallel`.
-2. The worktree-availability probe (step 2c) succeeds.
+2. The worktree-availability probe (step 2a) succeeds.
 3. `effectiveCap >= 2`.
 
 If any condition fails, the build runs in strict-sequential mode (step 2b). The default cap is **3**; operator may override at the plan-gate.
@@ -422,11 +426,9 @@ Wave preview is computed at the plan-gate (Step 5) for the operator only — nev
 
 **Parse and validate the plan metadata:**
 
-Call `parsePlanMetadata(raw)` — the single snake-to-camel normalisation point (Chunk 2, `scripts/build-scheduler/validatePlanMetadata.ts`). This function returns `{ chunks, pathErrors }` (NOT a flat array). Treat a non-empty `pathErrors` as a `PLAN_GAP` and route back to architect; do not proceed to wave computation. Pass `.chunks` into `validatePlanMetadata`; if `ok: false`, treat as `PLAN_GAP` and route back to architect. Then call `computeWaves({ chunks, concurrencyCap })` (Chunk 1, `scripts/build-scheduler/computeWaves.ts`) on the validated, normalised chunks. Record the chosen cap and the computed waves in `progress.md`.
+Call `parsePlanMetadata(raw)` — the single snake-to-camel normalisation point (Chunk 2, `scripts/build-scheduler/validatePlanMetadata.ts`). This function returns `{ chunks, pathErrors }` (NOT a flat array). Treat a non-empty `pathErrors` as a `PLAN_GAP` and route back to architect; do not proceed to wave computation. Pass `.chunks` into `validatePlanMetadata`; if `ok: false`, treat as `PLAN_GAP` and route back to architect. Then call `computeWaves({ chunks, concurrencyCap: effectiveCap })` (Chunk 1, `scripts/build-scheduler/computeWaves.ts`) on the validated, normalised chunks. Record the resolved `effectiveCap` (the exact value used) and the computed waves in `progress.md`.
 
-**Worktree-availability probe (BEFORE committing to the wave schedule):**
-
-Verify that `isolation: "worktree"` actually provisions a worktree in this environment (confirm-on-first-run per spec §12.2). **If the worktree probe FAILS: discard the wave schedule entirely and fall the WHOLE build back to strict-sequential mode (step 2b).** Do NOT attempt to run a multi-chunk wave via any other path — there is no partial fallback. Log `parallelism: disabled — worktree unavailable` in `progress.md` and proceed with step 2b.
+**Note:** the worktree-availability probe already succeeded in step 2a (that is why we are in parallel mode). No re-probe is needed here.
 
 **Resume determinism:** `computeWaves` is deterministic (stable id sort, A5); per-chunk resume detection (commit exists for the chunk's files?) applies per chunk regardless of wave. On any dirty feature branch at Step 6 resume, apply the crash-safety protocol in step 2d before re-dispatching.
 

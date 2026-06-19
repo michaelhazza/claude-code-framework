@@ -282,22 +282,45 @@ export function parsePlanMetadata(
 /**
  * Validates an array of RawChunkMetadata (already camelCase, paths canonicalised).
  * Returns a ValidatePlanResult. NEVER throws — all errors are returned as structured
- * ValidationError objects.
+ * ValidationError objects. Accepts `unknown` input and narrows at runtime so callers
+ * cannot cause a throw by passing a non-array or a null/non-object element.
  */
-export function validatePlanMetadata(chunks: RawChunkMetadata[]): ValidatePlanResult {
+export function validatePlanMetadata(chunks: unknown): ValidatePlanResult {
   const errors: ValidationError[] = [];
+
+  if (!Array.isArray(chunks)) {
+    return {
+      ok: false,
+      errors: [{ chunkId: '<unknown>', field: 'metadata', message: 'plan metadata must be an array' }],
+    };
+  }
 
   const knownIds = new Set<string>();
   const seenIds = new Set<string>();
 
   // Collect all ids first (needed for dangling-dep check).
   for (const chunk of chunks) {
-    if (typeof chunk.id === 'string' && chunk.id !== '') {
-      knownIds.add(chunk.id);
+    if (chunk === null || typeof chunk !== 'object' || Array.isArray(chunk)) {
+      // Non-object element — skip id collection; will be reported in the main loop.
+      continue;
+    }
+    const c = chunk as RawChunkMetadata;
+    if (typeof c.id === 'string' && c.id !== '') {
+      knownIds.add(c.id);
     }
   }
 
-  for (const chunk of chunks) {
+  for (const rawChunk of chunks) {
+    if (rawChunk === null || typeof rawChunk !== 'object' || Array.isArray(rawChunk)) {
+      errors.push({
+        chunkId: '<unknown>',
+        field: 'metadata',
+        message: `chunk metadata block must be an object: ${safeStringify(rawChunk)}`,
+      });
+      continue;
+    }
+
+    const chunk = rawChunk as RawChunkMetadata;
     const chunkId: string | '<unknown>' = typeof chunk.id === 'string' && chunk.id !== ''
       ? chunk.id
       : '<unknown>';

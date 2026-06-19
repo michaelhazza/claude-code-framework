@@ -115,6 +115,26 @@ describe('validatePlanMetadata', () => {
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.field === 'id')).toBe(true);
   });
+
+  it('null input → ok:false, does NOT throw (Fix 3)', () => {
+    expect(() => validatePlanMetadata(null as any)).not.toThrow();
+    const result = validatePlanMetadata(null as any);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.field === 'metadata')).toBe(true);
+  });
+
+  it('array with null/undefined/string elements → ok:false, does NOT throw (Fix 3)', () => {
+    expect(() => validatePlanMetadata([null, undefined, 'x'] as any)).not.toThrow();
+    const result = validatePlanMetadata([null, undefined, 'x'] as any);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.field === 'metadata')).toBe(true);
+  });
+
+  it('valid array still returns ok:true after Fix 3 hardening (regression)', () => {
+    const result = validatePlanMetadata([validChunk('c1'), validChunk('c2')]);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
