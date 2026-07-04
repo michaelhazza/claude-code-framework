@@ -32,6 +32,17 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.26.0 — 2026-07-04 — Builder reuse-before-duplicate check
+
+**Highlights:** Adds minimal-change check 5 (**Reuse-before-duplicate**) to `builder.md`. Repeated code blocks are the field's most-reported Claude Code failure mode, yet the builder's binding write-time checklist omitted the CLAUDE.md §6 "never duplicate logic" rule, and the Three-Similar-Lines check read like copy-paste licence. The new check requires the builder to Grep for an existing helper before writing a familiar-looking block, clarifies that Three-Similar-Lines limits new abstraction and never blocks reuse, and warns that projects with a duplicate-block CI gate (e.g. a jscpd ratchet baseline) fail on any net-new duplicated block. Sourced from the 2026-07-04 coding-process audit in the Automation OS repo (`docs/audits/coding-process-audit-2026-07-04.md` there), which mapped an external best-practice post against the pipeline: this was the single write-time gap found.
+
+**Changed:**
+- `.claude/agents/builder.md` — minimal-change check 5 (**Reuse-before-duplicate**) added; checklist intro updated to note checks 4-5 are field-sourced additions.
+
+**Breaking:** none.
+
+---
+
 ## 2.25.0 — 2026-06-19 — Parallel worktree builders for independent chunks
 
 **Highlights:** Adds opt-in concurrent chunk dispatch to the `feature-coordinator` Step 6 build loop. Provably-independent chunks (disjoint `declared_files`, no shared `exclusive_resources`, no `depends_on` edge) can now build concurrently, each in its own git worktree, and integrate back to the feature branch serially in stable chunk-id order. Two new pure modules drive scheduling: `computeWaves.ts` (deterministic wave scheduler, unit-tested) and `validatePlanMetadata.ts` (plan-metadata validator, unit-tested). Architect now emits a snake_case `id`, `declared_files`, `depends_on`, `exclusive_resources` per chunk. File identity is compared case-insensitively (Windows/macOS-safe), and the diff-apply merge-back uses intent-to-add so a builder's untracked new files are integrated. The strict-sequential default is preserved byte-identically (A8 by non-execution: the new machinery is unreachable without an explicit opt-in). Integration uses `git apply --3way` (diff-apply, not `git merge`). Rollout: opt-in via `launch feature coordinator parallel` for the first 3 builds; then a one-line maintainer change flips the default.

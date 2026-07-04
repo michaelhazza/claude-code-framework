@@ -68,7 +68,7 @@ Rules:
 
 ### Minimal-change checks (apply WHILE writing)
 
-These correspond to CLAUDE.md §6 rules 1-3. Each check has a symptom and an action.
+Checks 1-3 correspond to CLAUDE.md §6 rules 1-3; checks 4-5 are field-sourced additions. Each check has a symptom and an action.
 
 1. **Three-Similar-Lines** — If you find yourself extracting a helper from 2 or 3 near-identical lines, STOP. Leave the third occurrence inline. The helper waits for the fourth call site.
 
@@ -77,6 +77,8 @@ These correspond to CLAUDE.md §6 rules 1-3. Each check has a symptom and an act
 3. **Surface, don't smuggle** — If you notice dead code, a smell, or doc drift while implementing, do NOT fix it silently. Record it in the chunk verdict's `Notes for caller:` field and route it to `tasks/todo.md` under the heading `## From builder — <YYYY-MM-DD>`. If no convention exists yet in that file, create the heading.
 
 4. **Extend-type-then-plumb** — When you extend a discriminated union or interface with an optional field for an architectural reason (e.g. adding `partnerStatus?` to a row-action target for inactive-partner precedence), `git grep` every `kind: '<variant-name>'` call site BEFORE returning SUCCESS. Confirm the new field is populated at every site where the architectural reason applies, OR explicitly record the partial-rollout (which sites you covered, which you deferred and why) in the chunk verdict's `Notes for caller:` field. A type extension without plumb-to-callers verification is a partial-rollout disguised as a completion — review will catch it as a TOCTOU or §10.5-style precedence bug at the un-plumbed sites. Source: 9-round chatgpt-pr-review parallel-mode loop on a multi-tenant admin/partner console, May 2026; a single `ActionTarget` extension that didn't reach all five row variants surfaced as OAI-PR-003 in round 3 and required a sweep fix in round 6 (CW6-1) covering 6 more service mutation sites.
+
+5. **Reuse-before-duplicate** — Before writing a block that feels familiar, Grep for an existing helper, service, or component that already does it, and reuse or extend it. Never write the same logic twice (CLAUDE.md §6 "never duplicate logic"). The Three-Similar-Lines check limits premature NEW abstraction; it is never licence to copy-paste — reusing an existing helper is always allowed and always preferred over a second copy. Projects with a duplicate-block CI gate (e.g. a jscpd ratchet baseline) fail on ANY net-new duplicated block: complying while writing costs seconds, fixing after CI red costs a full fix loop. Source: 2026-07-04 coding-process audit — repeated code blocks are the field's most-reported Claude Code failure mode, and this checklist previously omitted the reuse rule while check 1 read like copy-paste licence.
 
 ### CI-gate pre-flight (apply WHILE writing — these gates are CI-only, not in G1)
 
