@@ -87,6 +87,30 @@ If a screen is entirely text, pause and ask: *is there a visual that would commu
 
 The caps in the [complexity budget](#complexity-budget-per-screen) below are about **defaulting away from the dashboard-of-dashboards anti-pattern** — rows of tiles, multi-chart explorers, observability sprawl. They are *not* a mandate against visual richness. Sparklines, inline gauges, status indicators, outcome badges, and load-bearing single hero visualisations are never counted against those caps.
 
+### Visual language — the two-doc contract
+
+This document decides **what goes on screen** (simplicity, complexity budget,
+progressive disclosure). Its sibling, the project's **design language doc**
+(default `docs/design-language.md`, scaffolded from
+`docs/design-language-template.md`), decides **how it looks**: type system,
+colour tokens, spacing/radii/elevation, motion, component recipes, and the
+ten-point craft bar.
+
+The split is load-bearing for the mockup pipeline:
+
+- `mockup-designer` reads BOTH every round — this doc to keep the screen
+  simple, the design language to make it beautiful with the house style; the
+  canonical token sheet (default `prototypes/_tokens.css`) is linked, never
+  forked.
+- `mockup-reviewer` grades operator-overload and grounding against this doc,
+  and **Axis 5 (visual craft)** against the design language's craft bar.
+- `mockup-coordinator` runs a **visual polish round** after the first CLEAN
+  review — craft only, layout/scope/copy frozen.
+
+A repo without a design-language doc still works: designers match the newest
+existing prototypes, Axis 5 degrades to advisory, and every round summary
+flags the missing doc until one is created from the template.
+
 ---
 
 ## What to defer by default

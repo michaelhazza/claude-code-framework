@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Framework test suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The framework repo intentionally ships no node_modules; pin the
+      # toolchain here. (If package.json later grows pinned devDependencies
+      # and scripts, switch to `npm ci` + `npm test`.)
+      - name: Install test toolchain
+        run: npm install --no-save --no-audit --no-fund tsx@^4 vitest@^3 ajv@^8 ajv-formats@^3 @types/node@^22
+
+      - name: Sync-engine suite (node:test via tsx)
+        run: npx tsx --test tests/*.test.ts
+
+      - name: Scripts suite (vitest)
+        run: >-
+          npx vitest run
+          scripts/__tests__/chatgpt-reviewPure.test.ts
+          scripts/__tests__/applyFindingsPure.test.ts
+          scripts/__tests__/capture-manifestPure.test.ts
+          scripts/__tests__/capture-surfacePure.test.ts
+
+      - name: Scripts suite (node:test via tsx)
+        run: >-
+          npx tsx --test
+          scripts/__tests__/audit-context-packs.test.ts
+          scripts/__tests__/cross-repo-scoutPure.test.ts
+          scripts/__tests__/experiment-runner-loopPure.test.ts
+
+      - name: Hook suites (plain node)
+        run: |
+          node .claude/hooks/phase-lock.test.js
+          node .claude/hooks/config-protection.test.js
+          node .claude/hooks/spec-creation-grill-nudge.test.js
+
+      - name: Manifest / settings JSON validity
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('manifest.json','utf8')); console.log('manifest ok')"
+          node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8')); console.log('settings ok')"
+          node -e "JSON.parse(require('fs').readFileSync('.claude/hooks/package.json','utf8')); console.log('hooks pkg ok')"
+
+      - name: Version consistency
+        run: |
+          FV=$(cat .claude/FRAMEWORK_VERSION)
+          MV=$(node -p "require('./manifest.json').frameworkVersion")
+          if [ "$FV" != "$MV" ]; then echo "::error::FRAMEWORK_VERSION ($FV) != manifest.frameworkVersion ($MV)"; exit 1; fi
+          if ! grep -q "^## ${FV}" .claude/CHANGELOG.md; then echo "::error::CHANGELOG missing heading for ${FV}"; exit 1; fi
+          echo "version consistency ok ($FV)"
