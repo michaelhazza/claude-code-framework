@@ -270,8 +270,9 @@ Any supplementary per-cluster rows are appended below this table in the same sec
 1. Pause the coordinator.
 2. Append a `### Revise loop` heading to `tasks/builds/<slug>/progress.md` with the gate outputs verbatim.
 3. Require the operator to amend `intent.md` — typically Affected Capability Area, Desired Outcome, or Problem Statement — to resolve the partial overlap.
-4. After amendment, re-run Step 3a from the top. The loop is naturally re-entrant — if the amended `intent.md` creates a new partial overlap, Step 3a runs again.
+4. After amendment, re-run Step 3a from the top. The loop is re-entrant — if the amended `intent.md` creates a new partial overlap, Step 3a runs again.
 5. The coordinator proceeds to Step 4 only when the re-run produces `recommendation = proceed` AND the operator appends `**Operator decision:** revision complete` to the `### Revise loop` section.
+6. **Cap: 3 revise rounds per intent** (registered in `references/iteration-caps.md`). On the 4th `revise` outcome, stop looping: present the persistent overlap to the operator with the closest-match register rows and ask them to choose `proceed anyway`, `merge with existing capability`, or `stop` — record the choice as the `**Operator decision:**` line.
 
 **`proceed` path:** continue to Step 4 normally.
 
