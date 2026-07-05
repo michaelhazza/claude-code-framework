@@ -25,7 +25,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, sep, relative, isAbsolute } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import type { Finding, ReviewResult } from '../chatgpt-reviewPure.js';
 import type { SuppressionEntry } from './applyFindingsPure.js';
 import {
@@ -33,6 +33,7 @@ import {
   detectOverlaps,
   applyBatchLimit,
   matchProductionDsn,
+  classifyAcceptanceCheckCommand,
   isInlineApplied,
   DEFAULT_BATCH_LIMIT,
 } from './applyFindingsPure.js';
@@ -77,31 +78,51 @@ export interface GitAdapter {
 // Default Git adapter (real I/O)
 // ---------------------------------------------------------------------------
 
+/**
+ * Run git with array-form args via spawnSync — no shell interpretation, so
+ * reviewer-supplied file paths or commit messages containing quotes/shell
+ * metacharacters cannot break out of their argument (same rationale as
+ * sync.js getSubmoduleCommit). Optional `input` is fed to stdin.
+ * Throws on non-zero exit to preserve the execSync error semantics the
+ * callers were written against.
+ */
+function runGitChecked(args: string[], input?: string): string {
+  const result = spawnSync('git', args, {
+    encoding: 'utf-8',
+    stdio: 'pipe',
+    ...(input !== undefined ? { input } : {}),
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `git ${args[0]} failed (exit ${result.status}): ${(result.stderr ?? '').trim()}`,
+    );
+  }
+  return result.stdout ?? '';
+}
+
 export function createGitAdapter(): GitAdapter {
   return {
     stashPush(files: string[]) {
-      const pathspec = files.join('\n');
-      execSync(
-        `echo "${pathspec.replace(/"/g, '\\"')}" | git stash push --keep-index --include-untracked --pathspec-from-file=-`,
-        { stdio: 'pipe' },
+      // Pathspecs go through stdin (--pathspec-from-file=-), not a shell
+      // string, so no quoting/escaping of file names is needed.
+      runGitChecked(
+        ['stash', 'push', '--keep-index', '--include-untracked', '--pathspec-from-file=-'],
+        files.join('\n'),
       );
     },
     stashPop() {
-      try {
-        execSync('git stash pop', { stdio: 'pipe' });
-      } catch {
-        // Stash may be empty if nothing was stashed
-      }
+      // spawnSync does not throw on non-zero exit — stash may be empty if
+      // nothing was stashed, which is fine.
+      spawnSync('git', ['stash', 'pop'], { stdio: 'pipe' });
     },
     revertFiles(files: string[]) {
-      const quoted = files.map((f) => `"${f.replace(/"/g, '\\"')}"`).join(' ');
-      execSync(`git checkout HEAD -- ${quoted}`, { stdio: 'pipe' });
+      runGitChecked(['checkout', 'HEAD', '--', ...files]);
     },
     commit(message: string): string {
-      execSync('git add -A', { stdio: 'pipe' });
-      execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { stdio: 'pipe' });
-      const sha = execSync('git rev-parse HEAD', { encoding: 'utf-8', stdio: 'pipe' }).trim();
-      return sha;
+      runGitChecked(['add', '-A']);
+      runGitChecked(['commit', '-m', message]);
+      return runGitChecked(['rev-parse', 'HEAD']).trim();
     },
     runVerify(projectRoot: string): { success: boolean; output: string } {
       try {
@@ -120,6 +141,18 @@ export function createGitAdapter(): GitAdapter {
       }
     },
     runAcceptanceCheck(check: string, projectRoot: string): { success: boolean; output: string } {
+      // Allowlist gate BEFORE execution: acceptance_check is untrusted
+      // reviewer (model) output executed through a shell. The leading binary
+      // must be allowlisted and the string must be free of shell
+      // metacharacters (see classifyAcceptanceCheckCommand). The caller's
+      // production-DSN denylist remains in place as defence-in-depth.
+      const gate = classifyAcceptanceCheckCommand(check);
+      if (!gate.allowed) {
+        return {
+          success: false,
+          output: `acceptance_check rejected by execution allowlist: ${gate.reason}`,
+        };
+      }
       try {
         const output = execSync(check, {
           cwd: projectRoot,

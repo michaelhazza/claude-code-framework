@@ -285,6 +285,85 @@ export function matchProductionDsn(acceptanceCheck: string): ProductionDsnMatchR
 }
 
 // ---------------------------------------------------------------------------
+// §11a Step 5: acceptance_check execution allowlist
+// ---------------------------------------------------------------------------
+
+/** Binaries an acceptance_check command may start with. */
+export const ACCEPTANCE_CHECK_ALLOWED_BINARIES: ReadonlySet<string> = new Set([
+  'npm',
+  'npx',
+  'node',
+  'tsx',
+  'vitest',
+  'git',
+]);
+
+/**
+ * Shell metacharacters that must not appear ANYWHERE in an acceptance_check
+ * command: backtick, $, (, ), ;, &, |, <, > — no substitution, chaining,
+ * subshells, background jobs, or redirection.
+ */
+const ACCEPTANCE_CHECK_SHELL_METACHARACTERS = [
+  '`',
+  '$',
+  '(',
+  ')',
+  ';',
+  '&',
+  '|',
+  '<',
+  '>',
+] as const;
+
+export interface AcceptanceCheckCommandResult {
+  allowed: boolean;
+  /** Human-readable rejection reason; null when allowed. */
+  reason: string | null;
+}
+
+/**
+ * Classify an acceptance_check command against the execution allowlist.
+ *
+ * acceptance_check is untrusted reviewer (model) output that the coordinator
+ * executes through a shell, so BOTH conditions must hold:
+ *   1. the leading binary — the first whitespace-delimited token — is one of
+ *      ACCEPTANCE_CHECK_ALLOWED_BINARIES, as a bare name (paths such as
+ *      /usr/bin/npm are rejected); and
+ *   2. the full string contains none of the shell metacharacters
+ *      ` $ ( ) ; & | < >.
+ *
+ * This gate complements (does not replace) the production-DSN denylist in
+ * matchProductionDsn, which the caller applies first as defence-in-depth.
+ */
+export function classifyAcceptanceCheckCommand(check: string): AcceptanceCheckCommandResult {
+  const trimmed = check.trim();
+  if (trimmed === '') {
+    return { allowed: false, reason: 'empty acceptance_check command' };
+  }
+
+  const binary = trimmed.split(/\s+/)[0];
+  if (!ACCEPTANCE_CHECK_ALLOWED_BINARIES.has(binary)) {
+    return {
+      allowed: false,
+      reason:
+        `leading binary "${binary}" is not allowlisted ` +
+        `(allowed: ${[...ACCEPTANCE_CHECK_ALLOWED_BINARIES].join(', ')})`,
+    };
+  }
+
+  for (const meta of ACCEPTANCE_CHECK_SHELL_METACHARACTERS) {
+    if (check.includes(meta)) {
+      return {
+        allowed: false,
+        reason: `shell metacharacter "${meta}" is not allowed in acceptance_check`,
+      };
+    }
+  }
+
+  return { allowed: true, reason: null };
+}
+
+// ---------------------------------------------------------------------------
 // §11c: Suppression-store matcher
 // ---------------------------------------------------------------------------
 
