@@ -6,3 +6,4 @@
 # Node + tooling artefacts when developing inside the framework repo itself.
 node_modules/
 *.log
+.chatgpt-diffs/
