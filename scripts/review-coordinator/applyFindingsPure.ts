@@ -301,7 +301,9 @@ export const ACCEPTANCE_CHECK_ALLOWED_BINARIES: ReadonlySet<string> = new Set([
 /**
  * Shell metacharacters that must not appear ANYWHERE in an acceptance_check
  * command: backtick, $, (, ), ;, &, |, <, > — no substitution, chaining,
- * subshells, background jobs, or redirection.
+ * subshells, background jobs, or redirection. Quotes and backslash are also
+ * rejected: the executor tokenises on whitespace and runs WITHOUT a shell,
+ * so quoting has no meaning there and would reach the binary literally.
  */
 const ACCEPTANCE_CHECK_SHELL_METACHARACTERS = [
   '`',
@@ -313,7 +315,19 @@ const ACCEPTANCE_CHECK_SHELL_METACHARACTERS = [
   '|',
   '<',
   '>',
+  "'",
+  '"',
+  '\\',
 ] as const;
+
+/**
+ * Control characters (C0 range + DEL) are rejected wholesale. Newline and CR
+ * are shell command separators — `npm run lint\nrm -rf /tmp/x` passes a
+ * leading-binary check yet a shell would execute the second line — and
+ * NUL/escape sequences have no place in a verify command. Space is the only
+ * permitted separator (tab is a control char and is rejected with the rest).
+ */
+const ACCEPTANCE_CHECK_CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 export interface AcceptanceCheckCommandResult {
   allowed: boolean;
@@ -324,13 +338,19 @@ export interface AcceptanceCheckCommandResult {
 /**
  * Classify an acceptance_check command against the execution allowlist.
  *
- * acceptance_check is untrusted reviewer (model) output that the coordinator
- * executes through a shell, so BOTH conditions must hold:
+ * acceptance_check is untrusted reviewer (model) output, so ALL of the
+ * following must hold:
  *   1. the leading binary — the first whitespace-delimited token — is one of
  *      ACCEPTANCE_CHECK_ALLOWED_BINARIES, as a bare name (paths such as
- *      /usr/bin/npm are rejected); and
+ *      /usr/bin/npm are rejected);
  *   2. the full string contains none of the shell metacharacters
- *      ` $ ( ) ; & | < >.
+ *      ` $ ( ) ; & | < > nor quotes/backslash; and
+ *   3. the full string contains no control characters (newline and CR are
+ *      shell command separators; tab, NUL, ESC etc. are rejected with them).
+ *
+ * The executor (runAcceptanceCheck) additionally tokenises on whitespace and
+ * runs the command via spawnSync WITHOUT a shell, so even a string that
+ * slipped the classifier has no shell to abuse.
  *
  * This gate complements (does not replace) the production-DSN denylist in
  * matchProductionDsn, which the caller applies first as defence-in-depth.
@@ -339,6 +359,15 @@ export function classifyAcceptanceCheckCommand(check: string): AcceptanceCheckCo
   const trimmed = check.trim();
   if (trimmed === '') {
     return { allowed: false, reason: 'empty acceptance_check command' };
+  }
+
+  if (ACCEPTANCE_CHECK_CONTROL_CHARS.test(check)) {
+    return {
+      allowed: false,
+      reason:
+        'control character (e.g. newline/CR/tab) is not allowed in ' +
+        'acceptance_check — newlines are shell command separators',
+    };
   }
 
   const binary = trimmed.split(/\s+/)[0];

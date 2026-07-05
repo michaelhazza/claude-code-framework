@@ -142,9 +142,9 @@ export function createGitAdapter(): GitAdapter {
     },
     runAcceptanceCheck(check: string, projectRoot: string): { success: boolean; output: string } {
       // Allowlist gate BEFORE execution: acceptance_check is untrusted
-      // reviewer (model) output executed through a shell. The leading binary
-      // must be allowlisted and the string must be free of shell
-      // metacharacters (see classifyAcceptanceCheckCommand). The caller's
+      // reviewer (model) output. The leading binary must be allowlisted and
+      // the string must be free of shell metacharacters, quotes, and control
+      // characters (see classifyAcceptanceCheckCommand). The caller's
       // production-DSN denylist remains in place as defence-in-depth.
       const gate = classifyAcceptanceCheckCommand(check);
       if (!gate.allowed) {
@@ -153,20 +153,34 @@ export function createGitAdapter(): GitAdapter {
           output: `acceptance_check rejected by execution allowlist: ${gate.reason}`,
         };
       }
-      try {
-        const output = execSync(check, {
-          cwd: projectRoot,
-          encoding: 'utf-8',
-          stdio: 'pipe',
-        });
-        return { success: true, output };
-      } catch (err: unknown) {
-        const e = err as { stdout?: string; stderr?: string; message?: string };
+      // Execute WITHOUT a shell: tokenise on whitespace and spawn the binary
+      // directly. The classifier guarantees space-only separators and no
+      // quoting, so naive tokenisation is exact — and with no shell in the
+      // path, separators/substitution have nothing to exploit even if a
+      // string slipped the classifier.
+      //
+      // Windows exception: npm/npx/tsx/vitest are .cmd shims there, and Node
+      // (post CVE-2024-27980) refuses to spawn .cmd files without a shell.
+      // On win32 we use shell: true — the classifier has already rejected
+      // every separator, substitution, quote, and control character, so the
+      // string that reaches the shell is a single space-separated command.
+      const [binary, ...args] = check.trim().split(/\s+/);
+      const result = spawnSync(binary, args, {
+        cwd: projectRoot,
+        encoding: 'utf-8',
+        stdio: 'pipe',
+        shell: process.platform === 'win32',
+        timeout: 600_000,
+      });
+      if (result.error || result.status !== 0) {
         return {
           success: false,
-          output: [e.stdout, e.stderr, e.message].filter(Boolean).join('\n'),
+          output: [result.stdout, result.stderr, result.error?.message]
+            .filter(Boolean)
+            .join('\n'),
         };
       }
+      return { success: true, output: result.stdout ?? '' };
     },
   };
 }

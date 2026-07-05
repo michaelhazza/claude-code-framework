@@ -116,6 +116,46 @@ test('rejects metacharacters hiding in later arguments', () => {
   ).toBe(false);
 });
 
+// --- rejected: control characters (newline command injection) ---
+
+test('rejects newline command injection after an allowed command', () => {
+  const r = classifyAcceptanceCheckCommand('npm run lint\nrm -rf /tmp/pwned');
+  expect(r.allowed).toBe(false);
+  expect(r.reason).toContain('control character');
+});
+
+test('rejects CRLF command injection after an allowed command', () => {
+  expect(
+    classifyAcceptanceCheckCommand('npm run lint\r\nrm -rf /tmp/pwned').allowed,
+  ).toBe(false);
+});
+
+test('rejects a lone carriage return', () => {
+  expect(classifyAcceptanceCheckCommand('npm run lint\rrm x').allowed).toBe(false);
+});
+
+test.each(['\t', '\x00', '\x1b', '\x7f'])(
+  'rejects control character %j anywhere in the command',
+  (ctrl) => {
+    expect(classifyAcceptanceCheckCommand(`npm run${ctrl}lint`).allowed).toBe(false);
+  },
+);
+
+test('rejects a trailing newline even with no second command', () => {
+  // Trim happens for the binary check, but the raw string is what would
+  // reach an executor — reject rather than special-case trailing whitespace.
+  expect(classifyAcceptanceCheckCommand('npm run lint\n').allowed).toBe(false);
+});
+
+// --- rejected: quotes and backslash (meaningless without a shell) ---
+
+test.each(["'", '"', '\\'])(
+  'rejects quote/backslash %j (executor tokenises without a shell)',
+  (ch) => {
+    expect(classifyAcceptanceCheckCommand(`npm run lint ${ch}x${ch}`).allowed).toBe(false);
+  },
+);
+
 // --- rejected: empty / degenerate input ---
 
 test('rejects empty string', () => {
