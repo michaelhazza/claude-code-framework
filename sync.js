@@ -1705,6 +1705,11 @@ async function main() {
 
   for (const { entry, relativePath } of managedFiles) {
     try {
+      // doNotTouch write-refusal: a path that is both managed and doNotTouch is a
+      // manifest contradiction — refuse before dispatching any writer so it is
+      // never written and never counted as updated/new/customised.
+      if (refuseIfDoNotTouch(ctx, relativePath)) continue;
+
       const classification = flags.adopt
         ? classifyForAdopt(ctx, entry, relativePath)
         : maintenance

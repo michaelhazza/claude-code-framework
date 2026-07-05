@@ -221,6 +221,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.16.1 — 2026-06-08 — (backfilled heading) G1 gate narrowed to scoped lint; typecheck + build deferred to G2
+
+Shipped untagged between 2.16.0 and 2.16.2 (`builder.md` + `feature-coordinator.md`: per-chunk G1 runs scoped `eslint` on touched files plus builder-authored targeted tests only; typecheck and build:server/client moved to the end-of-construction G2 integrated-state gate). Heading backfilled so sync.js changelog-excerpt ranges spanning this version terminate correctly.
+
+---
+
 ## 2.16.0 — 2026-06-06 — cross-cutting UI safety rules in the mockup loop (capability-check states, coupled-field invariants, analytics PII discipline, desktop preservation)
 
 **Highlights:** Adds five durable UI design rules to the mockup-loop that prevent a class of bugs that look fine in the mockup but ship as silent-authorisation, generic-validation-error, or PII-leak failures in code. Surfaced from the 2026-06-06 mobile-first-web-pwa Phase 2 audit (automation-v1 PR #474) which closed three categories: (a) the push permission gate was checking "not wrapper_required" instead of the positive `ok` result, silently authorising future denied/unsupported states; (b) the analytics PII denylist had exact-match-only coverage and missed common credential variants (`accessToken`, `refreshToken`, `clientSecret`, `authToken`); (c) the analytics `ts` field was unbounded, allowing year-275760 timestamps to 500 the route. The rules generalise these from "things ChatGPT R1 caught on one PR" into "things mockup-reviewer audits on every PR going forward". Drawing the failure-state UI at design time is what prevents the silent-authorisation pattern; declaring the tier classification at design time is what aligns the implementation pattern; declaring coupled-field grouping at design time is what surfaces invariants the operator can see.
@@ -832,6 +838,12 @@ Minor-class change — additive agent + resolution tier + branch-resolution algo
 **Notes:**
 - This release closes drift accumulated over v2.2 → v2.3 → v2.4. The portable bundle is now ready to ship to consuming repos. Adoption flow (`ADAPT.md`) and sync flow (`SYNC.md`) are unchanged.
 - App-specific work (RLS migration guard, arch-guard, audit-prevention-gates baselines, `docs/capabilities.md` 10-cluster Asset Register content) is intentionally not portable and stays in the deployed tree only.
+
+---
+
+## 2.3.0 — 2026-05-14 — (backfilled heading) incident-commander agent + docs/incident-response.md
+
+Deployed-only release in the origin repo: added the `incident-commander` agent (SEV classification, timeline scribe, hotfix handoff, post-mortem drive) and `docs/incident-response.md`. Never shipped to the portable bundle on its own — ported to portable in 2.4.0 (see the 2.4.0 entry above). Heading backfilled so sync.js changelog-excerpt ranges spanning this version terminate correctly.
 
 ---
 

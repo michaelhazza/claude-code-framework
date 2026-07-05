@@ -177,4 +177,4 @@ The operator commits manually. Sync never auto-commits.
 
 **Submodule has uncommitted changes:** Stash or revert changes inside `.claude-framework/` before syncing. Framework source files should never be edited directly in the submodule checkout — make changes in the framework source repo, commit there, and pull here via `git submodule update`.
 
-**sync.js exits 1 with "Going backward":** The submodule pointer is at an older version than what state.json records. This happens if the submodule was rolled back. Confirm with the operator whether this is intentional before proceeding.
+**Submodule pointer is at an older version than state.json records:** Downgrades are unsupported — sync.js has no downgrade guard and its behaviour when run against an older framework is undefined. Restore the newer submodule pointer (check out the correct submodule commit, e.g. `git submodule update --init` after resetting the pointer in the parent repo) before syncing.

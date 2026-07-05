@@ -496,6 +496,66 @@ describe('mergeSettings — no target settings.json', () => {
 });
 
 // ---------------------------------------------------------------------------
+// mergeSettings — malformed target settings.json aborts (no write)
+// ---------------------------------------------------------------------------
+
+describe('mergeSettings — malformed target settings.json', () => {
+  test('rejects with a fatal error and leaves the target file untouched', async () => {
+    const fwRoot = await makeTmpDir();
+    const targetRoot = await makeTmpDir();
+    try {
+      // Write framework's settings.json
+      const claudeDir = path.join(fwRoot, '.claude');
+      await fsp.mkdir(claudeDir, { recursive: true });
+      const fwSettings = {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Write',
+              hooks: [{ type: 'command', command: 'node ${CLAUDE_PROJECT_DIR}/.claude/hooks/long-doc-guard.js' }],
+            },
+          ],
+        },
+      };
+      await fsp.writeFile(path.join(claudeDir, 'settings.json'), JSON.stringify(fwSettings, null, 2), 'utf8');
+
+      // Write a MALFORMED project settings.json
+      const targetClaudeDir = path.join(targetRoot, '.claude');
+      await fsp.mkdir(targetClaudeDir, { recursive: true });
+      const targetPath = path.join(targetClaudeDir, 'settings.json');
+      const malformed = '{ "permissions": { "allow": [ BROKEN\n';
+      await fsp.writeFile(targetPath, malformed, 'utf8');
+
+      const ctx = makeCtx(targetRoot, fwRoot);
+      const entry = { path: '.claude/settings.json', category: 'settings', mode: 'settings-merge', substituteAt: 'never' };
+
+      let stderr = '';
+      const origErr = process.stderr.write.bind(process.stderr);
+      process.stderr.write = (chunk: any) => { stderr += chunk; return true; };
+      try {
+        await assert.rejects(
+          () => mergeSettings(ctx, entry, '.claude/settings.json'),
+          (err: any) => err.fatal === true && /malformed consumer settings\.json/.test(err.message)
+        );
+      } finally {
+        process.stderr.write = origErr;
+      }
+      assert.ok(stderr.includes('not valid JSON'), `stderr should explain the abort: ${stderr}`);
+
+      // Target file must be byte-identical (no overwrite with framework defaults)
+      const after = await fsp.readFile(targetPath, 'utf8');
+      assert.equal(after, malformed, 'malformed settings.json must not be overwritten');
+
+      // No state entry recorded
+      assert.equal(ctx.state.files['.claude/settings.json'], undefined);
+    } finally {
+      await fsp.rm(fwRoot, { recursive: true, force: true });
+      await fsp.rm(targetRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // mergeSettings — hash tracking
 // ---------------------------------------------------------------------------
 
