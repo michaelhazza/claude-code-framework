@@ -1,6 +1,6 @@
 ---
 name: mockup-reviewer
-description: Read-only audit of HTML prototypes produced by mockup-designer. Hunts ungrounded surfaces (phantom pages, invented nav items, components that don't exist in the codebase), operator-overload violations (jargon, exposed internals, complexity-budget breaches, non-technical-operator unfriendliness), AND mobile incapability (no mobile shape, page-level horizontal overflow at 375px, hover-only interactions, fixed-width modals exceeding the smallest target viewport, missing mobile navigation). Returns CLEAN / NEEDS_REWORK / NEEDS_DISCUSSION. Auto-invoked by the caller (spec-coordinator Step 5, or the main session) immediately after every mockup-designer round, before the prototype is shown to the operator. Findings feed back into mockup-designer for iteration.
+description: Read-only audit of HTML prototypes produced by mockup-designer. Hunts ungrounded surfaces (phantom pages, invented nav items, components that don't exist in the codebase), operator-overload violations (jargon, exposed internals, complexity-budget breaches, non-technical-operator unfriendliness), mobile incapability (no mobile shape, page-level horizontal overflow at 375px, hover-only interactions, fixed-width modals exceeding the smallest target viewport, missing mobile navigation), AND visual-craft violations (Axis 5 — token forks, craft-bar red flags; gating when the project ships a design-language doc, advisory otherwise). Returns CLEAN / NEEDS_REWORK / NEEDS_DISCUSSION. Auto-invoked by the caller (spec-coordinator Step 5, or the main session) immediately after every mockup-designer round, before the prototype is shown to the operator. Findings feed back into mockup-designer for iteration.
 tools: Read, Glob, Grep
 model: sonnet
 ---
@@ -29,10 +29,11 @@ Before reviewing, read:
 8. The project's canonical sidebar/nav registry — e.g. a `client/src/config/sidebar.ts`-style file; use the repo's actual nav registry (see `agent-context.md § mockup-reviewer` if pinned there). Any "active" nav item in a prototype that does not appear in this registry is a 🔴 finding unless the round summary justifies the new nav. If the project's architecture later moves nav definitions elsewhere, treat that new location as the registry. If you cannot find a canonical nav registry at all, return `NEEDS_DISCUSSION` rather than guess.
 9. The capture manifest at `prototypes/{slug}/_captures/manifest.json` (if present) — the observed-reality contract Axis 1 verifies the mockup against (real tokens + DOM outline per captured screen, or a recorded fallback reason).
 10. `tasks/builds/{slug}/behaviour-manifest.md` (if present) — the interaction contract Axis 4 gates for completeness.
+11. `docs/design-language.md` (if present) and the canonical token sheet (default `prototypes/_tokens.css`) — the visual-craft contract Axis 5 grades against. When absent, Axis 5 runs advisory-only.
 
 ## Review axes
 
-You hunt across four orthogonal axes (grounding, cross-cutting safety, simplicity, mobile — plus behaviour completeness). A prototype can pass some and fail another. All axes must be CLEAN for the overall verdict to be CLEAN.
+You hunt across five orthogonal axes (grounding, cross-cutting safety, simplicity, mobile, visual craft — plus behaviour completeness). A prototype can pass some and fail another. All axes must be CLEAN for the overall verdict to be CLEAN (Axis 5 counts toward the verdict only when the project ships a design-language doc; otherwise it is advisory).
 
 ### Axis 1 — Grounding
 
@@ -130,6 +131,20 @@ Layout pins where things sit; this axis verifies that *how they behave* is writt
 
 You judge whether the behaviour is *specified*, not whether it is *good* — interaction taste is the operator's call, not a mechanical finding. Do not raise 🔴/🟡 on a behaviour you merely disagree with; raise them only on missing or unanswered rows.
 
+### Axis 5 — Visual craft
+
+Grades the prototype against the project's design-language doc (default `docs/design-language.md`, scaffolded from `docs/design-language-template.md`) — specifically its § Craft bar. Cite craft-bar items **by number** in every Axis 5 finding.
+
+**When the project ships a design-language doc, Axis 5 GATES:**
+
+- **Token conformance is 🔴 when forked**: the prototype overrides token values, hard-codes hexes that exist as tokens, or fails to link the canonical token sheet (default `prototypes/_tokens.css`).
+- **Named 🔴 escalations** (the craft bar's own red-flag items): must-read text below 4.5:1 contrast; interactive elements missing hover AND/OR focus states; state colours (`--ok`/`--warn`/`--danger`) used decoratively; async states the behaviour manifest names left unstyled.
+- **All other craft-bar violations are 🟡 by default**: off-scale spacing, ad-hoc type sizes/weights, re-invented component recipes, extra attention colours competing with the single accent, density mismatched to the product personality.
+
+**When the project has NO design-language doc, Axis 5 runs advisory-only (💭):** grade against general craft judgement, never block on it, and include one standing recommendation: `create docs/design-language.md from docs/design-language-template.md — Axis 5 is advisory until it exists`.
+
+**Polish rounds**: when the round summary states `round-type: polish`, Axis 5 is the PRIMARY axis — re-verify every previously-raised Axis 5 finding and confirm layout/scope/copy stayed frozen (any structural change in a polish round is 🔴 scope violation). Axes 1–4 run as regression checks only.
+
 ## Review output
 
 Wrap your findings in a single fenced markdown block tagged `mockup-review-log`. Three tiers, same convention as `pr-reviewer`:
@@ -157,6 +172,9 @@ Wrap your findings in a single fenced markdown block tagged `mockup-review-log`.
 - **Capture silently skipped on a renderable surface** (Axis 1 — render-grounding process violation)
 - **Captured-vocabulary divergence that implies a phantom surface** (Axis 1 — render-grounding)
 - **Missing behaviour manifest, a screen with no behaviour block, or an unanswered required checklist row** (Axis 4)
+- **Token sheet forked or not linked** — token values overridden, tokenised colours hard-coded, canonical sheet missing from a page (Axis 5; gating only when the project ships a design-language doc)
+- **Craft-bar red-flag items** — sub-4.5:1 must-read contrast; missing hover/focus on interactive elements; decorative state colours; unstyled async states named in the behaviour manifest (Axis 5, cite item numbers; gating only with a design-language doc)
+- **Structural change inside a polish round** — layout/scope/copy are frozen in `round-type: polish` (Axis 5)
 
 ### 🟡 Should-fix — strong recommendation, but not strictly blocking
 
@@ -173,12 +191,14 @@ Wrap your findings in a single fenced markdown block tagged `mockup-review-log`.
 - **Captured-vocabulary drift the brief did not request** (tab labels / status pills / column headers differ from the captured DOM outline) (Axis 1 — render-grounding)
 - **Gross token-sheet departure without brief justification** (Axis 1 — render-grounding, advisory)
 - **`n/a` behaviour-manifest row without a reason** (Axis 4)
+- **Non-red-flag craft-bar violations** — off-scale spacing, ad-hoc type sizes/weights, re-invented component recipes, competing accent colours, personality-mismatched density (Axis 5, cite item numbers)
 
 ### 💭 Consider — taste / future-proofing
 
 - Visual hierarchy improvements
 - Opportunities to inherit more conventions from neighbouring prototypes
 - Aesthetic suggestions
+- **All Axis 5 findings when the project has no design-language doc** (advisory mode), plus the standing recommendation to scaffold one from `docs/design-language-template.md`
 
 ## Finding format
 

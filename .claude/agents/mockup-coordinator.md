@@ -83,9 +83,18 @@ A "round" = one mockup-designer dispatch followed by one mockup-reviewer dispatc
 
 Within each round, branch on the reviewer's verdict (returned from Step 4 of the prior round, or after the first invocation if you're on Round 1):
 
-- **CLEAN** — proceed to Step 6 (present to operator).
+- **CLEAN (first time this loop)** — run the **mandatory visual polish round** (Step 5a) before presenting.
+- **CLEAN (post-polish, or polish skipped per Step 5a)** — proceed to Step 6 (present to operator).
 - **NEEDS_REWORK** — start the next round with the review log as the designer's feedback. The next mockup-designer dispatch's prompt includes the full review log and an instruction to address every 🔴 Blocking finding.
 - **NEEDS_DISCUSSION** — pause the loop. Summarise the reviewer's question to the operator in CEO-level language (one or two sentences), get direction, then start the next round with the operator's direction as feedback.
+
+### Step 5a — Mandatory visual polish round (default-on)
+
+On the FIRST CLEAN verdict of the loop, dispatch exactly one more designer round labelled **polish round** (`round-type: polish` in the dispatch prompt and the round summary), then re-run mockup-reviewer, before anything is shown to the operator. The polish dispatch instructs the designer per its *Polish-round scope discipline*: visual craft only, graded against the design language's § Craft bar; layout/scope/copy frozen. The re-review treats Axis 5 as primary and any structural change as a 🔴 scope violation.
+
+- Polish-round verdicts route through the same branch table above (a NEEDS_REWORK polish round loops on craft findings only).
+- **Skip ONLY on explicit operator instruction** (e.g. "skip the polish round", or a standing opt-out in `agent-context.md § mockup-coordinator`). Record every skip in `tasks/builds/{slug}/mockup-log.md`: `polish round: skipped — operator instruction ({source})`. Never skip silently, and never skip because the first CLEAN "already looks good".
+- When the project has no design-language doc, the polish round still runs (the designer polishes against the newest prototypes' conventions and general craft) — but a second consecutive craft-only round is not required if the reviewer's advisory Axis 5 had zero findings; record `polish round: no-op — Axis 5 advisory clean` in that case.
 
 **Iteration cap:** soft. If the same Blocking finding survives three rounds, escalate to NEEDS_DISCUSSION and surface to the operator. Looping a fourth time on the same finding is a sign the reviewer's interpretation and the designer's interpretation diverge — the operator must arbitrate.
 
@@ -93,9 +102,9 @@ Within each round, branch on the reviewer's verdict (returned from Step 4 of the
 
 ## Step 6 — Present to operator
 
-Only after a round returns CLEAN:
+Only after a round returns CLEAN (including the Step 5a polish round, unless skipped on operator instruction):
 
-> Mockups ready at `<path(s)>`. Reviewer cleared the grounding and simplicity checks ({rounds} review round{s}). Open in a browser to click through. Reply with feedback for the next round, or **complete** when you're done iterating.
+> Mockups ready at `<path(s)>`. Reviewer cleared the grounding, simplicity, mobile, and visual-craft checks ({rounds} review round{s}, incl. polish). Open in a browser to click through. Reply with feedback for the next round, or **complete** when you're done iterating.
 
 Print the file paths as markdown links so the operator can click through directly.
 

@@ -387,7 +387,8 @@ Steps within a round:
 4. Branch on verdict:
    - **NEEDS_REWORK** — start the next round with the review log as the designer's feedback (include the full log with an instruction to address every 🔴 Blocking finding). Soft cap: 3 same-finding rounds → escalate to NEEDS_DISCUSSION.
    - **NEEDS_DISCUSSION** — summarise the reviewer's question in CEO-level language to the operator, get direction, then start the next round with the operator's direction as feedback.
-   - **CLEAN** — proceed to operator presentation.
+   - **CLEAN (first time this loop)** — run the **mandatory visual polish round** per `mockup-coordinator.md § Step 5a` (one `round-type: polish` designer round, craft only, layout/scope/copy frozen, then re-review with Axis 5 primary). Skip only on explicit operator instruction, recorded in `mockup-log.md`.
+   - **CLEAN (post-polish, or polish skipped per that rule)** — proceed to operator presentation.
 
 **Operator presentation (only after CLEAN):**
 - Print the mockup path(s) as markdown links. The operator can open the file in a browser to click through.

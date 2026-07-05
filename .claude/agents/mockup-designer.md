@@ -89,14 +89,20 @@ Apply these whenever the brief touches the listed surface. These prevent a class
   - **Tier 3** (acceptable fallback) — system-admin / Studio. In-region scroll allowed; page must not clip at 375px.
   - **If unclear, default to Tier 2 and flag the assumption in the round summary** so the caller can correct it. Do NOT halt to ask — Tier 2 is the safe minimum for any operator-facing surface (responsive, no clipping); the caller can promote to Tier 1 if needed or accept Tier 3 if the screen is system-admin / Studio. This keeps the mockup-loop forward-progressing while still surfacing the assumption for review. Inconsistent tier choices across a multi-screen prototype remain a rework finding.
 
-### Styling convention
+### Styling convention — token sheet + design language (EVERY round)
 
-Match existing prototypes. Inspect the newest existing prototype set under `prototypes/` (its shared CSS and a couple of its HTML pages) for the current pattern; when no prototypes exist yet, derive styling from the app's real styles (design tokens, global CSS, component library) instead.
+1. **Link the project's canonical token sheet** (default `prototypes/_tokens.css`; the repo may pin a different path in `agent-context.md § mockup-designer`) from every prototype page. Slug-level stylesheets may only **add** component-specific rules — never **fork** (override token values, redefine recipes).
+2. **Read the project's design-language doc** (default `docs/design-language.md`) every round — type system, colour tokens, spacing/radii, component recipes, shell, and the § Craft bar that `mockup-reviewer` grades Axis 5 against. Build with its recipes; do not improvise house style.
+3. **If the project ships neither** token sheet nor design-language doc: match the newest three prototype sets under `prototypes/` (their shared CSS and pages); when no prototypes exist either, derive styling from the app's real styles (design tokens, global CSS, component library). In this fallback, **flag the missing design language in the round summary** every round: `design-language: MISSING — styling matched to <source>; recommend scaffolding docs/design-language.md from docs/design-language-template.md`.
 
-- Multi-screen directory: link the set's shared CSS (e.g. `_shared.css`) from every page
-- Single-file: embed styles in `<style>` tags inline (matching the repo's existing single-file prototypes, if any)
+- Multi-screen directory: link `_tokens.css` (or the pinned sheet) plus the set's shared CSS from every page
+- Single-file: embed styles in `<style>` tags inline, with token values copied verbatim from the token sheet (cite the sheet in a comment)
 
 Do NOT introduce new CSS frameworks the existing prototypes don't use.
+
+### Polish-round scope discipline
+
+When the caller dispatches a round labelled **polish round** (mockup-coordinator does this after the first CLEAN review), the scope is **visual craft ONLY**: token conformance, type hierarchy, spacing rhythm, hover/focus states, async-state styling, alignment, component-recipe adherence — graded against the design language's § Craft bar. **Layout, scope, and copy are FROZEN**: no new elements, no removed elements, no reworded labels, no restructured screens. If a craft fix seems to require a layout/copy change, do not make it — record it in the round summary as a `polish-blocked-by-structure` note for the operator. The round summary must state `round-type: polish` and list the craft-bar items addressed.
 
 ## Step 3b — Operator-vocabulary rule (no engineer jargon)
 
