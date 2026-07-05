@@ -1,77 +1,421 @@
 {
-  "frameworkVersion": "2.26.0",
+  "frameworkVersion": "2.27.0",
   "managedFiles": [
-    { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
-    { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
-    { "path": ".claude/hooks/*.{js,sh}", "category": "hook", "mode": "sync", "substituteAt": "never" },
-    { "path": ".claude/skills/grill-me/SKILL.md", "category": "skill", "mode": "sync", "substituteAt": "never" },
-    { "path": ".claude/skills/zoom-out/SKILL.md", "category": "skill", "mode": "sync", "substituteAt": "never" },
-    { "path": ".claude/settings.json", "category": "settings", "mode": "settings-merge", "substituteAt": "never" },
-    { "path": ".claude/FRAMEWORK_VERSION", "category": "version", "mode": "sync", "substituteAt": "never" },
-    { "path": ".claude/CHANGELOG.md", "category": "changelog", "mode": "sync", "substituteAt": "never" },
-    { "path": ".claude/project-registries.json.template", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": ".claude/context/agent-context.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": "docs/decisions/0001-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/decisions/0002-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/decisions/0005-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/decisions/0006-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/decisions/0007-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/decisions/0008-*.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/decisions/README.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/decisions/_template.md", "category": "adr", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/context-packs/*.md", "category": "context-pack", "mode": "sync", "substituteAt": "adoption" },
-    { "path": "docs/spec-authoring-checklist.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/frontend-design-principles.md", "category": "reference", "mode": "sync", "substituteAt": "adoption" },
-    { "path": "docs/mobile-capability-principles.md", "category": "reference", "mode": "sync", "substituteAt": "adoption" },
-    { "path": "references/test-gate-policy.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
-    { "path": "references/spec-review-directional-signals.md", "category": "reference", "mode": "sync", "substituteAt": "adoption" },
-    { "path": "docs/incident-response.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/review-pipeline/parallel-mode.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/spec-context.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": "docs/frontend-design-examples.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": "docs/doc-sync.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": "references/verification-commands.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": "scripts/g5-scoped.sh", "category": "template", "mode": "adopt-only", "substituteAt": "never" },
-    { "path": "scripts/chatgpt-review.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/chatgpt-review-api.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/chatgpt-reviewPure.ts", "category": "review-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/__tests__/chatgpt-reviewPure.test.ts", "category": "review-script-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/__tests__/local-override-smoke.js", "category": "sync-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/__tests__/local-override-e2e.js", "category": "sync-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "references/local-override-convention.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/review-coordinator/*.ts", "category": "review-coordinator", "mode": "sync", "substituteAt": "never" },
-    { "path": "schemas/*.json", "category": "review-schema", "mode": "sync", "substituteAt": "never" },
-    { "path": "schemas/CHANGELOG.md", "category": "review-schema", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/run-migrations.js", "category": "migration-runner", "mode": "sync", "substituteAt": "never" },
-    { "path": "migrations/README.md", "category": "migration", "mode": "sync", "substituteAt": "never" },
-    { "path": "migrations/v*.js", "category": "migration", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/experiment-runner-loopPure.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/cross-repo-scoutPure.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/audit-context-packs.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/__tests__/experiment-runner-loopPure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/__tests__/cross-repo-scoutPure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/__tests__/audit-context-packs.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
-    { "path": ".claude/project-registries.json.template.example.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/mockup/capture-surface.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/mockup/capture-surfacePure.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/mockup/capture-manifestPure.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/__tests__/capture-surfacePure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/__tests__/capture-manifestPure.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "docs/behaviour-manifest-template.md", "category": "template", "mode": "adopt-only", "substituteAt": "adoption" },
-    { "path": "scripts/build-scheduler/computeWaves.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/build-scheduler/__tests__/computeWaves.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/build-scheduler/validatePlanMetadata.ts", "category": "helper-script", "mode": "sync", "substituteAt": "never" },
-    { "path": "scripts/build-scheduler/__tests__/validatePlanMetadata.test.ts", "category": "helper-script-test", "mode": "sync", "substituteAt": "never" }
+    {
+      "path": ".claude/agents/*.md",
+      "category": "agent",
+      "mode": "sync",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": ".claude/commands/*.md",
+      "category": "command",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/*.{js,sh}",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/package.json",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/grill-me/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/zoom-out/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/settings.json",
+      "category": "settings",
+      "mode": "settings-merge",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/FRAMEWORK_VERSION",
+      "category": "version",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/CHANGELOG.md",
+      "category": "changelog",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/project-registries.json.template",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": ".claude/context/agent-context.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/decisions/0001-*.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/decisions/0002-*.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/decisions/0005-*.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/decisions/0006-*.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/decisions/0007-*.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/decisions/0008-*.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/decisions/README.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/decisions/_template.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/context-packs/*.md",
+      "category": "context-pack",
+      "mode": "sync",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/spec-authoring-checklist.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/frontend-design-principles.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/mobile-capability-principles.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "references/test-gate-policy.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/spec-review-directional-signals.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/incident-response.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/review-pipeline/parallel-mode.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/spec-context.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/frontend-design-examples.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/doc-sync.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "references/verification-commands.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "scripts/g5-scoped.sh",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/chatgpt-review.ts",
+      "category": "review-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/chatgpt-review-api.ts",
+      "category": "review-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/chatgpt-reviewPure.ts",
+      "category": "review-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/chatgpt-reviewPure.test.ts",
+      "category": "review-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/local-override-smoke.js",
+      "category": "sync-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/local-override-e2e.js",
+      "category": "sync-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/local-override-convention.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/project-extensions-convention.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/review-coordinator/*.ts",
+      "category": "review-coordinator",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "schemas/*.json",
+      "category": "review-schema",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "schemas/CHANGELOG.md",
+      "category": "review-schema",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/run-migrations.js",
+      "category": "migration-runner",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "migrations/README.md",
+      "category": "migration",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "migrations/v*.js",
+      "category": "migration",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/experiment-runner-loopPure.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/cross-repo-scoutPure.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/audit-context-packs.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/experiment-runner-loopPure.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/cross-repo-scoutPure.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/audit-context-packs.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/project-registries.json.template.example.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/mockup/capture-surface.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/mockup/capture-surfacePure.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/mockup/capture-manifestPure.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/capture-surfacePure.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/capture-manifestPure.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/behaviour-manifest-template.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "scripts/build-scheduler/computeWaves.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/build-scheduler/__tests__/computeWaves.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/build-scheduler/validatePlanMetadata.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/build-scheduler/__tests__/validatePlanMetadata.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/review-mode-resolution.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/iteration-caps.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/review-tier-redundancy-audit.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/design-language-template.md",
+      "category": "template",
+      "mode": "sync",
+      "substituteAt": "adoption"
+    }
   ],
   "removedFiles": [
-    { "path": ".claude/agents/reality-checker.md", "removedIn": "2.21.0", "action": "warn-only" }
+    {
+      "path": ".claude/agents/reality-checker.md",
+      "removedIn": "2.21.0",
+      "action": "warn-only"
+    }
   ],
   "doNotTouch": [
     "CLAUDE.md",
     "KNOWLEDGE.md",
     "architecture.md",
     "DEVELOPMENT_GUIDELINES.md",
-    "tasks/**",
-    ".claude/hooks/package.json"
+    "tasks/**"
   ]
 }

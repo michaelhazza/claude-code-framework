@@ -122,9 +122,9 @@ Emit a TodoWrite list before doing any other work. Update items in real time as 
 
 ## Step 2 — Branch-sync S2
 
-Per §8 of the spec. **Auto-resolve known-shape conflicts silently. Pause only when a code-area file conflicts.**
+**Auto-resolve known-shape conflicts silently. Pause only when a code-area file conflicts.**
 
-**Canonical sync sequence (spec §8.2 / §8.4):**
+**Canonical sync sequence:**
 
 ```bash
 git fetch origin
@@ -132,7 +132,7 @@ COMMITS_BEHIND=$(git rev-list --count HEAD..origin/main)
 echo "Branch is ${COMMITS_BEHIND} commits behind main"
 ```
 
-**Freshness thresholds (§8.4):**
+**Freshness thresholds:**
 - 0–10 commits behind → green, continue silently
 - 11–30 commits behind → yellow, print warning, continue
 - 31+ commits behind → **red**: refuse to start without explicit operator override. Print: "Branch is ${COMMITS_BEHIND} commits behind main — drift exceeds the safe threshold. Reply **force** to override, or **abort** to exit and rebase manually." On `force` → continue. On `abort` → exit (do NOT set current-focus.md to NONE here — the status is REVIEWING and the operator must manually decide). On any other input → ask to clarify.
@@ -281,7 +281,7 @@ PR: https://github.com/.../<number>
 
 ## Step 5 — chatgpt-pr-review
 
-Invoke `chatgpt-pr-review` as a sub-agent. MODE = **manual**.
+Invoke `chatgpt-pr-review` as a sub-agent. MODE = **manual**. **INVOCATION CONTEXT = `coordinator-invoked` — state this explicitly in the kickoff message.** In this context the sub-agent's own finalisation steps 10–12 (merge main, `ready-to-merge` label, CI monitor/auto-merge) are forbidden per its INVOCATION CONTEXT contract — THIS coordinator owns branch sync (Step 8b), the label (Step 10), CI watching (Step 11), and the merge (Step 12). If the sub-agent's return message claims it merged or labelled the PR, treat that as a contract violation: verify actual PR state with `gh pr view` before proceeding, and record the violation in progress.md.
 
 Before invoking, check `handoff.md` for `spec_deviations:`. If present, include in the sub-agent kickoff context:
 
@@ -329,23 +329,11 @@ Run the doc-sync sweep across the full feature change-set per `docs/doc-sync.md`
 
 **Mandatory per-doc procedure.** For each registered doc, follow the **Investigation procedure** in `docs/doc-sync.md` — read the doc, derive candidate-stale-reference set from the branch diff, grep the doc for each candidate, fix any stale references in this same pass, then record the verdict per **Verdict rule** in the same file. A `no` verdict that does not cite either the grep terms checked or the specific reason the update trigger does not apply is treated as missing — and missing verdicts block finalisation.
 
-Reference doc update triggers:
+The authoritative registry of docs and their update triggers is the table in `docs/doc-sync.md` — build the sweep list from it at run time (registered docs absent from this repo get `n/a — not present in this repo`; that row still counts toward the invariant below). The rows here are examples only, not the list: `architecture.md` (service boundaries, conventions, agent fleet), `CLAUDE.md`/`DEVELOPMENT_GUIDELINES.md` (build discipline, locked rules), `KNOWLEDGE.md` (always check), `docs/spec-context.md` (spec-review sessions only — always `n/a` here).
 
-| Doc | Update when... |
-|---|---|
-| `architecture.md` | Service boundaries, route conventions, agent fleet, RLS, etc. |
-| `docs/capabilities.md` | **Capability Registration (§6.2.1 combined verdict required).** Trigger: any merge that creates, mutates, splits, or merges a capability surface (any Asset Register row field per spec §7.4.1). Editorial Rules apply. Verdict must use the §6.2.1 combined format — see prose below this table. |
-| `docs/integration-reference.md` | Integration behaviour change. Update `last_verified`. |
-| `CLAUDE.md` / `DEVELOPMENT_GUIDELINES.md` | Build discipline, conventions, agent fleet, locked rules. |
-| `docs/frontend-design-principles.md` | New UI pattern, hard rule, worked example. |
-| `KNOWLEDGE.md` | Patterns and corrections — always check. |
-| `docs/spec-context.md` | Spec-review sessions only — n/a here. |
+**Capability Registration verdict — `docs/capabilities.md` (combined format; applies ONLY if this repo ships `docs/capabilities.md` — otherwise record `n/a — not present in this repo` and skip this block).**
 
-**Capability Registration verdict — `docs/capabilities.md` (§6.2.1 combined format).**
-
-> **Spec-section disambiguation:** §6.2.1, §7.4.1, §7.4.4 below → `tasks/builds/development-lifecycle-governance-upgrade/spec.md` (development-lifecycle-governance-upgrade build spec). §8, §8.2, §8.4 (Step 2) and §6.4.2 (Step 10) → the dev-pipeline-coordinators spec (`docs/superpowers/specs/2026-04-30-dev-pipeline-coordinators-spec.md`).
-
-When the doc-sync sweep reaches `docs/capabilities.md`, the verdict is recorded in the combined format `<verdict>: <registration outcome>`. Exactly one of these eight strings is valid:
+When the doc-sync sweep reaches `docs/capabilities.md`, the verdict is recorded in the combined format `<verdict>: <registration outcome>`. The trigger is any merge that creates, mutates, splits, or merges a capability surface (any Asset Register row field). Exactly one of these eight strings is valid:
 
 - `yes: create new capability record`
 - `yes: update existing capability record`
@@ -358,11 +346,11 @@ When the doc-sync sweep reaches `docs/capabilities.md`, the verdict is recorded 
 
 Any other phrasing is invalid and treated as a missing verdict.
 
-A `yes`-class verdict requires that the Asset Register row(s) follow spec §7.4.1 and that one of the §7.4.4 registration outcomes is named explicitly. A `n/a`-class verdict requires that one of the four reasons above is named explicitly.
+A `yes`-class verdict requires that the Asset Register row(s) follow the row format defined in `docs/capabilities.md` itself (its Editorial Rules section) and that one of the four registration outcomes is named explicitly. A `n/a`-class verdict requires that one of the four reasons above is named explicitly.
 
 For a `yes: split existing capability record` verdict: the original row's `Lifecycle state` is moved to `Sunset Candidate` or `Sunset`; a Related-docs link is added pointing to the successor row(s).
 
-**`MERGE_READY` block:** Step 9 (`MERGE_READY`) is blocked until a valid §6.2.1 verdict is recorded for `docs/capabilities.md`. If the verdict is absent or invalid, record the missing-verdict reason in `progress.md` and halt the pipeline. Do not set `MERGE_READY` until the verdict is corrected.
+**`MERGE_READY` block:** Step 9 (`MERGE_READY`) is blocked until a valid combined-format verdict is recorded for `docs/capabilities.md` (repos that ship it only). If the verdict is absent or invalid, record the missing-verdict reason in `progress.md` and halt the pipeline. Do not set `MERGE_READY` until the verdict is corrected.
 
 Record verdicts in the chatgpt-pr-review session log under `## Final Summary`.
 
@@ -476,7 +464,7 @@ If the branch is already up to date with `origin/main`, S3 is a no-op — contin
 
 **8c.4 — Local fix loop.** On any failure:
 
-1. **Diagnose** the root cause from the local output. Test files are off-limits exactly as in Step 11 G1 — never modify a test to chase green; if a test is genuinely outdated, that is an operator decision.
+1. **Diagnose** the root cause from the local output. Test files are off-limits exactly as in Step 11 AF1 — never modify a test to chase green; if a test is genuinely outdated, that is an operator decision.
 2. **Fix locally** — inline for single-file mechanical fixes; spawn `builder` with a focused chunk brief for multi-file fixes.
 3. **Re-run the failed command** until it passes.
 4. **After the last failure is fixed, re-run the ENTIRE selected set (scoped or full, per 8c.2) once more, clean** — a fix can break a previously-passed check. G5 is green only when a single uninterrupted pass of the selected set succeeds. Re-evaluate the escape-hatch rule first: if any fix commit touched an escape-hatch surface, the clean pass is full, not scoped.
@@ -531,7 +519,7 @@ LABEL_TIMESTAMP_PLACEHOLDER=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 This is the timestamp recorded as "ready-to-merge label applied at" — not the wall-clock instant of the `gh` call (which happens after the commit). It represents the operator-visible "labelling moment" of the build; using a single timestamp captured pre-commit means the handoff section, the commit message, and the actual label all reference one canonical instant. Drift between the three is at most a few seconds.
 
-Then write in this order (abort-write-order invariant from §6.4.2):
+Then write in this order (abort-write-order invariant):
 
 1. Append the Phase 3 handoff section to `tasks/builds/{slug}/handoff.md` (with `LABEL_TIMESTAMP_PLACEHOLDER` recorded as "ready-to-merge label applied at").
 2. Write the new mission-control block + prose body to `tasks/current-focus.md` (composed in Step 9).
@@ -549,7 +537,7 @@ Commit message:
 ```
 chore(finalisation-coordinator): Phase 3 complete — {slug}
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 Push to branch. This single push also publishes the held S3 merge commit (Step 8b) and any G5 fix commits (Step 8c) — the first push since the review loop, so CI sees exactly one `synchronize` event for the whole finalisation tail. Never `--no-verify`, never `--amend`. **Wait for the push to complete before proceeding to 10.3.**
@@ -642,9 +630,9 @@ If the label removal fails (permissions, network): pause and escalate BEFORE pus
 
 ### Guardrails (mandatory — applied BEFORE every iteration)
 
-The auto-fix path is restricted by four hard rules. If any rule is hit, do NOT iterate — escalate to operator with the specific rule cited and stop the auto-fix path. The operator can override case-by-case.
+The auto-fix path is restricted by four hard rules, named AF1–AF4 ("auto-fix guardrails" — distinct from the pipeline gates G1–G5, which are unrelated). If any rule is hit, do NOT iterate — escalate to operator with the specific rule cited and stop the auto-fix path. The operator can override case-by-case.
 
-**G1 — Test files are off-limits.** If the diagnosed root-cause requires modifying any of the following, escalate immediately. Never modify a test to chase green:
+**AF1 — Test files are off-limits.** If the diagnosed root-cause requires modifying any of the following, escalate immediately. Never modify a test to chase green:
 
 - `*.test.ts` / `*.test.tsx` / `*.spec.ts` / `*.spec.tsx`
 - Files under `tests/`, `__tests__/`, `e2e/`, `integration/`, or `fixtures/`
@@ -653,11 +641,11 @@ The auto-fix path is restricted by four hard rules. If any rule is hit, do NOT i
 
 Failing tests usually mean the implementation is wrong. The fix belongs in the implementation, not in the assertion. If the implementation IS already correct and the test is genuinely outdated, that's a spec-amendment decision the operator must own.
 
-**G2 — Diff size cap: 50 lines per iteration.** Compute `git diff --stat` of the proposed fix. If `inserted + deleted > 50`, escalate. Bigger fixes almost always indicate the agent is solving the wrong problem (e.g. accidentally rewriting a service when the fix is a one-line guard). The migration-0300 IMMUTABLE fix (1 line) and the corrections-route service-helper fix (30 lines) both fit comfortably under this cap.
+**AF2 — Diff size cap: 50 lines per iteration.** Compute `git diff --stat` of the proposed fix. If `inserted + deleted > 50`, escalate. Bigger fixes almost always indicate the agent is solving the wrong problem (e.g. accidentally rewriting a service when the fix is a one-line guard). The migration-0300 IMMUTABLE fix (1 line) and the corrections-route service-helper fix (30 lines) both fit comfortably under this cap.
 
 If the diagnosed fix genuinely needs more than 50 lines, that's a feature-scoped change, not a CI fix — spawn `builder` with a focused chunk brief, get pr-reviewer on the diff, and only after that consider re-entering the auto-fix loop.
 
-**G3 — Category allowlist: only mechanical CI categories auto-fix.** Match the failing check's signature. Auto-fix is allowed for:
+**AF3 — Category allowlist: only mechanical CI categories auto-fix.** Match the failing check's signature. Auto-fix is allowed for:
 
 - SQL / migration syntax (`functions in index expression must be marked IMMUTABLE`, `relation does not exist`, malformed CREATE TABLE / CREATE INDEX, etc.)
 - Lint errors (`eslint`)
@@ -675,9 +663,9 @@ Auto-fix is **escalate-immediately** for:
 - "Workspace Actor Coverage" or similar policy gates — needs operator judgment
 - Any check whose name or log signature doesn't match a category above — unknown territory
 
-If the failing check straddles categories (e.g. "lint error caused by an unrelated test refactor"), the test-file half pulls G1 and the whole fix escalates.
+If the failing check straddles categories (e.g. "lint error caused by an unrelated test refactor"), the test-file half pulls AF1 and the whole fix escalates.
 
-**G4 — Post-merge audit log.** At the START of the very first fix iteration in this session, create `tasks/review-logs/auto-fix-log-{slug}-{timestamp}.md` with this header:
+**AF4 — Post-merge audit log.** At the START of the very first fix iteration in this session, create `tasks/review-logs/auto-fix-log-{slug}-{timestamp}.md` with this header:
 
 ```markdown
 # Auto-Fix Loop — {slug} — {ISO timestamp}
@@ -686,7 +674,7 @@ PR: #{N}
 Branch: {branch}
 Started: {ISO timestamp}
 Iteration cap: 5
-Guardrails active: G1 (test files off-limits), G2 (50-line diff cap), G3 (category allowlist), G4 (this log)
+Guardrails active: AF1 (test files off-limits), AF2 (50-line diff cap), AF3 (category allowlist), AF4 (this log)
 ```
 
 After EVERY iteration (including escalations and out-of-scope classifications), append a row:
@@ -696,8 +684,8 @@ After EVERY iteration (including escalations and out-of-scope classifications), 
 
 - **Failed check:** {check name}
 - **Root cause (one sentence):** {root cause}
-- **Category (G3 allowlist match):** {category, or "ESCALATED — {reason}"}
-- **Guardrail status:** G1=PASS|FAIL, G2={lines-changed}/50, G3=PASS|FAIL, G4=logged
+- **Category (AF3 allowlist match):** {category, or "ESCALATED — {reason}"}
+- **Guardrail status:** AF1=PASS|FAIL, AF2={lines-changed}/50, AF3=PASS|FAIL, AF4=logged
 - **Fix:** {one-line summary OR "ESCALATED, no fix applied"}
 - **Diff:** {commit sha if applied, otherwise "no commit"}
 - **CI re-fire result:** {green | red — {next failure} | pending at next poll}
@@ -714,18 +702,18 @@ Stage and commit this file with each iteration's fix commit so the audit trail i
    Identify: failed check, failed file, root-cause line. Do not guess — read the log.
 2. **Triage.** Decide single-file mechanical vs multi-file or non-obvious:
    - **Single-file mechanical** (e.g. SQL syntax, missing import, obvious typo): fix inline using `Edit` / `Write` directly.
-   - **Multi-file or contract-shape change**: spawn the `builder` sub-agent with a focused chunk brief identical in shape to the pre-merge fix-loop pattern. (G2 still applies — bigger than 50 lines escalates instead.)
-3. **Guardrail re-check (after composing the fix).** Re-run G1 (file paths), G2 (`git diff --stat` line counts), G3 (category match) on the proposed fix. If any guardrail trips at this point, abandon the fix and escalate.
+   - **Multi-file or contract-shape change**: spawn the `builder` sub-agent with a focused chunk brief identical in shape to the pre-merge fix-loop pattern. (AF2 still applies — bigger than 50 lines escalates instead.)
+3. **Guardrail re-check (after composing the fix).** Re-run AF1 (file paths), AF2 (`git diff --stat` line counts), AF3 (category match) on the proposed fix. If any guardrail trips at this point, abandon the fix and escalate.
 4. **Local verify (G5 parity — not just lint).** Re-run the failing check's local-parity command (from the Step 8c.1 mapping) until it passes, then run lint + typecheck, then re-run the G5 parity set once clean in the mode selected per Step 8c.2 (when G5 ran scoped, the failing check's full local-parity command joins the scoped set for the rest of the session; a fix touching an escape-hatch surface forces full mode). A fix is "verified" only against the same commands CI will run — lint + typecheck alone is not sufficient evidence for a test or gate failure. A CI failure that cannot be reproduced locally is treated as out-of-scope/transient (see below), never "fixed" by a blind push. If anything fails, fix before committing — never commit a known-broken state to chase a CI fix.
-5. **Append to audit log (G4).** Write the iteration row before committing the fix.
+5. **Append to audit log (AF4).** Write the iteration row before committing the fix.
 6. **Commit + push.** Commit message format:
    ```
    fix({slug}): CI <check-name> — <root cause>
 
    <one-line evidence from CI log>
-   Auto-fix iteration {N}/5. Guardrails: G1=PASS, G2={lines}/50, G3={category}.
+   Auto-fix iteration {N}/5. Guardrails: AF1=PASS, AF2={lines}/50, AF3={category}.
 
-   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+   Co-Authored-By: Claude <noreply@anthropic.com>
    ```
    Stage both the fix files AND the auto-fix log. Push to the feature branch immediately. Because the label was pulled at the top of the sub-loop, this push fires only the always-on jobs — not the full label-gated suite.
 7. **Re-add the label.** Only after step 4's full local-parity pass:
@@ -799,7 +787,7 @@ Then:
 git add tasks/current-focus.md
 git commit -m "chore({slug}): post-merge — current-focus → NONE
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 git push origin {branch}
 ```
 
@@ -844,7 +832,7 @@ Commit on main:
 git add tasks/current-focus.md
 git commit -m "chore({slug}): finalize — squash sha {SQUASH_SHA}
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 git push origin main
 ```
 
@@ -899,7 +887,7 @@ On finalisation, emit / refresh the `REVIEW_GAP` entries from the handoff as a t
 - 4-8 dot points TOTAL across the four sections. If you have more than 8, cut to the highest-impact ones — the operator can read the build artefacts if they want full detail.
 - **No internal jargon.** Forbidden words: "Phase 1/2/3", "G1/G2/G4 gate", "spec-conformance", "pr-reviewer", "REVIEW_GAP", "chunk", "handoff", "builder", any agent name. Translate any of those to plain English (e.g. "code review" not "pr-reviewer", "main branch" not "trunk", "shipped" not "merged-and-deployed").
 - **No file paths.** The operator does not need to see `server/services/foo.ts` in a CEO summary. Describe what changed in terms of user-facing behaviour, not files.
-- **"Further action required" is YES or NO, not a hedge.** If nothing's pending, say so explicitly — do not list "monitor for issues" or similar non-actions. If the §13.3 gate-debt flag will fire (inherited CI checks left failing), include one plain-English line here pointing to it, e.g. "Some repo-wide code-quality checks are failing on the main branch (not caused by this change) — run /fix-ci-gate-debt to clear them."
+- **"Further action required" is YES or NO, not a hedge.** If nothing's pending, say so explicitly — do not list "monitor for issues" or similar non-actions. If the finalisation gate-debt flag will fire (inherited CI checks left failing), include one plain-English line here pointing to it, e.g. "Some repo-wide code-quality checks are failing on the main branch (not caused by this change) — run /fix-ci-gate-debt to clear them."
 - **"Added to backlog" lists only NEW items from this build's diff, not the entire backlog.** If the squash diff for `tasks/todo.md` is empty (nothing added), print "Nothing new deferred" — never invent items.
 - **Benefits are user-facing, not technical.** "Operators can now retry a failed run in one click" — yes. "Refactored retry logic into a reusable hook" — no.
 

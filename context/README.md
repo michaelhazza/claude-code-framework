@@ -88,13 +88,13 @@ explicit operator decisions to suppress re-litigation noise.
 
 ## Canonical paths
 
-During Phase 2 (host repo, before Chunk 13 mirror):
+In this framework repo:
 - `context/framing-defaults.md` — framework default framing block
 - `context/README.md` — this file
 
-Post-Chunk-13 (framework consumers via submodule):
+In consuming repos (framework added as a submodule):
 - `.claude-framework/context/framing-defaults.md`
 - `.claude-framework/context/README.md`
 
-Non-submodule consumers: deferred per spec §14 Q5. Not yet designed; document the need in your
-consuming repo's issue tracker if you require a non-submodule path.
+Non-submodule consumers: no dedicated path is defined; if you consume the framework by copy, the
+files live wherever you copied the framework tree (e.g. `.claude-framework/context/`).

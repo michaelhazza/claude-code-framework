@@ -1,6 +1,6 @@
 ---
 name: feature-coordinator
-description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (automated default; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk G1 (builder runs scoped lint on touched files plus builder-owned targeted pure-function tests where applicable; coordinator re-runs scoped lint as a backup check). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
+description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (hard-default manual mode; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk G1 (builder runs scoped lint on touched files plus builder-owned targeted pure-function tests where applicable; coordinator re-runs scoped lint as a backup check). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -44,9 +44,9 @@ Immediately after context loading, emit a TodoWrite task list with exactly these
 1. Context loading
 2. Branch-sync S1 + freshness check
 3. architect invocation
-3a. claude-plan-review invocation (NEW — D5 cap, validateProjectContext preflight)
-3b. Apply surfaced findings + persist log (surface-only stub until Chunk 10)
-4. chatgpt-plan-review (automated default; Claude log + spec injected via D8)
+3a. claude-plan-review invocation (D5 cap, validateProjectContext preflight)
+3b. Apply surfaced findings + persist log
+4. chatgpt-plan-review (MODE per `references/review-mode-resolution.md` — hard default manual; Claude log + spec injected via D8)
 5. plan-gate
 6. Per-chunk loop (expanded after architect returns — one item per chunk)
 7. G2 integrated-state gate (lint + typecheck + build:server/client)
@@ -60,7 +60,7 @@ Mark item 1 completed immediately (you just loaded context). Mark item 2 in_prog
 
 ## Step 2 — Branch-sync S1 + freshness check
 
-Run the same sync logic as S0 (from spec §8): fetch origin, rebase or merge main into the feature branch, resolve conflicts if straightforward, escalate if not.
+Run the same sync logic as S0: fetch origin, rebase or merge main into the feature branch, resolve conflicts if straightforward, escalate if not.
 
 **Migration-number collision detection** — run verbatim:
 
@@ -128,7 +128,7 @@ The sub-agent returns a `review-result.v2` JSON (validated by the Chunk 1 schema
 **Verdict routing (after `{kind: 'ok'}`):**
 
 - `APPROVED` → record in `progress.md`, proceed to Step 3b (persist log, then continue to Step 4).
-- `CHANGES_REQUESTED` → proceed to Step 3b. **All findings route to surface-to-operator until Chunk 10 lands.**
+- `CHANGES_REQUESTED` → proceed to Step 3b and run the apply loop (the driver auto-applies eligible mechanical findings; everything else surfaces to the operator).
 - `NEEDS_DISCUSSION` → surface the decision points to the operator. Wait for direction before proceeding to Step 4.
 
 Persist the iteration count: after each invocation (regardless of verdict), append `claude-plan-review iteration N: <verdict>` to `tasks/builds/{slug}/progress.md`.
@@ -144,12 +144,12 @@ Markdown:  tasks/review-logs/claude-plan-review-log-<slug>-<timestamp>.md
 
 (The driver writes these automatically; Step 3b records their paths in `progress.md` under `## Claude plan review log`.)
 
-**Apply loop (surface-only stub — Chunk 10 patches this):**
+**Apply loop:**
 
 For each finding in the JSON log:
 
 ```
-Invoke `scripts/review-coordinator/applyFindings.ts` (the §11a I/O orchestrator):
+Invoke `scripts/review-coordinator/applyFindings.ts` (the apply orchestrator — its source is the authoritative contract):
 
 ```
 applyFindings(reviewResult, {
@@ -161,15 +161,15 @@ applyFindings(reviewResult, {
 ```
 
 The orchestrator runs:
-- Four-key gate (§11a Step 3 sub-checks 1-8): anti-vagueness, recommendation gate,
-  reviewer eligibility, carve-out (§13), scope, triage, suppression memory (§11c).
-- Anchor-based apply (§A11): each proposed_edit applied with exact anchor matching;
+- Eligibility gate: anti-vagueness, recommendation gate, reviewer eligibility,
+  security carve-out, scope, triage, suppression memory.
+- Anchor-based apply: each proposed_edit applied with exact anchor matching;
   anchor_not_found / anchor_not_unique surfaces the finding without applying.
 - Per-finding lint + typecheck + acceptance_check verify.
 - Rollback on verify failure via git checkout HEAD.
 - Cumulative re-verify after all per-finding applies; walk-back reverts on failure.
-- Structured commit (one per apply batch) per §11a Step 8 format.
-- Audit log JSONL entry per decision per §11a Step 9.
+- Structured commit (one per apply batch).
+- Audit log JSONL entry per decision.
 
 Returns { applied[], surfaced[], quarantined[], commit_sha }. Route surfaced findings
 to the operator surface block below.
@@ -181,7 +181,7 @@ Surface every finding to the operator with its `severity`, `title`, `triage_hint
 
 ## Step 4 — chatgpt-plan-review
 
-**Automated default (D8):** invoke `chatgpt-plan-review` as a sub-agent. The default mode is **automated** when `OPENAI_API_KEY` is set in the environment. The manual-fallback mode is preserved for when no API key is present.
+**Invoke `chatgpt-plan-review` as a sub-agent.** MODE resolves per `references/review-mode-resolution.md` (explicit operator phrase → session-state file → `CHATGPT_REVIEW_DEFAULT_MODE` env var → hard default **manual**). Do NOT auto-detect from `OPENAI_API_KEY` presence — that legacy behaviour was removed; the operator opts into `automated` explicitly via phrase or env var.
 
 **D8 — Claude log passthrough:** inject the Claude plan review log (from Step 3b) AND the approved spec path into the `PROJECT_CONTEXT` passed to `chatgpt-plan-review`. Append the log under a `## Prior Claude plan review` heading in `PROJECT_CONTEXT`, so the OpenAI tier focuses on unapplied findings and plan/spec drift rather than re-raising settled points. Format:
 
@@ -197,9 +197,9 @@ If Step 3a was skipped (preflight failed or cap reached), record `## Prior Claud
 
 If Step 3a's driver quarantined the Claude output (exit code 4 / 5 / 6), include the quarantine path in `PROJECT_CONTEXT` under `## Prior Claude plan review: quarantined`.
 
-**Automated mode:** the sub-agent calls the OpenAI API directly with the plan + PROJECT_CONTEXT (including the Claude log). It runs the schema-gate validation on the response, triages findings, and returns a finalised plan. No operator paste required in automated mode.
+**Automated mode (operator-selected):** the sub-agent calls the OpenAI API directly with the plan + PROJECT_CONTEXT (including the Claude log). It runs the schema-gate validation on the response, triages findings, and returns a finalised plan. No operator paste required in automated mode.
 
-**Manual fallback (no API key):** the sub-agent presents the plan to the operator for ChatGPT-web rounds. The operator pastes responses; the sub-agent triages and applies accepted edits. Same flow as before; operator drives the cadence.
+**Manual mode (default):** the sub-agent presents the plan to the operator for ChatGPT-web rounds. The operator pastes responses; the sub-agent triages and applies accepted edits. Operator drives the cadence.
 
 When the sub-agent returns with a finalised plan, update `progress.md` and proceed to plan-gate.
 
@@ -347,7 +347,7 @@ Commit message per chunk:
 ```
 chore(feature-coordinator): chunk {N} complete — {chunk-name} (G1 attempts: {N})
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 Push after each chunk commit.
@@ -622,10 +622,10 @@ For each Blocking finding from pr-reviewer:
 
 ### 8.5 — dual-reviewer
 
-Codex availability check:
+Codex availability check (a repo may pin a machine-specific fallback path in its `.claude/context/agent-context.md` section for this agent):
 
 ```bash
-CODEX_BIN=$(command -v codex 2>/dev/null || echo "/c/Users/Michael/AppData/Roaming/npm/codex")
+CODEX_BIN=$(command -v codex 2>/dev/null || echo "${CODEX_FALLBACK_PATH:-codex}")
 if [ ! -x "$CODEX_BIN" ] && [ ! -f "$CODEX_BIN" ]; then
   echo "dual-reviewer: skipped — Codex CLI unavailable or unauthenticated"
 fi
@@ -661,19 +661,16 @@ Record verdict per the **Verdict rule** in `docs/doc-sync.md`:
 
 The `docs/spec-context.md` entry does not apply to feature pipelines — record `n/a` for it.
 
-**Enforcement invariant:** the verdict table must have exactly as many rows as `docs/doc-sync.md` registers. A missing verdict is a blocker — do not proceed. A bare `no` with no rationale, or a `no` whose rationale doesn't cite grep terms or scope rationale, is treated as missing.
+**Enforcement invariant:** the verdict table must have exactly as many rows as `docs/doc-sync.md` registers (docs registered but absent from this repo get `n/a — not present in this repo`; that row still counts). Build the row list FROM the registry at run time — never from a memorised template. A missing verdict is a blocker — do not proceed. A bare `no` with no rationale, or a `no` whose rationale doesn't cite grep terms or scope rationale, is treated as missing.
 
 Record verdicts in `tasks/builds/{slug}/progress.md` under `## Doc Sync gate`:
 
 ```markdown
 ## Doc Sync gate
-- architecture.md updated: yes (sections X, Y) | no — <rationale> | n/a
-- capabilities.md updated: yes (sections X) | no — <rationale> | n/a
-- integration-reference.md updated: yes (slug X) | no — <rationale> | n/a
-- CLAUDE.md / DEVELOPMENT_GUIDELINES.md updated: yes | no — <rationale> | n/a
-- frontend-design-principles.md updated: yes | no — <rationale> | n/a
-- KNOWLEDGE.md updated: yes (N entries) | no — <rationale>
-- spec-context.md updated: n/a
+<!-- one row per docs/doc-sync.md registry entry, derived at run time -->
+- <doc path> updated: yes (sections X, Y) | no — <rationale> | n/a | n/a — not present in this repo
+- ...
+- spec-context.md updated: n/a   <!-- always n/a in feature pipelines -->
 ```
 
 Failure to update a relevant doc is a blocking issue. Escalate to the operator — do not auto-defer.
@@ -764,7 +761,7 @@ git add tasks/builds/{slug}/handoff.md tasks/builds/{slug}/progress.md tasks/cur
 git commit -m "$(cat <<'EOF'
 chore(feature-coordinator): Phase 2 complete — branch-level review pass + doc-sync ({slug})
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 git push

@@ -8,7 +8,7 @@ Architecture Decision Records — the "why" behind durable choices.
 
 This directory captures the durable decisions: "we chose X over Y, here's why, here's what we'd reconsider if Z." Future sessions retrieve them by domain, not by date.
 
-Lightweight ADR format inspired by Michael Nygard's original. Each ADR is one file, dated, immutable once accepted.
+Lightweight ADR format inspired by Nygard's original. Each ADR is one file, dated, immutable once accepted.
 
 ## Convention
 

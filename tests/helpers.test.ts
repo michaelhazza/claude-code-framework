@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import * as fsp from 'node:fs/promises';
+import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
@@ -11,7 +12,9 @@ const {
   normaliseContent,
   hashContent,
   expandGlob,
+  expandManagedFiles,
   hashSubstitutions,
+  isDoNotTouch,
   loadManifest,
   readState,
   writeStateAtomic,
@@ -266,14 +269,63 @@ describe('readState / writeStateAtomic', () => {
 describe('loadManifest', () => {
   const frameworkRoot = path.dirname(fileURLToPath(import.meta.url)).replace(/[/\\]tests$/, '');
 
-  test('reads real manifest.json and returns expected managedFiles count', () => {
+  test('reads real manifest.json and returns a structurally valid manifest', () => {
     const manifest = loadManifest(frameworkRoot);
     assert.equal(typeof manifest.frameworkVersion, 'string');
     assert.ok(Array.isArray(manifest.managedFiles));
-    // Manifest has 19 entries per spec §4.2 (Chunk 2)
-    assert.equal(manifest.managedFiles.length, 19);
+    assert.ok(manifest.managedFiles.length > 0, 'managedFiles must not be empty');
     assert.ok(Array.isArray(manifest.removedFiles));
     assert.ok(Array.isArray(manifest.doNotTouch));
+  });
+
+  test('manifest.frameworkVersion matches .claude/FRAMEWORK_VERSION', () => {
+    const manifest = loadManifest(frameworkRoot);
+    assert.equal(manifest.frameworkVersion, readFrameworkVersion(frameworkRoot));
+  });
+
+  test('every managedFiles glob expands to at least one existing file in the framework repo', () => {
+    const manifest = loadManifest(frameworkRoot);
+    for (const entry of manifest.managedFiles) {
+      const expanded = expandGlob(entry.path, frameworkRoot);
+      assert.ok(
+        expanded.length >= 1,
+        `manifest glob "${entry.path}" matched no files in the framework repo — dead entry or missing file`
+      );
+    }
+  });
+
+  test('every file in a glob-owned managed directory is managed, doNotTouch, or explicitly exempt', () => {
+    const manifest = loadManifest(frameworkRoot);
+    const managedSet = new Set(
+      expandManagedFiles(manifest, frameworkRoot).map((f: any) => f.relativePath)
+    );
+    // Files that live inside glob-owned directories but are deliberately NOT
+    // framework-managed. Add entries here with a reason when introducing one.
+    const EXEMPT = new Set<string>([]);
+
+    // Directories where the framework claims wildcard ownership (entries whose
+    // final segment contains '*'). A file appearing there without being managed
+    // is almost always a manifest omission.
+    const globOwnedDirs = new Set<string>();
+    for (const entry of manifest.managedFiles) {
+      const segments = entry.path.split('/');
+      if (segments[segments.length - 1].includes('*')) {
+        globOwnedDirs.add(segments.slice(0, -1).join('/'));
+      }
+    }
+
+    for (const dir of Array.from(globOwnedDirs)) {
+      const dirents = fsSync.readdirSync(path.join(frameworkRoot, dir), { withFileTypes: true });
+      for (const dirent of dirents) {
+        if (!dirent.isFile()) continue; // subdirectories (e.g. _retired/) are out of scope for single-* globs
+        const rel = `${dir}/${dirent.name}`;
+        const covered = managedSet.has(rel) || isDoNotTouch(rel, manifest.doNotTouch) || EXEMPT.has(rel);
+        assert.ok(
+          covered,
+          `${rel} lives in glob-owned managed directory "${dir}" but is neither managed, in doNotTouch, nor in the test's exemption list`
+        );
+      }
+    }
   });
 
   test('rejects malformed JSON', async () => {
@@ -325,6 +377,83 @@ describe('loadManifest', () => {
     await fsp.writeFile(path.join(tmpDir, 'manifest.json'), JSON.stringify(bad), 'utf8');
     assert.throws(() => loadManifest(tmpDir), /settings-merge mode is exclusive/);
     await fsp.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('rejects frameworkVersion drift against .claude/FRAMEWORK_VERSION', async () => {
+    const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'sync-manifest-'));
+    await fsp.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fsp.writeFile(path.join(tmpDir, '.claude', 'FRAMEWORK_VERSION'), '9.9.9\n', 'utf8');
+    const bad = { frameworkVersion: '2.2.0', managedFiles: [], removedFiles: [], doNotTouch: [] };
+    await fsp.writeFile(path.join(tmpDir, 'manifest.json'), JSON.stringify(bad), 'utf8');
+    assert.throws(() => loadManifest(tmpDir), /does not match .*FRAMEWORK_VERSION/);
+    await fsp.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('accepts matching frameworkVersion against .claude/FRAMEWORK_VERSION', async () => {
+    const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'sync-manifest-'));
+    await fsp.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    await fsp.writeFile(path.join(tmpDir, '.claude', 'FRAMEWORK_VERSION'), '2.2.0\n', 'utf8');
+    const good = { frameworkVersion: '2.2.0', managedFiles: [], removedFiles: [], doNotTouch: [] };
+    await fsp.writeFile(path.join(tmpDir, 'manifest.json'), JSON.stringify(good), 'utf8');
+    const manifest = loadManifest(tmpDir);
+    assert.equal(manifest.frameworkVersion, '2.2.0');
+    await fsp.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('rejects an invalid mode', async () => {
+    const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'sync-manifest-'));
+    const bad = {
+      frameworkVersion: '2.2.0',
+      managedFiles: [{ path: 'a.md', category: 'agent', mode: 'copy', substituteAt: 'never' }],
+      removedFiles: [],
+      doNotTouch: [],
+    };
+    await fsp.writeFile(path.join(tmpDir, 'manifest.json'), JSON.stringify(bad), 'utf8');
+    assert.throws(() => loadManifest(tmpDir), /invalid mode "copy"/);
+    await fsp.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('rejects an invalid category', async () => {
+    const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'sync-manifest-'));
+    const bad = {
+      frameworkVersion: '2.2.0',
+      managedFiles: [{ path: 'a.md', category: 'banana', mode: 'sync', substituteAt: 'never' }],
+      removedFiles: [],
+      doNotTouch: [],
+    };
+    await fsp.writeFile(path.join(tmpDir, 'manifest.json'), JSON.stringify(bad), 'utf8');
+    assert.throws(() => loadManifest(tmpDir), /invalid category "banana"/);
+    await fsp.rm(tmpDir, { recursive: true, force: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isDoNotTouch
+// ---------------------------------------------------------------------------
+
+describe('isDoNotTouch', () => {
+  test('exact match', () => {
+    assert.equal(isDoNotTouch('CLAUDE.md', ['CLAUDE.md']), true);
+  });
+
+  test('prefix match under a directory entry with trailing /**', () => {
+    assert.equal(isDoNotTouch('tasks/builds/x/plan.md', ['tasks/**']), true);
+    assert.equal(isDoNotTouch('tasks', ['tasks/**']), true);
+  });
+
+  test('no glob expansion — * inside an entry is treated literally', () => {
+    assert.equal(isDoNotTouch('docs/a.md', ['docs/*.md']), false);
+  });
+
+  test('non-matching paths and partial-segment prefixes do not match', () => {
+    assert.equal(isDoNotTouch('KNOWLEDGE.md.bak', ['KNOWLEDGE.md']), false);
+    assert.equal(isDoNotTouch('tasks-other/file.md', ['tasks/**']), false);
+    assert.equal(isDoNotTouch('README.md', ['CLAUDE.md', 'tasks/**']), false);
+  });
+
+  test('handles empty or missing lists', () => {
+    assert.equal(isDoNotTouch('CLAUDE.md', []), false);
+    assert.equal(isDoNotTouch('CLAUDE.md', undefined), false);
   });
 });
 

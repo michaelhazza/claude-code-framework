@@ -21,10 +21,17 @@ jobs:
     steps:
       - name: Dispatch to automation-v1
         run: |
-          curl -s -X POST \
+          set -euo pipefail
+          # --fail-with-body: non-2xx → non-zero exit AND the API error body is
+          # printed, so an expired PAT / bad repo path fails the job loudly
+          # instead of green-washing a silent no-op dispatch.
+          if ! curl -sS --fail-with-body -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.APP_REPO_PAT }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             https://api.github.com/repos/michaelhazza/automation-v1/dispatches \
-            -d '{"event_type":"framework-release","client_payload":{"tag":"${{ github.ref_name }}"}}'
+            -d '{"event_type":"framework-release","client_payload":{"tag":"${{ github.ref_name }}"}}'; then
+            echo "::error::repository_dispatch to automation-v1 failed for tag ${{ github.ref_name }} — see curl output above (check APP_REPO_PAT validity/scope)"
+            exit 1
+          fi
           echo "Dispatched framework-release event for ${{ github.ref_name }} to automation-v1"

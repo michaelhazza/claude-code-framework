@@ -231,7 +231,7 @@ For each area / module approved for pass 2, in the framework's Default Execution
    |---|---|
    | Server typecheck | `npm run build:server` |
    | Client build | `npm run build:client` (if `client/` or `shared/` changed) |
-   | Targeted unit tests | Only the test files authored or modified by this fix — `npx tsx <path-to-test>`. Skip if the fix touched no test file. |
+   | Targeted unit tests | Only the test files authored or modified by this fix — one file at a time via the project's configured test runner (single-file runner rule in `references/test-gate-policy.md`). Skip if the fix touched no test file. |
    | Skill visibility | `npm run skills:verify-visibility` (only if skills changed AND this command is fast — single-file scope. If it scans the whole repo, defer to CI.) |
    | Playbooks | `npm run playbooks:validate` (only if `server/lib/workflow/` changed AND single-playbook scope is supported — full-repo validation defers to CI.) |
 
@@ -346,7 +346,7 @@ See framework §11 for the canonical template. The log lives at `tasks/review-lo
 When an audit produces findings that are resolved through a multi-chunk remediation programme, the plan you (or the architect) hand off must **not** schedule any gate run in any phase. Continuous integration runs the complete suite as a pre-merge gate when the remediation branch's PR is opened.
 
 - **Forbidden anywhere in a remediation plan:** `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, the umbrella `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, `scripts/run-all-*.sh`. No "baseline gate sweep", no "Programme-end full gate set", no per-chunk gate hook.
-- **Per-chunk verification is limited to:** `npm run lint`, `npm run typecheck` (or `npx tsc --noEmit`), `npm run build:server` / `npm run build:client` when the build surface changes, and **targeted execution of unit tests authored in THAT chunk** (single file via `npx tsx <path-to-test>`). Document this in the remediation plan's Executor notes and in every per-chunk "Verification commands" section.
+- **Per-chunk verification is limited to:** `npm run lint`, `npm run typecheck` (or `npx tsc --noEmit`), `npm run build:server` / `npm run build:client` when the build surface changes, and **targeted execution of unit tests authored in THAT chunk** (single file via the project's configured test runner — single-file runner rule in `references/test-gate-policy.md`). Document this in the remediation plan's Executor notes and in every per-chunk "Verification commands" section.
 - If a remediation chunk depends on a gate-level invariant, write a targeted unit test for that invariant inside the chunk. Do not lean on the gate script — CI will run it.
 
 See also: `architect.md` § *Test gates are CI-only — never put them in a plan* — the architect enforces the same rule when producing implementation plans, and `CLAUDE.md` § *Test gates are CI-only — never run locally* for the canonical project-wide rule.

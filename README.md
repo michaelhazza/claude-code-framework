@@ -1,27 +1,27 @@
-# Portable Claude Code Framework — drop-in bundle
+# Portable Claude Code Framework
 
 Version: see `.claude/FRAMEWORK_VERSION`. Changelog: `.claude/CHANGELOG.md`.
 
 ## What this is
 
-A portable agent fleet + governance docs + hooks for Claude Code projects. Drops alongside your existing repo structure; doesn't replace your CLAUDE.md, architecture.md, or KNOWLEDGE.md (you keep your own).
+A portable agent fleet + governance docs + hooks for Claude Code projects. This repo is the standalone framework repo — consuming repos add it as a git submodule at `.claude-framework/`. It lands alongside your existing repo structure; it doesn't replace your CLAUDE.md, architecture.md, or KNOWLEDGE.md (you keep your own).
 
 ## Quick start (5 minutes)
 
-1. **Extract** the bundle into your repo at `setup/portable/` (or any path you like — Claude follows `ADAPT.md` from wherever it lives).
+1. **Add the submodule** in your repo: `git submodule add <this-repo-url> .claude-framework`
 2. **Open the target repo** in Claude Code on Opus.
 3. **Paste** this prompt:
    ```
-   Read setup/portable/ADAPT.md in full and execute the phases.
+   Read .claude-framework/ADAPT.md in full and execute the phases.
    Profile: STANDARD
    Project name: <your project name>
    Project description: <one short clause>
    Stack: <comma-separated stack description>
    Company name: <your company> (or "skip")
    ```
-4. Claude walks the 5 phases (placement → profile prune → substitute → customise → wire → verify). ~30 minutes for STANDARD profile.
+4. Claude walks the phases (placement → profile prune → substitute → customise → wire → verify → record adoption state). ~30 minutes for STANDARD profile.
 
-If you don't know which profile to pick, use STANDARD. See `ADAPT.md` § 11 for differences.
+If you don't know which profile to pick, use STANDARD. See `ADAPT.md` § 12 for differences.
 
 ## Placeholder format
 
@@ -31,13 +31,13 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 
 | Path | Contents |
 |------|----------|
-| `.claude/agents/` | 24 agent definitions (with `{{...}}` placeholders) |
-| `.claude/hooks/` | 5 portable hooks: `long-doc-guard`, `correction-nudge`, `config-protection`, `code-graph-freshness-check`, `spec-creation-grill-nudge` |
+| `.claude/agents/` | 28 agent definitions (with `{{...}}` placeholders; `_retired/` excluded) |
+| `.claude/hooks/` | 6 portable hooks: `long-doc-guard`, `correction-nudge`, `config-protection`, `code-graph-freshness-check`, `spec-creation-grill-nudge`, `phase-lock` |
 | `.claude/skills/` | 2 portable skills: grill-me, zoom-out |
 | `.claude/settings.json` | Hook registration (PreToolUse, UserPromptSubmit, SessionStart) |
 | `.claude/FRAMEWORK_VERSION` | Semver — used to detect drift across repos |
 | `.claude/CHANGELOG.md` | Framework history + upgrade protocol |
-| `docs/decisions/` | 3 ADRs + README + template |
+| `docs/decisions/` | 6 ADRs (0001, 0002, 0005–0008) + README + template |
 | `docs/context-packs/` | 5 mode-scoped packs (review / implement / debug / handover / minimal) |
 | `docs/spec-context.md` | Framing-assumptions template (operator fills in) |
 | `docs/spec-authoring-checklist.md` | Pre-spec checklist + Status header convention |
@@ -55,14 +55,14 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `SYNC.md` | Guided upgrade walkthrough for Claude — operator pastes a short prompt; Claude walks the phases |
 | `README.md` | This file |
 
-## What this bundle does NOT ship
+## What this framework does NOT ship
 
 - **`CLAUDE.md`** — yours stays. Phase 4 of ADAPT.md adds framework sections to your existing CLAUDE.md (or scaffolds a new one if absent).
 - **`architecture.md`** — yours stays. Phase 3b regenerates anchors so context packs splice precisely.
 - **`KNOWLEDGE.md`** — yours stays. Bundle's preamble convention is described in `.claude/CHANGELOG.md`.
 - **Project-specific code intelligence** — `scripts/build-code-graph.ts` is not included. The cache-freshness hook degrades gracefully when the script is absent.
 - **Project-specific hooks** — `arch-guard.sh` and `rls-migration-guard.js` are origin-project specific (RLS / multi-tenant) and intentionally not portable.
-- **Origin-project-specific ADRs** — only ADRs 0001, 0002, 0005 ship (the framework patterns). 0003 and 0004 stay in the origin repo.
+- **Origin-project-specific ADRs** — only the framework-pattern ADRs ship (0001, 0002, 0005–0008). 0003 and 0004 stay in the origin repo.
 
 ## Profiles
 
@@ -70,7 +70,7 @@ Pick at adoption time:
 
 - **MINIMAL (4)** — `triage-agent`, `pr-reviewer`, `architect`, `spec-reviewer`. Solo dev, self-review baseline.
 - **STANDARD (10)** — MINIMAL + `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator`, `spec-conformance`, `builder`, `hotfix`. Default for most projects.
-- **FULL (23)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`, `mockup-coordinator`, `mockup-reviewer`. Large projects with capacity for the overhead.
+- **FULL (28)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `bug-fixer`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `claude-spec-review`, `claude-plan-review`, `codebase-explainer`, `context-pack-loader`, `cross-repo-scout`, `dual-reviewer`, `experiment-runner`, `incident-commander`, `mockup-coordinator`, `mockup-designer`, `mockup-reviewer`, `validate-setup`. Large projects with capacity for the overhead.
 
 ## Upgrading from a previous framework version
 
@@ -78,29 +78,11 @@ For ongoing upgrades, see `SYNC.md`. When the framework releases a new version, 
 
 Don't re-run `ADAPT.md` — it expects fresh placeholders, and your repo already has substituted values. Instead, use the sync engine: update the `.claude-framework/` submodule to the new framework version, then follow SYNC.md.
 
-## Publishing this bundle as a standalone framework repo (Phase B)
-
-The longer-term distribution model lifts this `setup/portable/` directory into its own GitHub repo, so target repos can consume it as a `git submodule` and pull future updates with one command. See `tasks/builds/framework-standalone-repo/spec.md` for the full contract.
-
-To execute the lift (from any clone of the source repo):
-
-```bash
-# 1. Create an empty GitHub repo first (one-click in the GitHub UI).
-#    Recommended name: claude-code-framework. Private to start (per spec § 11.2).
-
-# 2. Run the lift script with the new repo's URL:
-bash scripts/lift-framework-to-standalone-repo.sh git@github.com:<owner>/claude-code-framework.git
-```
-
-The script does a `git subtree split` of `setup/portable/`, pushes that history to the new repo's `main` branch as a single commit, and tags it at the current `FRAMEWORK_VERSION`. Idempotent and re-runnable.
-
-After the lift, follow the Phase C steps the script prints (add as submodule to the source repo, preflight diff against the deployed tree, self-adopt, remove the in-repo bundle).
-
 ## Migrating from a partial copy-paste
 
 If you have a target repo where someone copy-pasted SOME framework files in earlier without ever running `ADAPT.md` (no `.framework-state.json`), see `MIGRATION-FROM-COPY-PASTE.md` for the safe catch-up path.
 
 ## Support
 
-- Bundle issues: open against the source repo (the repo this bundle was generated from).
-- Adoption issues: re-read `ADAPT.md` § 12 (common pitfalls) before reporting.
+- Framework issues: open against this repo.
+- Adoption issues: re-read `ADAPT.md` § 13 (common pitfalls) before reporting.

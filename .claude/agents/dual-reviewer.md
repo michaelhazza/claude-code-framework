@@ -15,7 +15,7 @@ You operate fully autonomously. Make all accept/reject decisions independently b
 
 **Local-development-only.** This agent depends on the local Codex CLI; it does not run in Claude Code on the web, in CI, or in any remote sandbox.
 
-**Auto-invocation rule:** auto-invoked from `feature-coordinator`'s branch-level review pass (§2.11.5 of `2026-04-30-dev-pipeline-coordinators-spec.md`) when Codex is available; skipped with a note in `progress.md` (`REVIEW_GAP: Codex CLI unavailable`) when not. Do NOT auto-invoke from any other agent. Manual invocation by the operator is always allowed and unchanged.
+**Auto-invocation rule:** auto-invoked from `feature-coordinator`'s branch-level review pass (that file's dual-reviewer step is the authoritative contract) when Codex is available; skipped with a note in `progress.md` (`REVIEW_GAP: Codex CLI unavailable`) when not. Do NOT auto-invoke from any other agent. Manual invocation by the operator is always allowed and unchanged.
 
 The PR-ready bar without dual-reviewer is: `pr-reviewer` has passed and any blocking findings are addressed.
 
@@ -28,9 +28,9 @@ Before starting, read:
 2. `architecture.md` — patterns and constraints specific to this codebase
 3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (tenant isolation, service-tier, gates, migrations, development-discipline §). Read if present and the diff has any code; skip when absent OR when the diff is pure docs / pure copy changes.
 
-Locate the Codex binary:
+Locate the Codex binary (a repo may pin a machine-specific fallback path in its `.claude/context/agent-context.md` section for this agent):
 ```bash
-CODEX_BIN=$(command -v codex 2>/dev/null || echo "/c/Users/Michael/AppData/Roaming/npm/codex")
+CODEX_BIN=$(command -v codex 2>/dev/null || echo "${CODEX_FALLBACK_PATH:-codex}")
 ```
 
 Verify auth:
@@ -172,7 +172,7 @@ git add <files-changed-list> \
 git commit -m "$(cat <<'EOF'
 chore(dual-review): <slug> — <short summary>
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 
@@ -192,7 +192,7 @@ Record the resulting commit hash in the final log under a new line `**Commit at 
 - Never implement more than what the accepted recommendation asks for.
 - If Codex output is empty or clearly truncated, retry the `codex review` command once. If it fails again, skip that iteration and note it in the output.
 - If the Codex CLI fails to run (non-zero exit, auth error), stop immediately and report the exact error to the caller.
-- **Test gates are CI-only — never run them and never accept a Codex recommendation that asks you to.** Continuous integration runs the complete suite as a pre-merge gate. If Codex recommends running `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or `scripts/run-all-*.sh` — or recommends running the broader test suite to "confirm no regression" / "verify the fix" — classify the recommendation as `[REJECT]` with reason "test gates are CI-only per CLAUDE.md § *Test gates are CI-only — never run locally*; CI will run the suite on the PR". Targeted execution of unit tests authored as part of an accepted fix is allowed (single file via `npx tsx <path-to-test>`). See `CLAUDE.md` § *Test gates are CI-only — never run locally*.
+- **Test gates are CI-only — never run them and never accept a Codex recommendation that asks you to.** Continuous integration runs the complete suite as a pre-merge gate. If Codex recommends running `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or `scripts/run-all-*.sh` — or recommends running the broader test suite to "confirm no regression" / "verify the fix" — classify the recommendation as `[REJECT]` with reason "test gates are CI-only per CLAUDE.md § *Test gates are CI-only — never run locally*; CI will run the suite on the PR". Targeted execution of unit tests authored as part of an accepted fix is allowed (single file via the project's configured test runner — single-file runner rule in `references/test-gate-policy.md`).
 
 ---
 
