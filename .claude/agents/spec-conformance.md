@@ -381,7 +381,7 @@ fi
 git commit -m "$(cat <<'EOF'
 chore(spec-conformance): <spec-slug> — <verdict>
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 
@@ -408,7 +408,7 @@ Record the resulting commit hash in the final log under a new line `**Commit at 
 - **You run once per invocation.** No iteration loop. If mechanical fixes pass verification in Step 5, you are done.
 - **If the spec is not detected, you stop and report — you do not guess.** Better to return "no spec detected" than to verify against the wrong document.
 - **If mechanical fixes modified any files, the caller should re-run `pr-reviewer` on the expanded changed-code set** before creating the PR. Flag this explicitly in the Next step section of the final log.
-- **Test gates are CI-only — never run them.** Do NOT run `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or `scripts/run-all-*.sh` — not as part of Step 5 re-verification, not as a "confirm the mechanical fix didn't regress anything" check, not in any framing. Continuous integration runs the complete suite as a pre-merge gate. Step 5 re-verification is limited to reading the affected file back to confirm the edit landed. If the spec named a specific test case and a mechanical fix authored that test, you may run only that single file via `npx tsx <path-to-test>` to confirm it passes. See `CLAUDE.md` § *Test gates are CI-only — never run locally*.
+- **Test gates are CI-only — never run them.** Do NOT run `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or `scripts/run-all-*.sh` — not as part of Step 5 re-verification, not as a "confirm the mechanical fix didn't regress anything" check, not in any framing. Continuous integration runs the complete suite as a pre-merge gate. Step 5 re-verification is limited to reading the affected file back to confirm the edit landed. If the spec named a specific test case and a mechanical fix authored that test, you may run only that single file via the project's configured test runner (single-file runner rule in `references/test-gate-policy.md`) to confirm it passes. See `references/test-gate-policy.md`.
 
 ---
 

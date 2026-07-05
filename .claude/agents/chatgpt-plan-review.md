@@ -20,7 +20,7 @@ Read:
 
 ## Mode Detection
 
-Three modes — `manual`, `automated`, `parallel`. Resolution order at session start (aligned with `chatgpt-pr-review` and `chatgpt-spec-review` per the shared contract — no legacy auto-detect):
+Three modes — `manual`, `automated`, `parallel`. **Single source of truth: `references/review-mode-resolution.md`** — the summary below restates it; on any disagreement the reference file wins. Resolution order at session start (no legacy auto-detect):
 
 1. **Explicit operator phrase in the invocation** → wins. Recognised keywords: `automated`, `manual`, `parallel`.
 2. **Session-state file `.claude/session-state/review-mode`** → single-line file containing `manual` / `automated` / `parallel` (whitespace trimmed). Any other value or missing/unreadable file falls through. Written by orchestrators like `bug-fixer` so the choice survives sub-agent dispatches without an env-var session restart.
@@ -183,7 +183,7 @@ Session Info header:
 
 **Date:** {YYYY-MM-DD}
 **Plan:** tasks/builds/{slug}/plan.md
-**Mode:** automated | manual
+**Mode:** manual | automated | parallel
 
 ---
 ```

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "pr-context.schema.json",
   "title": "PrContext",
-  "description": "PR_CONTEXT input shape passed to PR-mode review (§3a).",
+  "description": "PR_CONTEXT input shape passed to PR-mode review via the driver's --pr-context flag. Documentation-of-shape contract; the driver does not currently validate inputs against this schema.",
   "type": "object",
   "required": ["pr_title", "build_slug", "task_class", "phase_2_review_outcomes"],
   "additionalProperties": false,
@@ -26,10 +26,6 @@
         "spec_conformance": {
           "type": "string",
           "enum": ["CONFORMANT", "CONFORMANT_AFTER_FIXES", "NON_CONFORMANT", "skipped"]
-        },
-        "reality_checker": {
-          "type": "string",
-          "enum": ["APPROVED", "CHANGES_REQUESTED", "NEEDS_DISCUSSION", "skipped"]
         },
         "adversarial_reviewer": {
           "type": "string",

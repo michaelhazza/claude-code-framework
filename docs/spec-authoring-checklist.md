@@ -449,9 +449,9 @@ Existing specs without this frontmatter are NOT required to be updated retroacti
 
 ## Section 12 — Lifecycle Declaration and ABCd Estimate blocks (Standard+ only)
 
-Every Standard+ spec must include two governance blocks introduced by the development-lifecycle-governance-upgrade build (`tasks/builds/development-lifecycle-governance-upgrade/spec.md §7.2` and `§7.3`). These blocks are required at spec authoring time (Step 6 of `spec-coordinator`) and are verified by `spec-conformance` via this checklist.
+Every Standard+ spec must include two governance blocks. **This section (12.1 and 12.2) is the authoritative definition of both blocks** — they are required at spec authoring time (Step 6 of `spec-coordinator`) and are verified by `spec-conformance` via this checklist.
 
-### 12.1 Lifecycle Declaration block (required per spec §7.2)
+### 12.1 Lifecycle Declaration block
 
 **What it is:** a five-field Markdown table placed at the top of the spec, after frontmatter, that captures the capability cluster, ownership, launch lifecycle state, risk surface, and review cadence for the capability being shipped.
 
@@ -462,14 +462,14 @@ Every Standard+ spec must include two governance blocks introduced by the develo
 | Field | Rule |
 |---|---|
 | Capability cluster | One or more values from the cluster header in `docs/capabilities.md`, comma-separated when multiple |
-| Capability owner | Handle, or a compliant placeholder per the owner-placeholder rule (§7.4.3 of the governance spec) |
+| Capability owner | Handle, or a clearly-marked placeholder (e.g. `TBD — <role>`) |
 | Lifecycle state on launch | `Inception` or `Growth` only — no other value is valid at first registration |
-| Risk surface | Copied verbatim from `intent.md § Risk Surface`; either the literal string `None.` or a comma-separated list of §7.1.1 vocabulary terms |
+| Risk surface | Copied verbatim from `intent.md § Risk Surface`; either the literal string `None.` or a comma-separated list of terms from the Risk Surface canonical vocabulary (spec-coordinator Step 3) |
 | Review cadence | Free text, e.g. `quarterly`, `biannually`, `on-incident-only` |
 
 **Launch-state restriction:** only `Inception` (no production traffic yet) or `Growth` (live but actively iterating) are valid at first registration. Any other state is a blocking spec review finding.
 
-### 12.2 ABCd Estimate block (required per spec §7.3)
+### 12.2 ABCd Estimate block
 
 **What it is:** a four-row Markdown table placed inside the spec body that sizes the capability across four lifecycle cost dimensions using a coarse S / M / L bucket.
 
@@ -565,8 +565,8 @@ Before invoking `spec-reviewer` on a draft spec, answer yes to all of the follow
 - [ ] **[Section 10]** If a state machine is introduced or modified: valid transitions, forbidden transitions, and status-set closure are declared
 - [ ] **[Section 10]** Every `DB-update-in-transaction → external HTTP call` flow declares a post-write recheck (snapshot inside the tx, re-select after 2xx, `status: 'partial'` + typed errorCode on drift)
 - [ ] **[Section 11]** Spec opens with `Status:` / `Spec date:` / `Last updated:` / `Author:` / `Build slug:` frontmatter
-- [ ] **[Section 12]** Lifecycle Declaration present per spec §7.2 (5 required fields; launch state = `Inception` or `Growth` only)
-- [ ] **[Section 12]** ABCd Estimate present with S/M/L sizing only per spec §7.3 (4 dimensions; no numeric values)
+- [ ] **[Section 12]** Lifecycle Declaration present (5 required fields; launch state = `Inception` or `Growth` only)
+- [ ] **[Section 12]** ABCd Estimate present with S/M/L sizing only (4 dimensions; no numeric values)
 - [ ] **[Section 13]** If spec touches UI: Mobile capability subsection present, one entry per new or modified screen, with tier + shape + nav + table + modal + hover + form + touch fields completed. If spec is pure backend: explicit `Mobile capability: N/A — pure backend, no UI surface` line
 
 If every box is checked, the spec is ready for `spec-reviewer`. If any box is unchecked and you're intentionally leaving it so (e.g. deferring the contract to implementation), mark the deviation inline in the spec's framing section — don't leave it implicit.

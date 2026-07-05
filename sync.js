@@ -14,15 +14,15 @@ const { spawnSync } = require('child_process');
 /**
  * @typedef {'never'|'adoption'} ManifestSubstituteAt
  * @typedef {'sync'|'adopt-only'|'settings-merge'} ManifestMode
- * @typedef {'agent'|'command'|'hook'|'skill'|'settings'|'version'|'changelog'|'adr'|'context-pack'|'reference'|'template'} ManifestCategory
+ * @typedef {'agent'|'command'|'hook'|'skill'|'settings'|'version'|'changelog'|'adr'|'context-pack'|'reference'|'template'|'review-script'|'review-script-test'|'sync-test'|'review-coordinator'|'review-schema'|'migration-runner'|'migration'|'helper-script'|'helper-script-test'} ManifestCategory
  * @typedef {{ path: string, category: ManifestCategory, mode: ManifestMode, substituteAt: ManifestSubstituteAt }} ManifestEntry
  * @typedef {{ path: string, removedIn: string, action: 'warn-only' }} RemovedFile
  * @typedef {{ frameworkVersion: string, managedFiles: ManifestEntry[], removedFiles: RemovedFile[], doNotTouch: string[] }} Manifest
  * @typedef {Record<string, string>} Substitutions
  * @typedef {{ lastAppliedHash: string, lastAppliedFrameworkVersion: string, lastAppliedFrameworkCommit: string|null, lastAppliedSourcePath: string, customisedLocally: boolean, adoptedOwnership?: boolean }} FileStateEntry
  * @typedef {{ frameworkVersion: string, adoptedAt: string, adoptedFromCommit: string|null, profile: 'MINIMAL'|'STANDARD'|'FULL', substitutions: Substitutions, lastSubstitutionHash?: string, files: Record<string, FileStateEntry>, syncIgnore: string[], appliedMigrations?: string[] }} FrameworkState
- * @typedef {'skipped'|'new'|'customised'|'updated'|'removed-warn'|'ownership-transferred'} FileOpStatus
- * @typedef {{ targetRoot: string, frameworkRoot: string, manifest: Manifest, state: FrameworkState|null, frameworkVersion: string, frameworkCommit: string|null, flags: SyncFlags }} SyncContext
+ * @typedef {'skipped'|'new'|'customised'|'updated'|'removed-warn'|'ownership-transferred'|'rebaselined'} FileOpStatus
+ * @typedef {{ targetRoot: string, frameworkRoot: string, manifest: Manifest, state: FrameworkState|null, frameworkVersion: string, frameworkCommit: string|null, flags: SyncFlags, maintenance?: boolean }} SyncContext
  * @typedef {{ adopt: boolean, dryRun: boolean, check: boolean, strict: boolean, doctor: boolean, force: boolean }} SyncFlags
  */
 
@@ -168,9 +168,44 @@ function hashSubstitutions(substitutions) {
 // Helper: loadManifest
 // ---------------------------------------------------------------------------
 
+/** Modes a managedFiles entry may declare. Derived from actual manifest.json usage. */
+const VALID_MODES = new Set(['sync', 'adopt-only', 'settings-merge']);
+
+/** Categories a managedFiles entry may declare. Derived from actual manifest.json usage. */
+const VALID_CATEGORIES = new Set([
+  'agent', 'command', 'hook', 'skill', 'settings', 'version', 'changelog',
+  'adr', 'context-pack', 'reference', 'template',
+  'review-script', 'review-script-test', 'sync-test', 'review-coordinator',
+  'review-schema', 'migration-runner', 'migration',
+  'helper-script', 'helper-script-test',
+]);
+
+/**
+ * Returns true when `relativePath` falls under a manifest `doNotTouch` entry.
+ * Entries are treated as literal path prefixes: a trailing `/**` is stripped,
+ * then the path matches if it equals the entry or lives underneath it.
+ * NO glob expansion is performed.
+ *
+ * @param {string} relativePath  Forward-slash relative path.
+ * @param {string[]|undefined} doNotTouch
+ * @returns {boolean}
+ */
+function isDoNotTouch(relativePath, doNotTouch) {
+  if (!Array.isArray(doNotTouch)) return false;
+  for (const raw of doNotTouch) {
+    if (typeof raw !== 'string' || raw === '') continue;
+    const base = raw.endsWith('/**') ? raw.slice(0, -3) : raw;
+    if (base === '') continue;
+    if (relativePath === base || relativePath.startsWith(base + '/')) return true;
+  }
+  return false;
+}
+
 /**
  * Read, parse, and validate `manifest.json` from the framework root.
- * Detects duplicate and overlapping glob entries.
+ * Detects duplicate and overlapping glob entries, validates mode/category
+ * enums, and cross-checks manifest.frameworkVersion against the
+ * `.claude/FRAMEWORK_VERSION` file when present.
  *
  * @param {string} frameworkRoot
  * @returns {Manifest}
@@ -212,6 +247,40 @@ function loadManifest(frameworkRoot) {
   }
 
   const manifest = /** @type {Manifest} */ (parsed);
+
+  // Cross-check: manifest.frameworkVersion must agree with .claude/FRAMEWORK_VERSION.
+  // The two are bumped together at release time; drift means a half-finished release
+  // (or a hand-edit) and would make changelog excerpts / state records lie.
+  const versionFilePath = path.join(frameworkRoot, '.claude', 'FRAMEWORK_VERSION');
+  if (fsSync.existsSync(versionFilePath)) {
+    const fileVersion = fsSync.readFileSync(versionFilePath, 'utf8').trim();
+    if (fileVersion !== manifest.frameworkVersion) {
+      throw new Error(
+        `manifest.json frameworkVersion (${manifest.frameworkVersion}) does not match ` +
+        `.claude/FRAMEWORK_VERSION (${fileVersion}). The framework checkout is inconsistent — ` +
+        `both are bumped together at release; refusing to sync until they agree.`
+      );
+    }
+  }
+
+  // Per-entry enum validation: catch typo'd modes/categories before any classification runs.
+  for (const entry of manifest.managedFiles) {
+    if (typeof entry.path !== 'string' || entry.path === '') {
+      throw new Error('manifest.json managedFiles entry missing required string field: path');
+    }
+    if (!VALID_MODES.has(entry.mode)) {
+      throw new Error(
+        `manifest.json entry ${entry.path} has invalid mode "${entry.mode}" ` +
+        `(expected one of: ${Array.from(VALID_MODES).join(', ')})`
+      );
+    }
+    if (!VALID_CATEGORIES.has(entry.category)) {
+      throw new Error(
+        `manifest.json entry ${entry.path} has invalid category "${entry.category}" ` +
+        `(expected one of: ${Array.from(VALID_CATEGORIES).join(', ')})`
+      );
+    }
+  }
 
   // Overlap detection: expand globs against frameworkRoot, build path→entries index
   /** @type {Map<string, ManifestEntry[]>} */
@@ -814,9 +883,26 @@ function injectConsumerOverrides(frameworkContent, consumerPath) {
 // Writer stubs (implemented in Chunks 5 and 6)
 // ---------------------------------------------------------------------------
 
+/**
+ * Write-refusal gate shared by all writers: refuse to touch any path under a
+ * manifest `doNotTouch` entry. Returns true when the write was refused.
+ * @param {SyncContext} ctx @param {string} relativePath @returns {boolean}
+ */
+function refuseIfDoNotTouch(ctx, relativePath) {
+  const doNotTouch = ctx.manifest ? ctx.manifest.doNotTouch : undefined;
+  if (!isDoNotTouch(relativePath, doNotTouch)) return false;
+  process.stderr.write(
+    `NOTE: ${relativePath} matches a manifest doNotTouch entry — refusing to write. ` +
+    `Remove the path from doNotTouch (or from managedFiles) to resolve.\n`
+  );
+  logFileOp(relativePath, 'skipped', { reason: 'doNotTouch' });
+  return true;
+}
+
 /** @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath @returns {Promise<void>} */
 async function writeUpdated(ctx, entry, relativePath) {
   const { frameworkRoot, targetRoot, flags } = ctx;
+  if (refuseIfDoNotTouch(ctx, relativePath)) return;
   // Defence-in-depth: assert relativePath stays within both roots even if expandGlob's guard regresses.
   assertWithinRoot(frameworkRoot, relativePath);
   assertWithinRoot(targetRoot, relativePath);
@@ -870,6 +956,7 @@ async function writeUpdated(ctx, entry, relativePath) {
 /** @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath @returns {Promise<void>} */
 async function writeFrameworkNew(ctx, entry, relativePath) {
   const { frameworkRoot, targetRoot, flags } = ctx;
+  if (refuseIfDoNotTouch(ctx, relativePath)) return;
   assertWithinRoot(frameworkRoot, relativePath);
   assertWithinRoot(targetRoot, relativePath);
   const sourcePath = path.join(frameworkRoot, relativePath);
@@ -922,6 +1009,7 @@ async function writeFrameworkNew(ctx, entry, relativePath) {
 /** @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath @returns {Promise<void>} */
 async function writeNewFile(ctx, entry, relativePath) {
   const { frameworkRoot, targetRoot, flags } = ctx;
+  if (refuseIfDoNotTouch(ctx, relativePath)) return;
   assertWithinRoot(frameworkRoot, relativePath);
   assertWithinRoot(targetRoot, relativePath);
   const sourcePath = path.join(frameworkRoot, relativePath);
@@ -1182,6 +1270,7 @@ function mergeSettingsHooksBlock(frameworkHooks, projectHooks) {
 /** @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath @returns {Promise<void>} */
 async function mergeSettings(ctx, entry, relativePath) {
   const { frameworkRoot, targetRoot, flags } = ctx;
+  if (refuseIfDoNotTouch(ctx, relativePath)) return;
   assertWithinRoot(frameworkRoot, relativePath);
   assertWithinRoot(targetRoot, relativePath);
   const targetSettingsPath = path.join(targetRoot, relativePath);
@@ -1205,8 +1294,17 @@ async function mergeSettings(ctx, entry, relativePath) {
     projectSettings = JSON.parse(projContent);
   } catch (err) {
     if (/** @type {NodeJS.ErrnoException} */(err).code !== 'ENOENT') {
-      // Malformed JSON or other read error
-      process.stderr.write(`WARN: target settings.json at ${targetSettingsPath} is malformed (${/** @type {Error} */(err).message}). Treating as empty project hooks.\n`);
+      // Malformed JSON or other read error: ABORT. Merging against an unparseable
+      // consumer settings.json would silently overwrite the operator's (broken but
+      // recoverable) customisations with framework defaults. Refuse to write and
+      // make the whole sync run fail so the operator fixes the file first.
+      process.stderr.write(
+        `ERROR: target settings.json at ${targetSettingsPath} is not valid JSON ` +
+        `(${/** @type {Error} */(err).message}). Refusing to merge — fix or remove the file, then re-run sync. No write performed.\n`
+      );
+      const fatal = new Error(`malformed consumer settings.json: ${relativePath}`);
+      /** @type {any} */ (fatal).fatal = true;
+      throw fatal;
     }
     // ENOENT: no existing file, that's fine — projectSettings stays as default
   }
@@ -1290,6 +1388,92 @@ function classifyForAdopt(ctx, entry, relativePath) {
 }
 
 // ---------------------------------------------------------------------------
+// classifyForMaintenance
+// ---------------------------------------------------------------------------
+
+/**
+ * Classification for same-version maintenance runs (state.frameworkVersion ===
+ * FRAMEWORK_VERSION). No version bump is happening, so nothing is "updated" in
+ * the upgrade sense; the pass exists to close out the merge lifecycle:
+ *
+ *   - a file that was flagged customised (`customisedLocally: true`) and whose
+ *     `.framework-new` sibling is gone has been resolved by the operator →
+ *     `rebaseline`: record the on-disk content hash as the new baseline
+ *     (SYNC.md Phase 5 step 6, --doctor case(b)).
+ *   - a file that still has a `.framework-new` sibling is an unresolved merge →
+ *     `still-customised` (the startup blocker normally exits 1 before the walk;
+ *     this is reached only under --force).
+ *   - a file that diverges from baseline without any merge in flight is
+ *     operator-edited → `still-customised`: surfaced, never silently absorbed.
+ *
+ * Delegates the clean/override-block cases to classifyFile so LOCAL-OVERRIDE
+ * edits still flow through writeUpdated (which re-injects and refreshes hashes).
+ *
+ * @param {SyncContext} ctx
+ * @param {ManifestEntry} entry
+ * @param {string} relativePath
+ * @returns {ReturnType<typeof classifyFile> | { kind: 'rebaseline' } | { kind: 'still-customised', reason: string }}
+ */
+function classifyForMaintenance(ctx, entry, relativePath) {
+  // settings-merge: skip on maintenance runs. Re-merging without a version change
+  // is churn (it would report "updated" on every no-op run); the merge re-runs on
+  // the next version bump or --adopt.
+  if (entry.mode === 'settings-merge') {
+    return { kind: 'skipped', reason: 'maintenance-no-version-change' };
+  }
+
+  const base = classifyFile(ctx, entry, relativePath);
+  if (base.kind !== 'customised') return base;
+
+  const targetPath = path.join(ctx.targetRoot, relativePath);
+  if (fsSync.existsSync(`${targetPath}.framework-new`)) {
+    return { kind: 'still-customised', reason: 'unresolved-framework-new' };
+  }
+  if (!fsSync.existsSync(targetPath)) {
+    return { kind: 'still-customised', reason: 'target-missing' };
+  }
+  const stateEntry = ctx.state && ctx.state.files ? ctx.state.files[relativePath] : null;
+  if (stateEntry && stateEntry.customisedLocally) {
+    // Merge was in flight (.framework-new was written) and the sibling is gone:
+    // the operator resolved it. Accept the on-disk merge as the new baseline.
+    return { kind: 'rebaseline' };
+  }
+  return { kind: 'still-customised', reason: 'locally-edited' };
+}
+
+/**
+ * Apply a maintenance rebaseline: record the on-disk content hash as the new
+ * baseline for a resolved `.framework-new` merge. Touches state only — the
+ * target file itself is never modified.
+ *
+ * @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath
+ * @returns {Promise<void>}
+ */
+async function applyRebaseline(ctx, entry, relativePath) {
+  const { targetRoot, flags } = ctx;
+  assertWithinRoot(targetRoot, relativePath);
+  const targetPath = path.join(targetRoot, relativePath);
+  const content = await fs.readFile(targetPath, 'utf8');
+  const newHash = hashContent(normaliseContent(content));
+
+  if (!flags.dryRun && ctx.state) {
+    ctx.state.files[relativePath] = {
+      ...ctx.state.files[relativePath],
+      lastAppliedHash: newHash,
+      lastAppliedFrameworkVersion: ctx.frameworkVersion,
+      lastAppliedFrameworkCommit: ctx.frameworkCommit,
+      lastAppliedSourcePath: entry.path,
+      customisedLocally: false,
+    };
+  }
+
+  /** @type {Record<string, string>} */
+  const extra = { reason: 'resolved-framework-new' };
+  if (flags.dryRun) extra.dry_run = 'true';
+  logFileOp(relativePath, 'rebaselined', extra);
+}
+
+// ---------------------------------------------------------------------------
 // extractChangelogExcerpt
 // ---------------------------------------------------------------------------
 
@@ -1348,17 +1532,18 @@ async function main() {
   // Step 4: Read new framework version
   const frameworkVersion = readFrameworkVersion(frameworkRoot);
 
-  // Step 5: Already on latest?
-  if (state && state.frameworkVersion === frameworkVersion && !flags.adopt && !flags.check && !flags.strict && !flags.doctor) {
-    // Forward-migration: lastSubstitutionHash was added in 2.2.0. State files written by older
-    // syncs lack the field; populate it on the early-exit path so subsequent syncs (after a
-    // version bump) can rely on the drift-detection invariant being grounded.
-    if (state.lastSubstitutionHash === undefined && state.substitutions) {
-      const newState = { ...state, lastSubstitutionHash: hashSubstitutions(state.substitutions) };
-      await writeStateAtomic(targetRoot, newState);
-    }
-    process.stdout.write(`already on latest (v${frameworkVersion})\n`);
-    process.exit(0);
+  // Step 5: Already on latest? Same-version runs no longer early-exit — they run
+  // the file walk in maintenance mode: rebaseline resolved .framework-new merges
+  // (SYNC.md Phase 5 step 6, --doctor case(b)), surface files still customised,
+  // and block on unresolved .framework-new files. No version bump, no changelog
+  // excerpt. (lastSubstitutionHash forward-migration happens at the Step 10 state
+  // write, same as an upgrade run.)
+  const maintenance = Boolean(
+    state && state.frameworkVersion === frameworkVersion &&
+    !flags.adopt && !flags.check && !flags.strict && !flags.doctor
+  );
+  if (maintenance) {
+    process.stdout.write(`already on latest (v${frameworkVersion}) — running maintenance pass\n`);
   }
 
   // Step 0: Scan for unresolved merges (after --force check)
@@ -1384,11 +1569,12 @@ async function main() {
     frameworkVersion,
     frameworkCommit,
     flags,
+    maintenance,
   };
 
   // Step 7: File walk
   const startTime = performance.now();
-  let updatedCount = 0, newCount = 0, customisedCount = 0, removalWarnCount = 0, orphanStateCount = 0;
+  let updatedCount = 0, newCount = 0, customisedCount = 0, removalWarnCount = 0, orphanStateCount = 0, rebaselinedCount = 0;
   const perFileErrors = [];
 
   const managedFiles = expandManagedFiles(manifest, frameworkRoot);
@@ -1521,7 +1707,9 @@ async function main() {
     try {
       const classification = flags.adopt
         ? classifyForAdopt(ctx, entry, relativePath)
-        : classifyFile(ctx, entry, relativePath);
+        : maintenance
+          ? classifyForMaintenance(ctx, entry, relativePath)
+          : classifyFile(ctx, entry, relativePath);
 
       switch (classification.kind) {
         case 'skipped':
@@ -1553,9 +1741,29 @@ async function main() {
           await writeFrameworkNew(ctx, entry, relativePath);
           customisedCount++;
           break;
+        case 'rebaseline':
+          await applyRebaseline(ctx, entry, relativePath);
+          rebaselinedCount++;
+          break;
+        case 'still-customised':
+          // Maintenance pass: surface, never absorb. No .framework-new is written
+          // (there is no new framework content to merge at the same version).
+          process.stderr.write(
+            `NOTE: ${relativePath} diverges from its last-applied baseline (${classification.reason}). ` +
+            `Left untouched — it will be treated as customised on the next version sync.\n`
+          );
+          logFileOp(relativePath, 'customised', { reason: classification.reason, write: 'none' });
+          customisedCount++;
+          break;
       }
     } catch (err) {
       const msg = String(err && /** @type {any} */(err).message ? /** @type {any} */(err).message : err);
+      if (err && /** @type {any} */(err).fatal) {
+        // Fatal per-file error (e.g. malformed consumer settings.json): abort the
+        // whole run with exit 1 — no state write, no further file operations.
+        process.stderr.write(`ERROR: aborting sync — ${msg}\n`);
+        process.exit(1);
+      }
       logFileOp(relativePath, 'skipped', { error: msg.slice(0, 80) });
       perFileErrors.push({ path: relativePath, error: msg });
     }
@@ -1583,19 +1791,22 @@ async function main() {
     }
   }
 
-  // Step 9: CHANGELOG excerpt
-  try {
-    const changelogPath = path.join(frameworkRoot, '.claude', 'CHANGELOG.md');
-    const changelogContent = await fsp.readFile(changelogPath, 'utf8');
-    const oldVersion = state ? state.frameworkVersion : '?';
-    const excerptLines = extractChangelogExcerpt(changelogContent, oldVersion, frameworkVersion);
-    if (excerptLines.length > 0) {
-      process.stdout.write(`\n--- Changelog v${oldVersion} → v${frameworkVersion} ---\n`);
-      process.stdout.write(excerptLines.join('\n') + '\n');
-      process.stdout.write(`---\n\n`);
+  // Step 9: CHANGELOG excerpt (skipped on maintenance runs — no version change,
+  // so there is no "what's new" range to show)
+  if (!maintenance) {
+    try {
+      const changelogPath = path.join(frameworkRoot, '.claude', 'CHANGELOG.md');
+      const changelogContent = await fsp.readFile(changelogPath, 'utf8');
+      const oldVersion = state ? state.frameworkVersion : '?';
+      const excerptLines = extractChangelogExcerpt(changelogContent, oldVersion, frameworkVersion);
+      if (excerptLines.length > 0) {
+        process.stdout.write(`\n--- Changelog v${oldVersion} → v${frameworkVersion} ---\n`);
+        process.stdout.write(excerptLines.join('\n') + '\n');
+        process.stdout.write(`---\n\n`);
+      }
+    } catch {
+      process.stderr.write(`WARN: Could not read CHANGELOG for v${state ? state.frameworkVersion : '?'}→v${frameworkVersion}. Consult .claude-framework/CHANGELOG.md manually.\n`);
     }
-  } catch {
-    process.stderr.write(`WARN: Could not read CHANGELOG for v${state ? state.frameworkVersion : '?'}→v${frameworkVersion}. Consult .claude-framework/CHANGELOG.md manually.\n`);
   }
 
   // Step 10: Atomic state write
@@ -1613,8 +1824,9 @@ async function main() {
   if (orphanStateCount > 0) {
     process.stdout.write(`INFO: ${orphanStateCount} state entries reference paths no longer in any manifest glob (run --doctor for details).\n`);
   }
+  const rebaselinedSegment = maintenance ? `${rebaselinedCount} rebaselined, ` : '';
   process.stdout.write(
-    `${updatedCount} updated, ${newCount} new, ${customisedCount} customised (.framework-new written), ${removalWarnCount} removal warnings, time=${elapsedSec}s\n`
+    `${updatedCount} updated, ${newCount} new, ${customisedCount} customised, ${rebaselinedSegment}${removalWarnCount} removal warnings, time=${elapsedSec}s\n`
   );
 }
 
@@ -1643,6 +1855,9 @@ module.exports = {
   expandManagedFiles,
   classifyFile,
   classifyForAdopt,
+  classifyForMaintenance,
+  applyRebaseline,
+  isDoNotTouch,
   validateSubstitutions,
   checkSubstitutionDrift,
   applySubstitutions,

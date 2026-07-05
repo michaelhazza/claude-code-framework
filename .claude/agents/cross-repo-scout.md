@@ -11,7 +11,7 @@ model: sonnet
 
 Searches sibling repositories (local filesystem and/or GitHub) for prior solutions to a pattern or symbol. Returns a ranked list of at most 3 results using the Contract 2 scoring rubric, wrapped in a Contract 6 envelope with partial-result signalling.
 
-Wired into `spec-coordinator` Step 3a (duplication check) and `architect` Step 2 (approach selection). Those wirings land in Chunk 8a.
+Wired into `spec-coordinator` Step 3a (duplication check) and `architect` Step 2 (approach selection).
 
 ## 1. Caller contract — Inputs
 
@@ -186,4 +186,4 @@ Returns at most 3 results.
 - `spec-coordinator` Step 3a: dispatches with intent's Problem Statement + Desired Outcome as query. If compositeScore ≥ 80 on any result, recommends `merge with existing capability`.
 - `architect` Step 2: dispatches per candidate approach. Includes top-3 envelope in plan rationale.
 
-(Both wirings land in Chunk 8a.)
+(Both wirings are live in those agent files.)

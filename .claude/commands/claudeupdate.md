@@ -98,7 +98,7 @@ This is the one-shot, fully-automated flow as of framework v2.9.0. Earlier versi
    migrations: ran pending migrations in (${FROM_VERSION}, ${TARGET_VERSION}]
    sync.js: applied managed files
 
-   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+   Co-Authored-By: Claude <noreply@anthropic.com>
    EOF
    )"
 

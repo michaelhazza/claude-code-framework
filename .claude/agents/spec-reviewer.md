@@ -401,7 +401,7 @@ git add "${SPEC_PATH}" "tasks/review-logs/spec-review-log-${SPEC_SLUG}-${ITERATI
 git commit -m "$(cat <<'EOF'
 docs(<spec-slug>): spec-reviewer iteration <N> — <short summary>
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 
@@ -512,7 +512,7 @@ fi
 git commit -m "$(cat <<'EOF'
 docs(<spec-slug>): spec-reviewer final report
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 

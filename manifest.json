@@ -4,6 +4,7 @@
     { "path": ".claude/agents/*.md", "category": "agent", "mode": "sync", "substituteAt": "adoption" },
     { "path": ".claude/commands/*.md", "category": "command", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/hooks/*.{js,sh}", "category": "hook", "mode": "sync", "substituteAt": "never" },
+    { "path": ".claude/hooks/package.json", "category": "hook", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/skills/grill-me/SKILL.md", "category": "skill", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/skills/zoom-out/SKILL.md", "category": "skill", "mode": "sync", "substituteAt": "never" },
     { "path": ".claude/settings.json", "category": "settings", "mode": "settings-merge", "substituteAt": "never" },
@@ -39,6 +40,7 @@
     { "path": "scripts/__tests__/local-override-smoke.js", "category": "sync-test", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/__tests__/local-override-e2e.js", "category": "sync-test", "mode": "sync", "substituteAt": "never" },
     { "path": "references/local-override-convention.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
+    { "path": "references/project-extensions-convention.md", "category": "reference", "mode": "sync", "substituteAt": "never" },
     { "path": "scripts/review-coordinator/*.ts", "category": "review-coordinator", "mode": "sync", "substituteAt": "never" },
     { "path": "schemas/*.json", "category": "review-schema", "mode": "sync", "substituteAt": "never" },
     { "path": "schemas/CHANGELOG.md", "category": "review-schema", "mode": "sync", "substituteAt": "never" },
@@ -71,7 +73,6 @@
     "KNOWLEDGE.md",
     "architecture.md",
     "DEVELOPMENT_GUIDELINES.md",
-    "tasks/**",
-    ".claude/hooks/package.json"
+    "tasks/**"
   ]
 }

@@ -110,16 +110,18 @@ This is the migration's actual cutover. From here on, future framework updates a
 ## 4 — Decide which new agents to keep
 
 If you copy-pasted only MINIMAL or STANDARD agents previously, `--adopt` will have copied in:
-- `reality-checker` (new in v2.2 — post-pr-reviewer evidence verifier)
-- `incident-commander` (new in v2.3 — production incident coordinator)
+- `incident-commander` (production incident coordinator)
 - Plus any other agents the target was missing
 
-If you DON'T want a particular agent (e.g. the target doesn't run incident-commander), just delete the file:
+(Note: `reality-checker` was retired in framework 2.21.0 — it no longer ships.)
+
+If you DON'T want a particular agent (e.g. the target doesn't run incident-commander), delete the file AND add its path to `syncIgnore` in `.claude/.framework-state.json`:
 ```bash
 rm .claude/agents/incident-commander.md
+# then add ".claude/agents/incident-commander.md" to the syncIgnore array in .claude/.framework-state.json
 ```
 
-This is safe — the framework treats missing agent files as "not adopted". Future sync runs won't re-add deleted agents unless you ask.
+The `syncIgnore` entry is what makes the deletion stick: without it, a file with no state entry is treated as new and re-deployed on the next sync, and a file WITH a state entry shows up as a `.framework-new` conflict nag every version bump.
 
 ## 5 — Verify nothing broke
 
@@ -134,7 +136,7 @@ grep -r "{{PROJECT" .claude/ docs/ references/ 2>/dev/null | head -20
 # 3. Open Claude Code in the target repo, type /agents, confirm the list shows expected names.
 
 # 4. Open the target repo's CLAUDE.md and confirm the agent-fleet table is up-to-date.
-#    If you added reality-checker or incident-commander, you may need to add rows manually
+#    If you added incident-commander, you may need to add rows manually
 #    (CLAUDE.md is in `doNotTouch` — sync.js will not edit it).
 ```
 

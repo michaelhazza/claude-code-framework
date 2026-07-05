@@ -98,7 +98,7 @@ Match existing prototypes. Inspect `prototypes/agent-as-employee/_shared.css` an
 
 Do NOT introduce new CSS frameworks the existing prototypes don't use.
 
-## Step 3a — Operator-vocabulary rule (no engineer jargon)
+## Step 3b — Operator-vocabulary rule (no engineer jargon)
 
 Default-visible UI copy (labels, buttons, headings, table cells, sample data, state names, empty states, tooltips) must read as plain English to a non-technical operator. If they would need product training to understand it, rewrite.
 
@@ -172,7 +172,7 @@ The checklist, per screen:
 
 - **Reveal model** — scroll-driven vs click-driven vs always-visible for each major section; which content is progressive-disclosure (tab, drawer, expand-on-click) vs on first paint.
 - **Interactive states** — for every interactive control: default, hover, focus, pressed/active, disabled, loading. Hover states MUST declare their tap equivalent (reuses the mobile hover-only rule).
-- **Async states** — for every data region: loading (skeleton vs spinner vs nothing), empty, error, populated. Prevents the happy-path-only mockup; pairs with the Step 3a capability-failure-state rule.
+- **Async states** — for every data region: loading (skeleton vs spinner vs nothing), empty, error, populated. Prevents the happy-path-only mockup; pairs with the Step 3a cross-cutting UI safety checklist.
 - **Transitions and motion** — any animation, transition, or scroll behaviour the design depends on (smooth-scroll, sticky-on-scroll, sheet/drawer slide-in, optimistic-then-reconcile). Name the *intended behaviour*, not a library (a library may be named as a reference only).
 - **Primary-action feedback** — what the operator sees after the one primary action fires: inline state change (preferred, per the inline-state hard rule), toast, navigation, or modal.
 - **Input behaviour** — validation timing (on-blur vs on-submit), coupled-field enable/disable (reuses the coupled-field-invariant rule), mobile keyboard-open handling.
