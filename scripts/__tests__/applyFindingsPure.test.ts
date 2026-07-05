@@ -12,11 +12,11 @@
 
 import { expect, test } from 'vitest';
 import {
-  ACCEPTANCE_CHECK_ALLOWED_BINARIES,
+  ACCEPTANCE_CHECK_ALLOWED_NPM_SCRIPTS,
   classifyAcceptanceCheckCommand,
 } from '../review-coordinator/applyFindingsPure.js';
 
-// --- allowed commands ---
+// --- allowed command shapes ---
 
 test('allows a plain npm script run', () => {
   const r = classifyAcceptanceCheckCommand('npm run lint');
@@ -24,10 +24,10 @@ test('allows a plain npm script run', () => {
   expect(r.reason).toBeNull();
 });
 
-test('allows every allowlisted binary with plain args', () => {
-  for (const bin of ACCEPTANCE_CHECK_ALLOWED_BINARIES) {
-    const r = classifyAcceptanceCheckCommand(`${bin} --version`);
-    expect(r.allowed, `${bin} should be allowed`).toBe(true);
+test('allows every allowlisted npm script', () => {
+  for (const script of ACCEPTANCE_CHECK_ALLOWED_NPM_SCRIPTS) {
+    const r = classifyAcceptanceCheckCommand(`npm run ${script}`);
+    expect(r.allowed, `npm run ${script} should be allowed`).toBe(true);
   }
 });
 
@@ -36,15 +36,24 @@ test('allows leading/trailing whitespace around an allowed command', () => {
   expect(r.allowed).toBe(true);
 });
 
-test('allows a bare allowlisted binary with no args', () => {
-  expect(classifyAcceptanceCheckCommand('vitest').allowed).toBe(true);
+test('allows vitest run with one or more test paths', () => {
+  expect(classifyAcceptanceCheckCommand('vitest run tests/a.test.ts').allowed).toBe(true);
+  expect(
+    classifyAcceptanceCheckCommand('npx vitest run tests/a.test.ts tests/b.test.ts').allowed,
+  ).toBe(true);
 });
 
-test('allows plain flags, paths, and equals-style args', () => {
-  expect(classifyAcceptanceCheckCommand('git diff --stat HEAD~1').allowed).toBe(true);
+test('allows npx tsx --test with test paths', () => {
   expect(
-    classifyAcceptanceCheckCommand('node --test tests/helpers.test.ts').allowed,
+    classifyAcceptanceCheckCommand('npx tsx --test tests/helpers.test.ts').allowed,
   ).toBe(true);
+});
+
+test('allows read-only git shapes', () => {
+  expect(classifyAcceptanceCheckCommand('git diff --stat HEAD~1').allowed).toBe(true);
+  expect(classifyAcceptanceCheckCommand('git status').allowed).toBe(true);
+  expect(classifyAcceptanceCheckCommand('git rev-parse HEAD').allowed).toBe(true);
+  expect(classifyAcceptanceCheckCommand('git diff origin/main...HEAD').allowed).toBe(true);
 });
 
 // --- rejected: leading binary not allowlisted ---
@@ -72,6 +81,69 @@ test('rejects a relative path to an allowlisted binary', () => {
 
 test('binary match is case-sensitive', () => {
   expect(classifyAcceptanceCheckCommand('NPM run lint').allowed).toBe(false);
+});
+
+// --- rejected: overbroad command authorization (shape gate) ---
+// Round-2 review bypass payloads: no rejected characters, no chaining, an
+// allowlisted leading binary — yet destructive. Each must be rejected.
+
+test.each([
+  'git clean -fdx',
+  'git reset --hard HEAD',
+  'git checkout HEAD -- .',
+  'npx rimraf .',
+  'npx shx rm -rf build',
+  'npm exec rimraf .',
+])('rejects destructive allowlisted-binary command %j', (cmd) => {
+  const r = classifyAcceptanceCheckCommand(cmd);
+  expect(r.allowed).toBe(false);
+});
+
+test('rejects git write-capable subcommands with reasons naming the policy', () => {
+  const r = classifyAcceptanceCheckCommand('git push origin main');
+  expect(r.allowed).toBe(false);
+  expect(r.reason).toContain('read-only');
+});
+
+test('rejects git config and bare git', () => {
+  expect(classifyAcceptanceCheckCommand('git config user.email x@y.z').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('git').allowed).toBe(false);
+});
+
+test('rejects git diff --output (writes to disk)', () => {
+  expect(classifyAcceptanceCheckCommand('git diff --output=/tmp/x HEAD~1').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('git diff --output /tmp/x').allowed).toBe(false);
+});
+
+test('rejects npm shapes other than run-with-allowlisted-script', () => {
+  expect(classifyAcceptanceCheckCommand('npm run arbitrary-script').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('npm install left-pad').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('npm test').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('npm run lint extra-arg').allowed).toBe(false);
+});
+
+test('rejects node entirely (node -e / --eval / arbitrary scripts)', () => {
+  expect(classifyAcceptanceCheckCommand('node -e console.log(1)').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('node --eval evil').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('node script.js').allowed).toBe(false);
+});
+
+test('rejects bare tsx and non-test tsx invocations', () => {
+  expect(classifyAcceptanceCheckCommand('tsx script.ts').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('npx tsx script.ts').allowed).toBe(false);
+});
+
+test('rejects vitest without run, and vitest run without a path', () => {
+  expect(classifyAcceptanceCheckCommand('vitest').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('vitest run').allowed).toBe(false);
+  expect(classifyAcceptanceCheckCommand('npx vitest run').allowed).toBe(false);
+});
+
+test('rejects flags smuggled as vitest/tsx test paths', () => {
+  expect(classifyAcceptanceCheckCommand('npx vitest run --root /').allowed).toBe(false);
+  expect(
+    classifyAcceptanceCheckCommand('npx tsx --test --experimental-loader evil').allowed,
+  ).toBe(false);
 });
 
 // --- rejected: shell metacharacters ---

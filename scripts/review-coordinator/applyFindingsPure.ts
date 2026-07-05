@@ -288,15 +288,48 @@ export function matchProductionDsn(acceptanceCheck: string): ProductionDsnMatchR
 // §11a Step 5: acceptance_check execution allowlist
 // ---------------------------------------------------------------------------
 
-/** Binaries an acceptance_check command may start with. */
+/**
+ * Binaries an acceptance_check command may start with. Note this is only the
+ * FIRST gate — the command must also match one of the allowed COMMAND SHAPES
+ * below. Binary-level allowlisting alone is an unsafe boundary: `git clean
+ * -fdx`, `npx rimraf .`, and `npm exec rimraf .` all start with an
+ * allowlisted binary yet mutate the working tree arbitrarily.
+ */
 export const ACCEPTANCE_CHECK_ALLOWED_BINARIES: ReadonlySet<string> = new Set([
   'npm',
   'npx',
-  'node',
-  'tsx',
   'vitest',
   'git',
 ]);
+
+/** npm scripts an acceptance_check may run (`npm run <script>` only). */
+export const ACCEPTANCE_CHECK_ALLOWED_NPM_SCRIPTS: ReadonlySet<string> = new Set([
+  'lint',
+  'typecheck',
+  'build',
+  'build:server',
+  'build:client',
+]);
+
+/** Read-only git subcommands an acceptance_check may run. */
+export const ACCEPTANCE_CHECK_ALLOWED_GIT_SUBCOMMANDS: ReadonlySet<string> = new Set([
+  'diff',
+  'status',
+  'rev-parse',
+]);
+
+/**
+ * A test-file argument for `vitest run` / `tsx --test`: plain path token,
+ * no leading dash (so no flags can smuggle behaviour in), path charset only.
+ */
+const ACCEPTANCE_CHECK_TEST_PATH_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+/**
+ * A git argument: revisions, ranges, paths, and plain `--flags`, but nothing
+ * that can write. `--output(=…)` is explicitly rejected below because
+ * `git diff --output=<file>` writes to disk.
+ */
+const ACCEPTANCE_CHECK_GIT_ARG_RE = /^[A-Za-z0-9._/^~:*=-]+$/;
 
 /**
  * Shell metacharacters that must not appear ANYWHERE in an acceptance_check
@@ -338,15 +371,22 @@ export interface AcceptanceCheckCommandResult {
 /**
  * Classify an acceptance_check command against the execution allowlist.
  *
- * acceptance_check is untrusted reviewer (model) output, so ALL of the
- * following must hold:
- *   1. the leading binary — the first whitespace-delimited token — is one of
- *      ACCEPTANCE_CHECK_ALLOWED_BINARIES, as a bare name (paths such as
- *      /usr/bin/npm are rejected);
- *   2. the full string contains none of the shell metacharacters
- *      ` $ ( ) ; & | < > nor quotes/backslash; and
- *   3. the full string contains no control characters (newline and CR are
- *      shell command separators; tab, NUL, ESC etc. are rejected with them).
+ * acceptance_check is untrusted reviewer (model) output, so the command must
+ * pass ALL of:
+ *   1. no control characters (newline/CR are shell command separators; tab,
+ *      NUL, ESC etc. are rejected with them);
+ *   2. none of the shell metacharacters ` $ ( ) ; & | < > nor
+ *      quotes/backslash; and
+ *   3. an exact COMMAND-SHAPE match — not merely an allowlisted leading
+ *      binary. Binary-level allowlisting is overbroad authorization:
+ *      `git clean -fdx`, `git reset --hard`, `npx rimraf .`, `npm exec …`,
+ *      and `node -e …` all pass a binary check while mutating the tree or
+ *      executing arbitrary code. Allowed shapes:
+ *        npm run <lint|typecheck|build|build:server|build:client>
+ *        npx vitest run <test-path…>
+ *        npx tsx --test <test-path…>
+ *        vitest run <test-path…>
+ *        git <diff|status|rev-parse> [safe args…]   (no --output)
  *
  * The executor (runAcceptanceCheck) additionally tokenises on whitespace and
  * runs the command via spawnSync WITHOUT a shell, so even a string that
@@ -370,16 +410,6 @@ export function classifyAcceptanceCheckCommand(check: string): AcceptanceCheckCo
     };
   }
 
-  const binary = trimmed.split(/\s+/)[0];
-  if (!ACCEPTANCE_CHECK_ALLOWED_BINARIES.has(binary)) {
-    return {
-      allowed: false,
-      reason:
-        `leading binary "${binary}" is not allowlisted ` +
-        `(allowed: ${[...ACCEPTANCE_CHECK_ALLOWED_BINARIES].join(', ')})`,
-    };
-  }
-
   for (const meta of ACCEPTANCE_CHECK_SHELL_METACHARACTERS) {
     if (check.includes(meta)) {
       return {
@@ -389,7 +419,99 @@ export function classifyAcceptanceCheckCommand(check: string): AcceptanceCheckCo
     }
   }
 
+  const tokens = trimmed.split(/\s+/);
+  const binary = tokens[0];
+  if (!ACCEPTANCE_CHECK_ALLOWED_BINARIES.has(binary)) {
+    return {
+      allowed: false,
+      reason:
+        `leading binary "${binary}" is not allowlisted ` +
+        `(allowed: ${[...ACCEPTANCE_CHECK_ALLOWED_BINARIES].join(', ')})`,
+    };
+  }
+
+  return classifyCommandShape(tokens);
+}
+
+/** Validate one or more test-path arguments (no flags, path charset only). */
+function validateTestPaths(paths: string[], shape: string): AcceptanceCheckCommandResult {
+  if (paths.length === 0) {
+    return { allowed: false, reason: `${shape} requires at least one test-file path` };
+  }
+  for (const p of paths) {
+    if (!ACCEPTANCE_CHECK_TEST_PATH_RE.test(p)) {
+      return {
+        allowed: false,
+        reason: `"${p}" is not a plain test-file path (flags and non-path tokens are not allowed after ${shape})`,
+      };
+    }
+  }
   return { allowed: true, reason: null };
+}
+
+/** Shape gate — see classifyAcceptanceCheckCommand doc for the allowed set. */
+function classifyCommandShape(tokens: string[]): AcceptanceCheckCommandResult {
+  const [binary, ...rest] = tokens;
+
+  switch (binary) {
+    case 'npm': {
+      if (rest[0] !== 'run' || rest.length !== 2 || !ACCEPTANCE_CHECK_ALLOWED_NPM_SCRIPTS.has(rest[1])) {
+        return {
+          allowed: false,
+          reason:
+            'npm is allowed only as `npm run <script>` with script in ' +
+            `{${[...ACCEPTANCE_CHECK_ALLOWED_NPM_SCRIPTS].join(', ')}} — ` +
+            'npm exec / arbitrary scripts are not allowlisted',
+        };
+      }
+      return { allowed: true, reason: null };
+    }
+    case 'npx': {
+      if (rest[0] === 'vitest' && rest[1] === 'run') {
+        return validateTestPaths(rest.slice(2), 'npx vitest run');
+      }
+      if (rest[0] === 'tsx' && rest[1] === '--test') {
+        return validateTestPaths(rest.slice(2), 'npx tsx --test');
+      }
+      return {
+        allowed: false,
+        reason:
+          'npx is allowed only as `npx vitest run <test-path…>` or ' +
+          '`npx tsx --test <test-path…>` — arbitrary npx packages (rimraf, ' +
+          'shx, …) are not allowlisted',
+      };
+    }
+    case 'vitest': {
+      if (rest[0] === 'run') {
+        return validateTestPaths(rest.slice(1), 'vitest run');
+      }
+      return { allowed: false, reason: 'vitest is allowed only as `vitest run <test-path…>`' };
+    }
+    case 'git': {
+      const sub = rest[0];
+      if (!sub || !ACCEPTANCE_CHECK_ALLOWED_GIT_SUBCOMMANDS.has(sub)) {
+        return {
+          allowed: false,
+          reason:
+            `git subcommand "${sub ?? ''}" is not allowlisted (read-only ` +
+            `only: ${[...ACCEPTANCE_CHECK_ALLOWED_GIT_SUBCOMMANDS].join(', ')}) — ` +
+            'clean/reset/checkout/config/push are never allowed',
+        };
+      }
+      for (const arg of rest.slice(1)) {
+        if (arg.startsWith('--output')) {
+          return { allowed: false, reason: '`git --output` writes to disk and is not allowed' };
+        }
+        if (!ACCEPTANCE_CHECK_GIT_ARG_RE.test(arg)) {
+          return { allowed: false, reason: `git argument "${arg}" is not a safe revision/path/flag token` };
+        }
+      }
+      return { allowed: true, reason: null };
+    }
+    default:
+      // Unreachable: the binary gate above already filtered to the four cases.
+      return { allowed: false, reason: `leading binary "${binary}" is not allowlisted` };
+  }
 }
 
 // ---------------------------------------------------------------------------
