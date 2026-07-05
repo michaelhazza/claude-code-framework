@@ -622,10 +622,10 @@ For each Blocking finding from pr-reviewer:
 
 ### 8.5 — dual-reviewer
 
-Codex availability check:
+Codex availability check (a repo may pin a machine-specific fallback path in its `.claude/context/agent-context.md` section for this agent):
 
 ```bash
-CODEX_BIN=$(command -v codex 2>/dev/null || echo "/c/Users/Michael/AppData/Roaming/npm/codex")
+CODEX_BIN=$(command -v codex 2>/dev/null || echo "${CODEX_FALLBACK_PATH:-codex}")
 if [ ! -x "$CODEX_BIN" ] && [ ! -f "$CODEX_BIN" ]; then
   echo "dual-reviewer: skipped — Codex CLI unavailable or unauthenticated"
 fi
