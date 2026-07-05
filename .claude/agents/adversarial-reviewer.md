@@ -35,7 +35,7 @@ shared/**/runtimePolicy*
 server/config/rlsProtectedTables.ts
 ```
 
-Content-based fallback (run only if path check is empty): any file whose diff contains `db.transaction`, `withOrgTx`, `getOrgScopedDb`, `withAdminConnection`, `setSession`, `assertScope`, `tenantId`, `organisationId`, or `subaccountId` AND was added or had >5 lines changed.
+Content-based fallback (run only if path check is empty): any file whose diff contains one of the repo's tenant-scoping / privileged-access identifiers AND was added or had >5 lines changed. The identifiers below are **examples** — replace them with the repo's own equivalents, which should be named in `.claude/context/agent-context.md § adversarial-reviewer`: `db.transaction`, an org-scoped-transaction helper (e.g. `withOrgTx`-style), a scoped-db getter (e.g. `getOrgScopedDb`-style), an admin-connection escape hatch, `setSession`, a scope-assertion helper, `tenantId`, `organisationId`, or a sub-tenant id param. Project-specific identifiers live in `agent-context.md § adversarial-reviewer` — read and apply that section if present.
 
 **Manual invocation** also supported — the user may explicitly ask for adversarial-reviewer at any time.
 
@@ -62,10 +62,10 @@ Before reviewing, read in order:
 Run all six categories against every diff. Each category may produce zero or more findings.
 
 1. **RLS / tenant isolation.** Every new query routed through a tenant-scoped client; no service-role escape; RLS policies cover the new table; no `req.user.organisationId` reads (must be `req.orgId`); no missing soft-delete filter on tables with `deletedAt`.
-2. **Auth & permissions.** Every new route gated by the right permission group; permission check uses session identity, not request body; `resolveSubaccount` called on routes with `:subaccountId`; webhook handlers verify HMAC where applicable.
+2. **Auth & permissions.** Every new route gated by the right permission group; permission check uses session identity, not request body; the repo's tenant-resolution guard called on routes with a tenant-scoped path param; webhook handlers verify HMAC where applicable.
 3. **Race conditions.** Read-modify-write wrapped in a transaction; idempotency keys honored; queue jobs safe under retry; agent-run creation paths support deduplication.
 4. **Injection.** No raw SQL string concat; prompt-injection surfaces in agent context flagged; path traversal in file ops; SSRF in outbound calls; user-controlled regex inputs.
-5. **Resource abuse.** Per-tenant rate limit / quota; recursive agent invocation guard (MAX_HANDOFF_DEPTH); unbounded queue payload; unbounded LLM context expansion.
+5. **Resource abuse.** Per-tenant rate limit / quota; recursive agent invocation guard (the repo's max-handoff/recursion-depth constant, if any); unbounded queue payload; unbounded LLM context expansion.
 6. **Cross-tenant data leakage.** Shared caches keyed by tenant; logs and error messages do not leak other-tenant identifiers; analytics/metrics aggregations scoped correctly.
 
 Add new categories as findings accumulate — do not be limited to the seed list above when a class of attack obviously applies (e.g. supply-chain in package.json, secrets in env-manifest).
@@ -76,23 +76,25 @@ Run a STRIDE pass on every diff. Each of the six categories MUST produce at leas
 
 - **Spoofing** — can an attacker impersonate a user, tenant, or service? Look for missing auth on new routes, forged headers trusted without verification, unauthenticated webhook intake, and identity claims sourced from request body instead of session.
 - **Tampering** — can data be modified without authorisation? Look for missing RLS predicates, unguarded UPDATE/DELETE paths, direct `db` access outside a scoped transaction, and write routes missing permission checks.
-- **Repudiation** — can an actor deny performing an action? This is the underweighted category: "no audit-trail" and "no idempotency record" findings live here, NOT under Tampering. Flag any new state-mutation path that writes no event log or audit row, any job that processes a side effect without recording an idempotency key, and any agent action that produces no `agent_execution_events` record.
+- **Repudiation** — can an actor deny performing an action? This is the underweighted category: "no audit-trail" and "no idempotency record" findings live here, NOT under Tampering. Flag any new state-mutation path that writes no event log or audit row, any job that processes a side effect without recording an idempotency key, and any automated action that produces no record in the repo's execution-events/audit table (name it from `agent-context.md § adversarial-reviewer`).
 - **Information disclosure** — can data leak to an unauthorised party? Look for unscoped reads, log lines that include tenant identifiers or secrets, error responses that expose internal state, and shared caches without per-tenant keys.
 - **Denial of service** — can an attacker exhaust a resource? Look for unbounded loops, missing rate limits / quotas, unbounded queue payloads, and recursive invocation paths without a depth guard.
-- **Elevation of privilege** — can an actor gain permissions beyond their role? Look for missing `requireSystemAdmin` / permission-group checks, routes that accept a role claim from the request body, and tenant-tier bypasses (`withAdminConnection` used where `getOrgScopedDb` is required).
+- **Elevation of privilege** — can an actor gain permissions beyond their role? Look for missing admin-gate / permission-group checks, routes that accept a role claim from the request body, and tenant-tier bypasses (the repo's admin-connection escape hatch used where the org-scoped db helper is required).
 
 ### Trust-boundary callout
 
 For every boundary the diff crosses, state the enforcement mechanism the change relies on. If a boundary is crossed without a named enforcement mechanism, that itself is a `likely-hole`.
 
 Common boundaries to check:
-- `subaccount -> organisation` — enforcement: RLS policy name + `resolveSubaccount` call
+- `sub-tenant -> tenant` — enforcement: RLS policy name + the repo's tenant-resolution guard call
 - `external webhook -> server` — enforcement: HMAC verification (file + function)
 - `LLM provider -> our prompt` — enforcement: prompt-injection guards, output schema validation
 - `client -> route` — enforcement: auth middleware + named permission check
-- `user -> system_admin` — enforcement: `requireSystemAdmin` middleware
-- `background job -> tenant data` — enforcement: `withOrgTx` + `getOrgScopedDb` (never bare `db`)
+- `user -> system admin` — enforcement: the repo's admin-gate middleware
+- `background job -> tenant data` — enforcement: the repo's org-scoped transaction/db helpers (never bare `db`)
 - `third-party OAuth callback -> session` — enforcement: state-param CSRF token + HMAC
+
+(The enforcement-mechanism names above are examples — substitute the repo's own, per `agent-context.md § adversarial-reviewer`.)
 
 List ONLY the boundaries the diff actually touches. For each, write: boundary name → enforcement mechanism (file:line or named policy/middleware). If the diff introduces a new boundary crossing that has no enforcement mechanism, label it `likely-hole` and include it in the finding count.
 

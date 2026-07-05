@@ -1,6 +1,6 @@
 # ADAPT.md — Master prompt for adopting the Claude Code framework
 
-> Drop the contents of this `setup/portable/` bundle into a target repo, then ask Claude Code (Opus) to read this file and execute the phases below. The framework lands cleanly with project-specific substitutions.
+> This repo IS the standalone framework repo. Add it to a target repo as a git submodule at `.claude-framework/` (per README.md), then ask Claude Code (Opus) to read this file and execute the phases below. The framework lands cleanly with project-specific substitutions.
 
 ## Contents
 
@@ -24,10 +24,10 @@
 
 A drop-in agent fleet + governance docs + portable hooks for any Claude Code project. See `.claude/CHANGELOG.md` for the source release version and history.
 
-The bundle ships:
-- 24 agent definitions in `.claude/agents/` (with placeholders for project name, description, stack)
-- 4 portable hooks in `.claude/hooks/` + a `.claude/settings.json` registering them
-- ADRs at `docs/decisions/` (3 generic ones — 0001, 0002, 0005)
+The framework ships:
+- 28 agent definitions in `.claude/agents/` (with placeholders for project name, description, stack; `_retired/` is excluded)
+- 6 portable hooks in `.claude/hooks/` (`long-doc-guard`, `correction-nudge`, `config-protection`, `code-graph-freshness-check`, `spec-creation-grill-nudge`, `phase-lock`) + a `.claude/settings.json` registering them
+- ADRs at `docs/decisions/` (the generic framework ones — 0001, 0002, 0005–0008)
 - Context packs at `docs/context-packs/` (5 mode-scoped packs)
 - Reference docs at `references/` (test-gate-policy, spec-review-directional-signals, verification-commands template)
 - Spec / doc-sync / frontend conventions at `docs/`
@@ -54,26 +54,26 @@ Have these ready before starting — Phase 2 substitutes them everywhere:
 | `{{STACK_DESCRIPTION}}` | `Node + Express + Drizzle ORM (PostgreSQL) + React` | Comma-separated. Stack-name level, not version-pinned. |
 | `{{COMPANY_NAME}}` | `Acme Inc` | Optional. If empty, lines containing it are deleted. |
 
-Plus the **profile selection**: MINIMAL (4 agents) / STANDARD (10) / FULL (23). See § 11.
+Plus the **profile selection**: MINIMAL (4 agents) / STANDARD (10) / FULL (28). See § 12.
 
 ---
 
 ## 4. Phase 0 — Confirm prerequisites
 
-Read this entire file. Verify the operator inputs above are gathered. Confirm the bundle's `setup/portable/` (or wherever it was extracted) is co-located with the target repo at a known path.
+Read this entire file. Verify the operator inputs above are gathered. Confirm the framework is reachable from the target repo — normally as the git submodule at `.claude-framework/` (per README.md), or a local clone of this repo at a known path.
 
 If any input is missing, stop and ask the operator. Do NOT guess.
 
 ## 5. Phase 1 — File placement
 
-Copy bundle contents into the target repo at the matching paths:
+Copy framework contents from the submodule (or local clone) into the target repo at the matching paths:
 
 ```
-setup/portable/.claude/         → <repo-root>/.claude/
-setup/portable/.claude/skills/  → <repo-root>/.claude/skills/
-setup/portable/docs/            → <repo-root>/docs/
-setup/portable/references/      → <repo-root>/references/
-setup/portable/tasks/           → <repo-root>/tasks/      (only if tasks/ does not exist)
+.claude-framework/.claude/         → <repo-root>/.claude/
+.claude-framework/.claude/skills/  → <repo-root>/.claude/skills/
+.claude-framework/docs/            → <repo-root>/docs/
+.claude-framework/references/      → <repo-root>/references/
+.claude-framework/tasks/           → <repo-root>/tasks/      (only if tasks/ does not exist)
 ```
 
 **Conflict handling:** if a target file already exists, do NOT overwrite. Copy the bundle file to `<existing-name>.framework.md` and surface the conflict to the operator. They merge manually.
@@ -87,11 +87,13 @@ After Phase 1, the target repo's lint/typecheck should still pass — the framew
 
 ## 6. Phase 1.5 — Profile selection + agent pruning
 
-Ask the operator: "Which profile? MINIMAL (4) / STANDARD (10) / FULL (23)."
+Ask the operator: "Which profile? MINIMAL (4) / STANDARD (10) / FULL (28)."
 
-Delete agent files NOT in the chosen profile from `.claude/agents/`. See § 11 for the per-profile list.
+Delete agent files NOT in the chosen profile from `.claude/agents/`. See § 12 for the per-profile list.
 
-If the operator is unsure, default to **STANDARD**. They can add agents later by copying from the bundle.
+**Make each pruning stick:** for every agent file you delete, add its path (e.g. `.claude/agents/incident-commander.md`) to the `syncIgnore` array in `.claude/.framework-state.json` (created in Phase 6 — record the pruned list now and add the entries when the state file exists). Without a `syncIgnore` entry, the next `sync.js` run treats the deleted file as new and re-deploys it, or nags with a `.framework-new` conflict on every version bump (same rationale as `MIGRATION-FROM-COPY-PASTE.md` § 4).
+
+If the operator is unsure, default to **STANDARD**. They can add agents later by copying from the framework and removing the corresponding `syncIgnore` entries.
 
 ## 7. Phase 2 — Substitute placeholders
 
@@ -118,10 +120,10 @@ Open the file. Replace the `[PLACEHOLDER]` commands in the *Stack template* tabl
 
 ### 3b — `architecture.md` anchors (if architecture.md exists)
 
-Context packs reference `architecture.md#<anchor>` slugs. If the target repo has an `architecture.md`:
+Context packs reference `architecture.md` sections via `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholder tokens. If the target repo has an `architecture.md`:
 
 1. Run a one-shot anchor-generation pass: insert `<a id="<kebab-case-slug>"></a>` immediately before every `## ` heading.
-2. Open `docs/context-packs/*.md` and replace generic anchor names with the actual anchors generated.
+2. Open `docs/context-packs/*.md` and replace each `{{ARCHITECTURE_ANCHOR:<purpose>}}` token with the real anchor that serves that purpose in the target's `architecture.md` (delete lines whose purpose has no counterpart).
 3. If the target has no `architecture.md`, skip this step. The packs will fall back to whole-file reads (with warnings printed by `context-pack-loader`).
 
 ## 9. Phase 4 — Wire into target CLAUDE.md
@@ -151,8 +153,8 @@ It checks every agent file references files that exist, every context-pack ancho
 
 If `validate-setup` is NOT in the profile, run a manual smoke check:
 
-1. `ls .claude/agents/` — count matches profile (4 / 11 / 24).
-2. `ls .claude/hooks/` — 4 files present.
+1. `ls .claude/agents/` — count matches profile (4 / 10 / 28, excluding `_retired/`).
+2. `ls .claude/hooks/` — 6 hook scripts present (plus their `.test.js` files and `package.json`).
 3. `cat .claude/FRAMEWORK_VERSION` — matches the bundle's version.
 4. `grep -rE '\{\{PROJECT_NAME\}\}|\{\{STACK_DESCRIPTION\}\}' .claude/ docs/ references/` — zero hits.
 5. `node .claude/hooks/code-graph-freshness-check.js < /dev/null` — exits 0 (degrades gracefully when the cache build script isn't present).
@@ -189,10 +191,10 @@ ls .claude-framework/sync.js   # should exist
 ls .claude-framework/.claude/FRAMEWORK_VERSION  # should print 2.2.0 or later
 ```
 
-If using a local copy (e.g. `setup/portable/`):
+If using a local clone of the framework repo instead of a submodule:
 ```bash
-ls sync.js
-ls .claude/FRAMEWORK_VERSION
+ls <path-to-clone>/sync.js
+ls <path-to-clone>/.claude/FRAMEWORK_VERSION
 ```
 
 **6b. Write the initial substitution map.**
@@ -246,13 +248,13 @@ Also verify the state file was written:
 node -e "const s=JSON.parse(require('fs').readFileSync('.claude/.framework-state.json','utf8')); console.log('version:', s.frameworkVersion, 'files:', Object.keys(s.files).length)"
 ```
 
-Expected: `version: 2.2.0 files: <N>` where N matches the number of managed files.
+Expected: `version: <current framework version> files: <N>` where N matches the number of managed files.
 
 **6e. Commit the adoption record.**
 
 ```bash
 git add .claude-framework .claude/.framework-state.json
-git commit -m "feat: adopt claude-code-framework v2.2.0 as submodule"
+git commit -m "feat: adopt claude-code-framework v<current framework version> as submodule"
 ```
 
 ### Mandatory rule: agent files are framework-canonical (ADR-0006)
@@ -299,9 +301,9 @@ MINIMAL 4 plus: `spec-coordinator`, `feature-coordinator`, `finalisation-coordin
 
 Use when the project has multiple in-flight features and benefits from spec → plan → build phase separation. Default for most projects.
 
-### FULL (23 agents) — large project / multi-stream development
+### FULL (28 agents) — large project / multi-stream development
 
-STANDARD 11 plus: `adversarial-reviewer`, `audit-runner`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `codebase-explainer`, `context-pack-loader`, `dual-reviewer`, `mockup-designer`, `validate-setup`, `incident-commander`, `mockup-coordinator`, `mockup-reviewer`.
+STANDARD 10 plus: `adversarial-reviewer`, `audit-runner`, `bug-fixer`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `claude-spec-review`, `claude-plan-review`, `codebase-explainer`, `context-pack-loader`, `cross-repo-scout`, `dual-reviewer`, `experiment-runner`, `incident-commander`, `mockup-coordinator`, `mockup-designer`, `mockup-reviewer`, `validate-setup`.
 
 Use when the project supports the overhead — `chatgpt-*` agents need ChatGPT-web access, `dual-reviewer` needs the Codex CLI, `audit-runner` needs a mature codebase to audit. Otherwise STANDARD covers it.
 
@@ -311,6 +313,6 @@ Use when the project supports the overhead — `chatgpt-*` agents need ChatGPT-w
 
 1. **Forgetting to merge `.claude/settings.json`.** If the target already had hooks, the bundle's `settings.json` will overwrite them unless you merge. Phase 1 specifies a merge — follow it.
 2. **Substituting `{{PROJECT_NAME}}` to a value with regex specials.** Project names with `/`, `.`, `{`, `}` need escaping. Substitute one at a time and double-check.
-3. **Pruning agents that other agents reference.** `feature-coordinator` calls `builder`, `pr-reviewer`, etc. Profiles in § 11 are pre-curated to avoid this — pick a profile, don't hand-prune mid-tier.
+3. **Pruning agents that other agents reference.** `feature-coordinator` calls `builder`, `pr-reviewer`, etc. Profiles in § 12 are pre-curated to avoid this — pick a profile, don't hand-prune mid-tier.
 4. **Skipping Phase 3b but keeping context-packs that reference anchors.** Packs will fall back to whole-file reads (slow) and warn. Either run Phase 3b or accept the warnings.
 5. **Running ADAPT.md a second time over an already-adapted repo.** Don't — Phase 2 substitution will turn already-substituted text into double-substituted gibberish. To upgrade, follow `.claude/CHANGELOG.md` § *Upgrade protocol* instead.

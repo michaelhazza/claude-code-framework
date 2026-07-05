@@ -53,8 +53,8 @@ Read `.claude/project-registries.json` from the consumer repo root. Access the `
 
 ```typescript
 interface SiblingRepoEntry {
-  name: string;           // short identifier, e.g. "altessa"
-  github: string;         // "owner/repo" format, e.g. "michaelhazza/altessa"
+  name: string;           // short identifier, e.g. "sibling-repo"
+  github: string;         // "owner/repo" format, e.g. "<owner>/<sibling-repo>"
   local_path: string;     // absolute path on the local filesystem
   is_framework_aligned: boolean;  // used for framework-alignment score in Contract 2
 }

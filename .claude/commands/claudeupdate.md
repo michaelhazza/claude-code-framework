@@ -58,6 +58,12 @@ This is the one-shot, fully-automated flow as of framework v2.9.0. Earlier versi
    ```bash
    cd <repo>
 
+   # 6a-pre. Capture pre-bump state (step 3's values, assigned as shell vars —
+   #         FROM_VERSION feeds the migration runner in 6b; OLD_SHA feeds the
+   #         commit message in 6f).
+   FROM_VERSION=$(cat .claude-framework/.claude/FRAMEWORK_VERSION)
+   OLD_SHA=$(git -C .claude-framework rev-parse --short HEAD)
+
    # 6a. Bump the submodule pointer (frameworkRoot now points to TARGET_SHA)
    git submodule update --remote .claude-framework
 

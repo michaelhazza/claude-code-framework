@@ -91,10 +91,10 @@ Apply these whenever the brief touches the listed surface. These prevent a class
 
 ### Styling convention
 
-Match existing prototypes. Inspect `prototypes/agent-as-employee/_shared.css` and `prototypes/pulse/*.html` for the current pattern.
+Match existing prototypes. Inspect the newest existing prototype set under `prototypes/` (its shared CSS and a couple of its HTML pages) for the current pattern; when no prototypes exist yet, derive styling from the app's real styles (design tokens, global CSS, component library) instead.
 
-- Multi-screen directory: link `_shared.css` from every page
-- Single-file: embed styles in `<style>` tags inline (matches `prototypes/system-costs-page.html`)
+- Multi-screen directory: link the set's shared CSS (e.g. `_shared.css`) from every page
+- Single-file: embed styles in `<style>` tags inline (matching the repo's existing single-file prototypes, if any)
 
 Do NOT introduce new CSS frameworks the existing prototypes don't use.
 

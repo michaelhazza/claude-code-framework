@@ -166,10 +166,10 @@ Every new tenant-scoped table (anything with `organisation_id` or `subaccount_id
 
 ### The four requirements
 
-1. **RLS policy** in the same migration that creates the table. See `your project's architecture documentation on tenant isolation (record the section number in \`docs/spec-context.md\`)` for the three-layer model and the exact policy shape.
-2. **Entry in `your project's tenant-isolation manifest`** — this is the manifest that `your project's tenant-isolation gates (CI scripts that enforce manifest coverage)` enforces. Missing entry = CI gate failure.
-3. **Route-level or middleware guard** if the table is accessed via HTTP. Name the guard in the spec (`authenticate`, `requirePermission(key)`, `resolveSubaccount`, or a new guard with a named location).
-4. **Principal-scoped context** if the table is read from an agent execution path. See `your project's architecture documentation on principal-scoped reads`.
+1. **RLS policy** in the same migration that creates the table. See your project's architecture documentation on tenant isolation for the three-layer model and the exact policy shape (record the section reference in `docs/spec-context.md` so reviewers can follow it).
+2. **Entry in your project's tenant-isolation manifest** — the registry file your tenant-isolation CI gates enforce coverage from, if your project has one. Missing entry = CI gate failure.
+3. **Route-level or middleware guard** if the table is accessed via HTTP. Name the guard in the spec (e.g. `authenticate`, `requirePermission(key)`, your tenant-resolution guard, or a new guard with a named location).
+4. **Principal-scoped context** if the table is read from an agent execution path. See your project's architecture documentation on principal-scoped reads, if applicable.
 
 ### Canonical RLS-posture sentence
 
@@ -193,8 +193,8 @@ If your spec introduces behaviour that crosses a transactional or latency bounda
 
 ### The three choices
 
-- **Inline / synchronous** — caller blocks on the operation. Use when the result must be available before the caller returns. Example: prompt assembly during an agent run. Do NOT add a `your project's queue technology (e.g. pg-boss, BullMQ, Sidekiq, Celery)` job row for inline operations.
-- **Queued / asynchronous (`your project's queue technology (e.g. pg-boss, BullMQ, Sidekiq, Celery)`)** — durable, survives restarts, retryable. Use when the operation is decoupled from the caller. Do NOT describe this as "the service does X" in prose — a job processor does X, and the spec should say so.
+- **Inline / synchronous** — caller blocks on the operation. Use when the result must be available before the caller returns. Example: prompt assembly during an agent run. Do NOT add a job row in your project's queue technology (pg-boss, BullMQ, Sidekiq, Celery, or whatever your stack uses) for inline operations.
+- **Queued / asynchronous** — a durable job in your project's queue technology; survives restarts, retryable. Use when the operation is decoupled from the caller. Do NOT describe this as "the service does X" in prose — a job processor does X, and the spec should say so.
 - **Cached / prompt-partition** — for LLM prompt sections that stay constant for a full request lifecycle. If you claim "stable prefix", the partition table and the assembly code must both agree. A prompt partition in `dynamic suffix` with a stated goal of 40–60% cache efficiency is a self-contradicting spec.
 
 ### Consistency pass
@@ -304,12 +304,12 @@ Every hit must reconcile to the same number in the file inventory. Mismatched co
 
 ## Section 9 — Testing posture sanity check
 
-Before adding any test plan to the spec, re-read the testing-related sections of `docs/spec-context.md`:
+Before adding any test plan to the spec, re-read the testing-related sections of `docs/spec-context.md`. The keys below mirror that file's Testing posture block; the values shown are one example fill — your repo's actual values live in `docs/spec-context.md`:
 
 ```yaml
 testing_posture: static_gates_primary
 runtime_tests: pure_function_only
-frontend_tests: none_for_now
+frontend_tests: none
 api_contract_tests: none_for_now
 e2e_tests_of_own_app: none_for_now
 performance_baselines: defer_until_production

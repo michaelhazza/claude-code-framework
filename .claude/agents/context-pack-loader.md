@@ -88,6 +88,8 @@ If a pack references an anchor that doesn't exist in `architecture.md` (heading 
 
 Then load the whole file. Don't fail silently — the operator needs to know packs have drifted.
 
+Likewise, if a pack still contains an unmapped `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholder token (the repo skipped ADAPT.md Phase 3b), warn that the pack's anchors were never mapped and fall back to a whole-file read for that source.
+
 ## Auto-trigger from current-focus
 
 If `tasks/current-focus.md` status is one of:

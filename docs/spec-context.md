@@ -13,14 +13,19 @@ This file is the ground-truth framing reference for the `spec-reviewer` agent. E
 # Update last_reviewed_at when the framing block below is verified or modified.
 # stale_after_days = 60: spec-reviewer warns when last_reviewed_at is older.
 # stale_blocks_at_days = 120: spec-reviewer refuses to start until reviewed.
-last_reviewed_at: 2026-04-16
+last_reviewed_at: 2026-07-05
 stale_after_days: 60
 stale_blocks_at_days: 120
 ```
 
-Current as of 2026-04-16. Update the date whenever any of the statements below change AND when the framing is verified to still apply (even if no statement changed). The staleness check above turns "I'll re-check this someday" into "the agent stops me at 4 months."
+Current as of 2026-07-05 (template date — reset it to your adoption date when you fill this file in). Update the date whenever any of the statements below change AND when the framing is verified to still apply (even if no statement changed). The staleness check above turns "I'll re-check this someday" into "the agent stops me at 4 months."
 
 ```yaml
+# OPERATOR-FILL AT ADOPTION: every <angle-bracket> value below is a placeholder.
+# The adopting operator must replace each one with the project's real answer
+# (and delete inapplicable keys). spec-reviewer treats unfilled placeholders
+# as "framing unknown" and will pause for HITL.
+
 # Deployment context — fill in for your project
 pre_production: <yes|no>
 live_users: <yes|no>
@@ -37,6 +42,10 @@ breaking_changes_expected: <yes|no>
 testing_posture: <static_gates_primary|hybrid|runtime_primary>
 runtime_tests: <none|pure_function_only|api_contract|e2e>
 frontend_tests: <none|unit|component|e2e>
+api_contract_tests: <none_for_now|adopted>
+e2e_tests_of_own_app: <none_for_now|adopted>
+performance_baselines: <defer_until_production|tracked>
+composition_tests: <defer_until_stabilisation|adopted>
 
 # Rollout model
 rollout_model: <commit_and_revert|feature_flags|staged_rollout>
@@ -71,10 +80,10 @@ Update this file (and re-review any in-flight specs) when:
 
 The agent reads this file once at the start of every review run. It uses the framing statements to:
 
-1. **Classify directional findings.** If Codex suggests "add a staged rollout", the agent compares against `staged_rollout: never_for_this_codebase_yet` and classifies it as directional (not a mechanical fix).
+1. **Classify directional findings.** If Codex suggests "add a staged rollout" and this file's `rollout_model` says otherwise (e.g. `commit_and_revert`), the agent classifies the suggestion as directional (not a mechanical fix).
 2. **Reject findings in `convention_rejections`.** If Codex suggests "add supertest for API contract tests", the agent checks `convention_rejections` and rejects the finding mechanically with a logged reason.
-3. **Prefer existing primitives.** If Codex suggests "introduce a new retry service", the agent checks `accepted_primitives` and rejects the finding because `withBackoff` exists.
-4. **Flag context mismatches before the loop starts.** If the spec under review says "staged rollout to 10% of traffic" but `staged_rollout: never_for_this_codebase_yet`, the agent pauses for HITL before running iteration 1.
+3. **Prefer existing primitives.** If Codex suggests "introduce a new retry service", the agent checks `accepted_primitives` and rejects the finding when the repo's retry/backoff primitive is already listed there.
+4. **Flag context mismatches before the loop starts.** If the spec under review says "staged rollout to 10% of traffic" but this file's `rollout_model` is `commit_and_revert`, the agent pauses for HITL before running iteration 1.
 
 If you want to override any of these defaults for a specific spec, write the override into the spec's own framing section (Implementation philosophy / Execution model / Headline findings). The agent treats explicit spec-level framing as a permitted override AS LONG AS the override is flagged in a HITL checkpoint first — the human must confirm that the override is intentional.
 
