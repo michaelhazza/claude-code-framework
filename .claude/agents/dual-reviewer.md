@@ -66,6 +66,8 @@ Capture the full stdout+stderr as `CODEX_OUTPUT`.
 
 ### Step 2 — Parse and adjudicate
 
+Adjudication aid: `.claude/skills/review-triage/SKILL.md` encodes the measured false-positive taxonomy (duplicates, locked decisions, pre-existing code, phantom-absence claims, ignored recovery layers) and the verification step each claim type requires. Apply it before accepting or rejecting any finding.
+
 Read `CODEX_OUTPUT` as free-form review feedback from Codex. It will contain findings described in prose or lists — not a rigid structured format. Work through each distinct finding Codex raises:
 
 **Read the relevant file and surrounding context** before deciding. Use Read, Grep, or Glob as needed.

@@ -80,6 +80,24 @@ Checks 1-3 correspond to CLAUDE.md §6 rules 1-3; checks 4-5 are field-sourced a
 
 5. **Reuse-before-duplicate** — Before writing a block that feels familiar, Grep for an existing helper, service, or component that already does it, and reuse or extend it. Never write the same logic twice (CLAUDE.md §6 "never duplicate logic"). The Three-Similar-Lines check limits premature NEW abstraction; it is never licence to copy-paste — reusing an existing helper is always allowed and always preferred over a second copy. Projects with a duplicate-block CI gate (e.g. a jscpd ratchet baseline) fail on ANY net-new duplicated block: complying while writing costs seconds, fixing after CI red costs a full fix loop. Source: 2026-07-04 coding-process audit — repeated code blocks are the field's most-reported Claude Code failure mode, and this checklist previously omitted the reuse rule while check 1 read like copy-paste licence.
 
+### Skill pre-read (apply BEFORE writing in a covered area)
+
+The framework ships distilled-judgment skills under `.claude/skills/` encoding the recurring defect classes review pipelines catch. Before writing code in a covered area, Read the matching SKILL.md — prevention at write time costs seconds; the same defect caught at branch review costs a full fix loop.
+
+| Chunk touches | Read first |
+|---|---|
+| Tenant-scoped tables, RLS, jobs/workers/webhooks touching tenant data | `tenant-isolation` |
+| Migrations, ORM schema, constraints, indexes | `postgres-migrations` |
+| Upserts, state transitions, queue handlers, retries, locks | `db-concurrency` |
+| Any new artifact (table/service/route/job/event/component/field/enum value) | `wire-it-through` |
+| Error handling, fallbacks, catch blocks, safety lookups | `fail-loud` |
+| CI gates, verification scripts, workflows | `ci-gate-integrity` |
+| Tests, mocks, fixtures | `test-discipline` |
+| Auth tokens, webhooks, outbound HTTP, URL/shell construction | `security-hardening` |
+| React components, hooks, forms, client adapters | `frontend-correctness` (+ `frontend-design-check` for user-visible UI) |
+| Moving/splitting/renaming existing code | `refactor-safely` |
+| LLM calls, prompt assembly, model-output handling | `llm-integration` |
+
 ### CI-gate pre-flight (apply WHILE writing — these gates are CI-only, not in G1)
 
 The G1 gate (scoped lint only) does NOT exercise the static-gate scripts that run in CI, nor does it run full typecheck or build. Before writing the chunk, scan `scripts/verify-*.sh` (or equivalent project gate scripts) so you can satisfy them while writing rather than retroactively after CI red. Common categories: test-file location + naming conventions, migration patterns, architecture-rule guards (e.g. "queries live in services"), foreign-key delete behaviours. The project's own `KNOWLEDGE.md` / `docs/` should enumerate the specific gates and their failure modes.

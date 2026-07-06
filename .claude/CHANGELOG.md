@@ -32,6 +32,36 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.28.0 — 2026-07-06 — Distilled-judgment skill library
+
+**Highlights:** Ships 14 new portable skills distilled from a consuming repo's accumulated engineering knowledge base (~470 lessons) and an exhaustive mine of its review-log corpus (Codex, ChatGPT, and Claude reviewer families — hundreds of adjudicated review rounds). Each skill encodes the recurring defect classes reviewers actually caught, as write-time rules, so builders prevent at authoring time what the review pipeline previously caught two tiers later. Skills are trigger-described for automatic surfacing and wired into the builder and reviewer agent contracts.
+
+**Breaking:** none — purely additive. Consuming repos receive the skills as `new` files on next sync; no migration required.
+
+**Added:**
+- `tenant-isolation` — multi-tenant data boundaries: RLS context loss in jobs/workers/webhooks, FK non-propagation, explicit tenant predicates, client-supplied scope ids, IDOR on nested routes.
+- `postgres-migrations` — SQL three-valued logic, CHECK/enum/index discipline, ORM↔migration sync, renumbering protocol.
+- `db-concurrency` — upsert/idempotency-key correctness, guarded state transitions, lock discipline, queue retry/recovery, DB-time rules.
+- `wire-it-through` — the "shipped but unwired" class: consumer-site verification for every new artifact, boundary field tracing, client↔server contract parity, value-set renames.
+- `fail-loud` — fail-closed defaults, catch-block rules, 4xx/5xx contracts, observability of failure.
+- `ci-gate-integrity` — gates that cannot fail: grep-gate pitfalls, diff-gate refs, baselines, workflow consolidation, Actions specifics.
+- `test-discipline` — vacuous tests, mock/reorder hazards, test-kind selection, fixture determinism, verifiable acceptance criteria.
+- `review-triage` — the measured false-positive taxonomy for adjudicating external/LLM reviewer findings, per-claim verification steps, loop-convergence signals, the security auto-apply carve-out.
+- `spec-hygiene` — grounding specs in the real tree, document self-consistency sweeps, contract-level rules, the ranked conformance checklist.
+- `frontend-correctness` — React state lifecycle, async races, permission fail-closed, data-handling pitfalls.
+- `security-hardening` — tokens/nonces, SSRF/redirects, injection surfaces (URL, shell, SQL fragments, ReDoS, prompt), authorization shape.
+- `frontend-design-check` — thin trigger skill routing direct UI edits (outside the mockup pipeline) to the canonical design docs and the five hard rules.
+- `refactor-safely` — moves/splits/renames/deletions: move-executed-as-copy, replace-all indentation misses, split verification, dead-code caution, merge-conflict provenance.
+- `llm-integration` — the model as an unreliable injectable dependency: self-report distrust, echo canonicalisation, prompt trust channels, lock/retry/budget shape, judge harness rules.
+
+**Changed:**
+- `builder.md` — Step 3 now requires consulting the matching skill(s) before writing code in a covered area (table added to the minimal-change checks).
+- `pr-reviewer.md` — Specific Things to Check points at the defect-pattern skills as a review checklist source.
+- `dual-reviewer.md`, `chatgpt-pr-review.md`, `chatgpt-spec-review.md`, `chatgpt-plan-review.md` — adjudication sections point at the `review-triage` skill.
+- `README.md` — What-ships table reflects 16 portable skills.
+
+---
+
 ## 2.27.0 — 2026-07-05 — Harness-audit remediation + visual-craft layer
 
 **Highlights:** Largest hardening release to date, driven by a full-harness audit (spec + findings in `tasks/builds/harness-audit-remediation/`). Closes verified hook bypasses (config-protection MultiEdit, phase-lock fail-closed), removes an LLM-output shell-injection surface in the review apply path, fixes the sync engine's same-version rebaseline trap, and reconciles every cross-agent contradiction the audit catalogued (double-merge hazard, spec-location split, review-mode defaults, doc-sync cardinality, test-runner idiom, gate-name collision). Purges origin-project leakage from all canonical files. Adds CI, and ships the visual-craft layer for the mockup pipeline (design-language template, reviewer Axis 5, mandatory polish round).

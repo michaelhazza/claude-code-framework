@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.27.0",
+  "frameworkVersion": "2.28.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -33,6 +33,90 @@
     },
     {
       "path": ".claude/skills/zoom-out/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/tenant-isolation/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/postgres-migrations/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/db-concurrency/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/wire-it-through/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/fail-loud/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/ci-gate-integrity/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/test-discipline/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/review-triage/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/spec-hygiene/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/frontend-correctness/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/security-hardening/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/frontend-design-check/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/refactor-safely/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/llm-integration/SKILL.md",
       "category": "skill",
       "mode": "sync",
       "substituteAt": "never"
