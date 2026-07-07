@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.30.1 — 2026-07-07
+
+**Highlights:** packaging fix — `CONTRIBUTING.md` and `SECURITY.md` become `adopt-only` (seeded once, consumer-owned thereafter).
+
+**Fixed:** 2.30.0 shipped `CONTRIBUTING.md` and `SECURITY.md` as `mode: sync`, but both files' content is framework-repo-specific (contributor workflow for the framework itself; the framework's security posture). In a consuming repo, sync mode overwrite-conflicts with the consumer's own CONTRIBUTING/SECURITY docs — the origin repo's real `CONTRIBUTING.md` surfaced as a `.framework-new` conflict on first 2.30.0 sync. `adopt-only` seeds the files into repos that lack them and leaves existing consumer versions untouched.
+
 ## 2.30.0 — 2026-07-07 — Audit remediation: sync-engine hardening, self-testing CI, fleet tooling
 
 **Highlights:** Implements all five workstreams of the 2026-07-07 exhaustive framework audit (issue #32, ~45 findings). Sync engine: false-conflict short-circuit + self-healing state, atomic managed writes, adopt-divergence detection, downgrade guard, orphaned-conflict scan, symlink refusal. Fleet tooling: three-way `.framework-new` merge helper + `/claudemerge`, `/claudeupdate --status`, `/framework-init`, `/release`, `/framework-doctor`. CI now discovers tests by glob (4 shipped test files that never ran now run — one immediately caught a real agent regression), `npm test`/`npm ci` work locally, and frontmatter/schema/link/bundle-hygiene validation gates ship. Three new hooks close the Bash bypass of config protection, enforce KNOWLEDGE.md append-only, and warn on unresolved merges at session start. Consumer machinery generalised: code-graph generator (completes the previously inert freshness hook), five generic verify-gates, parameterised regression-scribe, three review hunt-targets upstreamed. Three new skills; cross-skill dedupe with declared owners; ADR-0014 created; origin-project pollution stripped from the bundle.

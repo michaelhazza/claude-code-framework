@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.30.0",
+  "frameworkVersion": "2.30.1",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -592,13 +592,13 @@
     {
       "path": "CONTRIBUTING.md",
       "category": "reference",
-      "mode": "sync",
+      "mode": "adopt-only",
       "substituteAt": "never"
     },
     {
       "path": "SECURITY.md",
       "category": "reference",
-      "mode": "sync",
+      "mode": "adopt-only",
       "substituteAt": "never"
     },
     {
