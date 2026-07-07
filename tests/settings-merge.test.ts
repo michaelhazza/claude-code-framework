@@ -607,3 +607,69 @@ describe('mergeSettings — hash tracking', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: v2.28.2 — quoting-variant identity + duplicate collapse
+// (v2.28.0 changed canonical hook commands from ${CLAUDE_PROJECT_DIR} to
+// "$CLAUDE_PROJECT_DIR"; the old exact-spelling identity stopped matching and
+// every consumer sync duplicated every hook.)
+// ---------------------------------------------------------------------------
+
+describe('hook identity — quoting variants (v2.28.2)', () => {
+  const variants = [
+    'node "$CLAUDE_PROJECT_DIR"/.claude/hooks/config-protection.js',
+    'node ${CLAUDE_PROJECT_DIR}/.claude/hooks/config-protection.js',
+    'node "${CLAUDE_PROJECT_DIR}"/.claude/hooks/config-protection.js',
+    'node $CLAUDE_PROJECT_DIR/.claude/hooks/config-protection.js',
+    'node .claude/hooks/config-protection.js',
+  ];
+
+  test('every prefix spelling is framework-owned', () => {
+    for (const v of variants) {
+      assert.equal(isFrameworkOwnedCommand(v), true, v);
+    }
+  });
+
+  test('non-hook commands are not framework-owned', () => {
+    assert.equal(isFrameworkOwnedCommand('node scripts/my-own.js'), false);
+    assert.equal(isFrameworkOwnedCommand('npx something-else.js'), false);
+  });
+
+  test('merge collapses accumulated duplicate spellings to one entry per hook', () => {
+    const quoted = (n: string) => ({ type: 'command', command: `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/${n}` });
+    const legacy = (n: string) => ({ type: 'command', command: 'node ' + '${' + 'CLAUDE_PROJECT_DIR}' + '/.claude/hooks/' + n });
+    const fw = { PreToolUse: [{ matcher: 'Write', hooks: [quoted('long-doc-guard.js'), quoted('config-protection.js')] }] };
+    const proj = {
+      PreToolUse: [{
+        matcher: 'Write',
+        hooks: [
+          quoted('long-doc-guard.js'), quoted('config-protection.js'),
+          legacy('long-doc-guard.js'), legacy('config-protection.js'),
+          quoted('long-doc-guard.js'),
+          { type: 'command', command: 'node scripts/my-own.js' },
+        ],
+      }],
+    };
+    const merged = mergeSettingsHooksBlock(fw, proj);
+    assert.equal(merged.PreToolUse[0].hooks.length, 3);
+    const cmds = merged.PreToolUse[0].hooks.map((h: any) => h.command);
+    assert.equal(cmds.filter((c: string) => c.includes('config-protection.js')).length, 1);
+    assert.equal(cmds.filter((c: string) => c.includes('long-doc-guard.js')).length, 1);
+    assert.ok(cmds.includes('node scripts/my-own.js'));
+  });
+
+  test('merge is idempotent — re-merging its own output changes nothing', () => {
+    const quoted = (n: string) => ({ type: 'command', command: `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/${n}` });
+    const fw = { PreToolUse: [{ matcher: 'Write', hooks: [quoted('long-doc-guard.js'), quoted('config-protection.js')] }] };
+    const once = mergeSettingsHooksBlock(fw, mergeSettingsHooksBlock(fw, {}));
+    const twice = mergeSettingsHooksBlock(fw, once);
+    assert.deepEqual(twice, once);
+  });
+
+  test('agent-type hooks (no command key) survive merge untouched', () => {
+    const fw = { PostToolUse: [] as any[] };
+    const proj = { PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'agent', prompt: 'run the PR gate' }] }] };
+    const merged = mergeSettingsHooksBlock(fw, proj);
+    assert.deepEqual(merged.PostToolUse, proj.PostToolUse);
+  });
+});

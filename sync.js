@@ -1105,12 +1105,7 @@ async function writeNewFile(ctx, entry, relativePath) {
  * @returns {boolean}
  */
 function isFrameworkOwnedCommand(command) {
-  const hookPattern = /^(\$\{CLAUDE_PROJECT_DIR\}\/)?\.claude\/hooks\/[^\s]+$/;
-  const tokens = command.trim().split(/\s+/);
-  if (hookPattern.test(tokens[0])) return true;
-  const interpreters = new Set(['node', 'sh', 'bash']);
-  if (tokens.length >= 2 && interpreters.has(tokens[0]) && hookPattern.test(tokens[1])) return true;
-  return false;
+  return frameworkHookIdentity(command) !== null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1127,12 +1122,42 @@ function isFrameworkOwnedCommand(command) {
  */
 function frameworkHookIdentity(command) {
   if (typeof command !== 'string' || command.trim() === '') return null;
-  const hookPattern = /^(\$\{CLAUDE_PROJECT_DIR\}\/)?\.claude\/hooks\/[^\s]+$/;
   const tokens = command.trim().split(/\s+/);
-  if (hookPattern.test(tokens[0])) return tokens[0];
   const interpreters = new Set(['node', 'sh', 'bash']);
-  if (tokens.length >= 2 && interpreters.has(tokens[0]) && hookPattern.test(tokens[1])) return tokens[1];
-  return null;
+  let tok = tokens[0];
+  if (interpreters.has(tokens[0])) {
+    if (tokens.length < 2) return null;
+    tok = tokens[1];
+  }
+  // Accept every spelling of the project-dir prefix — ${CLAUDE_PROJECT_DIR},
+  // $CLAUDE_PROJECT_DIR, "$CLAUDE_PROJECT_DIR", "${CLAUDE_PROJECT_DIR}", a
+  // fully-quoted token, or a bare relative path — and normalise the identity
+  // to the `.claude/hooks/<file>` suffix so different spellings of the same
+  // hook dedupe against each other. (The pre-2.28.2 exact-spelling identity
+  // caused every consuming repo's hooks to duplicate when 2.28.0 changed the
+  // canonical quoting style.)
+  const m = /^(?:"?\$\{?CLAUDE_PROJECT_DIR\}?"?\/)?(\.claude\/hooks\/[^\s"']+)"?$/.exec(tok);
+  return m ? m[1] : null;
+}
+
+/**
+ * Dedupe a merged hook list: one entry per framework hook identity (first
+ * occurrence wins), and exact-duplicate project-owned entries collapse.
+ * Keeps merge output stable when a consumer's settings.json accumulated
+ * multiple spellings of the same framework hook.
+ * @param {any[]} hooks
+ * @returns {any[]}
+ */
+function dedupeHookList(hooks) {
+  const seen = new Set();
+  const out = [];
+  for (const h of hooks) {
+    const key = frameworkHookIdentity(h && h.command) || JSON.stringify(h);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(h);
+  }
+  return out;
 }
 
 /**
@@ -1193,7 +1218,7 @@ function mergeSettingsHooksBlock(frameworkHooks, projectHooks) {
         const projFwHooks = projGroup
           ? (projGroup.hooks || []).filter(h => frameworkHookIdentity(h.command) !== null)
           : [];
-        const finalHooks = [...projFwHooks, ...projOwnedHooks];
+        const finalHooks = dedupeHookList([...projFwHooks, ...projOwnedHooks]);
         if (finalHooks.length > 0) {
           /** @type {Record<string, any>} */
           const group = { hooks: finalHooks };
@@ -1219,7 +1244,7 @@ function mergeSettingsHooksBlock(frameworkHooks, projectHooks) {
         : [];
 
       // Rule 5: framework entries first, then project entries (project-declared framework-owned + project-owned)
-      const finalHooks = [...mergedHooks, ...projFwHooks, ...projOwnedHooks];
+      const finalHooks = dedupeHookList([...mergedHooks, ...projFwHooks, ...projOwnedHooks]);
       if (finalHooks.length > 0) {
         /** @type {Record<string, any>} */
         const group = { hooks: finalHooks };

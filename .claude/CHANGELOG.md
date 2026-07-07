@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.28.2 — 2026-07-07
+
+**Highlights:** settings-merge idempotency fix — hook identity now recognises every `$CLAUDE_PROJECT_DIR` quoting variant, so consumer `settings.json` hooks no longer duplicate on every sync.
+
+**Fixed:** `sync.js` `frameworkHookIdentity` / `isFrameworkOwnedCommand` only matched the `${CLAUDE_PROJECT_DIR}` (braced, unquoted) prefix; when 2.28.0 changed canonical hook commands to the quoted `"$CLAUDE_PROJECT_DIR"` style, every framework hook stopped being recognised as framework-owned and the settings merge appended a fresh copy of every hook on every sync (consumers accumulated 2-3 registrations per hook; duplicated config-protection instances also consumed the one-shot HITL sentinel and deadlocked approved edits). Identity is now normalised to the `.claude/hooks/<file>` suffix across all prefix spellings (braced/unbraced/quoted/bare), `isFrameworkOwnedCommand` delegates to it, and merged hook lists dedupe by identity (first occurrence wins; agent-type hooks without a `command` key dedupe by full shape). Existing accumulated duplicates collapse to one entry per hook on the next sync. Regression suite: `tests/settings-merge.test.ts § hook identity — quoting variants`.
+
 ## 2.28.1 — 2026-07-07
 
 **Highlights:** lint-hygiene patch for the build-scheduler validator pair — no behaviour change.
