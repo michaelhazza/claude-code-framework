@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.29.0",
+  "frameworkVersion": "2.30.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -14,7 +14,55 @@
       "substituteAt": "never"
     },
     {
-      "path": ".claude/hooks/*.{js,sh}",
+      "path": ".claude/hooks/bash-config-guard.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/code-graph-freshness-check.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/config-protection.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/correction-nudge.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/framework-merge-reminder.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/knowledge-append-guard.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/long-doc-guard.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/phase-lock.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/spec-creation-grill-nudge.js",
       "category": "hook",
       "mode": "sync",
       "substituteAt": "never"
@@ -486,6 +534,96 @@
       "category": "template",
       "mode": "sync",
       "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/decisions/0014-coordinators-run-inline.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/dependency-upgrades/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/performance/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/logging-observability/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/framework-merge.js",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/build-code-graph.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/code-graph-health-check.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/gates/*.sh",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/gates/README.md",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "SECURITY.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/agent-selection.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/capabilities-template.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/codebase-audit-framework-template.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/verify-chatgpt-model.ts",
+      "category": "review-script",
+      "mode": "sync",
+      "substituteAt": "never"
     }
   ],
   "removedFiles": [

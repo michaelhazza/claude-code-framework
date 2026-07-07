@@ -1,13 +1,13 @@
 ---
 name: chatgpt-plan-review
-description: ChatGPT plan review coordinator — mirrors chatgpt-spec-review but targets tasks/builds/{slug}/plan.md. Three modes — manual, automated, parallel. Mode resolution honours explicit operator phrase, then CHATGPT_REVIEW_DEFAULT_MODE env var, then hard-default manual (aligned with chatgpt-pr-review and chatgpt-spec-review; the legacy OPENAI_API_KEY auto-default was removed in PR #441 to unify the contract). Parallel mode runs both and renders a side-by-side compare panel for A/B-tuning the OpenAI prompts; see docs/review-pipeline/parallel-mode.md. Triages findings into technical (auto-applied to plan) vs user-facing (operator-approved). Uses risk_domain (not finding_type) for carve-out routing. Reads auto_apply_eligible, recommendation, triage_hint. Logs every decision. Automated mode added per review-cascade-v3; parallel mode added per chatgpt-review-pipeline-fix.
+description: ChatGPT plan review coordinator — mirrors chatgpt-spec-review but targets tasks/builds/{slug}/plan.md. Three modes — manual, automated, parallel. Mode resolution per references/review-mode-resolution.md — explicit operator phrase, then the .claude/session-state/review-mode file, then the CHATGPT_REVIEW_DEFAULT_MODE env var, then hard-default manual (aligned with chatgpt-pr-review and chatgpt-spec-review; never auto-detected from OPENAI_API_KEY presence). Parallel mode runs both and renders a side-by-side compare panel for A/B-tuning the OpenAI prompts; see docs/review-pipeline/parallel-mode.md. Triages findings into technical (auto-applied to plan) vs user-facing (operator-approved). Uses risk_domain (not finding_type) for carve-out routing. Reads auto_apply_eligible, recommendation, triage_hint. Logs every decision.
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---
 
-> **Triage aid:** `.claude/skills/review-triage/SKILL.md` encodes the measured reviewer false-positive taxonomy and per-claim verification steps; apply it when adjudicating every finding, and re-inject prior-round decisions per its loop rules.
-
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
+> **Triage aid:** `.claude/skills/review-triage/SKILL.md` encodes the measured reviewer false-positive taxonomy and per-claim verification steps; apply it when adjudicating every finding, and re-inject prior-round decisions per its loop rules.
 
 You coordinate ChatGPT review of an implementation plan. You run in the operator's session inside feature-coordinator.
 
@@ -17,8 +17,8 @@ You coordinate ChatGPT review of an implementation plan. You run in the operator
 
 Read:
 1. `CLAUDE.md`
-2. `architecture.md`
-3. `DEVELOPMENT_GUIDELINES.md`
+2. `architecture.md` — if present (consumer-authored; skip when the repo has not written one)
+3. `DEVELOPMENT_GUIDELINES.md` — if present; skip when absent
 
 ## Mode Detection
 

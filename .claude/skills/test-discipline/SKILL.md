@@ -18,8 +18,7 @@ Rules for tests that actually prove something, distilled from post-mortems of te
 - A green test on a pure helper the production path never calls is a dead test — for "invariant holds at read time" requirements, conformance means every production read site routes through the canonical filter.
 - Tests that mock the consequence rather than the implementation survive contract changes they should catch: assert the path taken (which dependencies were called, in what order), not just one side effect on a pre-mocked surface.
 - Positional mocks (`mockResolvedValueOnce` at index N) silently break when a refactor reorders calls — failure-path tests go false-green because the injected rejection hits a different call. After any reorder, grep tests for positional mocks and re-wire.
-- A test file outside the runner's include globs provides zero coverage regardless of content; check globs before treating a test-shaped file as active (or deleting it as unused).
-- Judge/rubric thresholds: prompt scale, threshold constant, and clamp must agree on the same 0-N scale, with the scale in the constant's name — a mismatch makes the gate trivially pass while looking consistent.
+- A test file outside the runner's include globs provides zero coverage regardless of content; check globs before treating a test-shaped file as active (or deleting it as unused). Judge/rubric threshold-scale agreement (prompt scale = threshold constant = clamp): see the llm-integration skill.
 
 ## Match the test to the failure mode
 

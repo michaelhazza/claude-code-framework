@@ -1,5 +1,7 @@
 # Schema CHANGELOG
 
+> 2.28.x–2.30.0 — no schema changes (verified against `git log -- schemas/`; last change shipped in 2.27.0).
+
 ## Reconciliation pass (2026-07-05, framework 2.27.0)
 
 The v2 entry below originally described draft enums that differ from what

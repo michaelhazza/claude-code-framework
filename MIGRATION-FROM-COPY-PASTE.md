@@ -84,9 +84,33 @@ Three patterns:
 - **Framework updates you missed** (bundle has new sections, your file is older): adopt the bundle version.
 - **Your customisation** (you edited the agent to call a project-specific script or pattern): keep your version. Note it in `tasks/todo.md` so a future sync knows.
 
-## 3 — Run `sync.js --adopt` to establish a baseline
+## 3 — Seed substitutions, then run `sync.js --adopt` to establish a baseline
 
-This is the safest one-shot path. It catalogues every file as "framework-original" without overwriting anything customised:
+This is the safest one-shot path. It catalogues every file as "framework-original" without overwriting anything customised.
+
+**3a — Seed the substitution map first.** Sync never prompts for anything — `--adopt` reads substitution values from `.claude/.framework-state.json`. Write a minimal state file before running it (this is the same step as `ADAPT.md` Phase 6b):
+
+```json
+{
+  "frameworkVersion": "0.0.0",
+  "adoptedAt": "<current ISO timestamp>",
+  "adoptedFromCommit": null,
+  "profile": "STANDARD",
+  "substitutions": {
+    "PROJECT_NAME": "<your project name>",
+    "PROJECT_DESCRIPTION": "<your project description>",
+    "STACK_DESCRIPTION": "<your stack description>",
+    "COMPANY_NAME": "<your company name>"
+  },
+  "lastSubstitutionHash": "",
+  "files": {},
+  "syncIgnore": []
+}
+```
+
+Save it to `.claude/.framework-state.json`. The `frameworkVersion: "0.0.0"` placeholder tells sync that everything needs to be catalogued.
+
+**3b — Run adopt:**
 
 ```bash
 cd <target-repo>
@@ -95,14 +119,14 @@ node .claude-framework/sync.js --adopt
 
 What `--adopt` does:
 - Reads `.claude-framework/manifest.json` to know which files are framework-managed.
-- For each managed file that exists in the target: hashes it, records the hash in `.claude/.framework-state.json` as `lastAppliedHash`, marks `customisedLocally: true` if the hash differs from the bundle's hash.
-- For each managed file that does NOT exist in the target: copies the bundle's version verbatim (substituting `{{PROJECT_NAME}}` etc. at this step — `--adopt` prompts for substitution values OR re-uses whatever the operator provided last time if a stale `lastSubstitutionHash` is present).
+- For each managed file that exists in the target: compares its content against the framework canonical. If they match, it records the file as clean in `.claude/.framework-state.json` (`customisedLocally: false`). If they diverge, it records the local hash with `customisedLocally: true` AND writes a `<file>.framework-new` sibling containing the framework's version, so you can merge deliberately (Phase 5 of `SYNC.md` walks the merge).
+- For each managed file that does NOT exist in the target: copies the framework's version, applying the substitutions (`{{PROJECT_NAME}}` etc.) from the state file you seeded in 3a. No prompting happens — if a raw placeholder survives into a written file, the substitution map was incomplete; fix the map and re-run `--adopt`.
 - Writes the state file. Does NOT touch files marked `doNotTouch` (CLAUDE.md, KNOWLEDGE.md, architecture.md, DEVELOPMENT_GUIDELINES.md, `tasks/**`).
 
 After `--adopt`, the target repo has:
 - A `.claude/.framework-state.json` recording exactly which files came from the framework.
 - Every missing agent / doc filled in from the bundle.
-- Every locally-customised file preserved untouched, but flagged in state so future syncs know.
+- Every locally-customised file preserved untouched, flagged in state, with a `.framework-new` sibling to merge at your leisure.
 
 This is the migration's actual cutover. From here on, future framework updates are one command (`node .claude-framework/sync.js`).
 
@@ -130,7 +154,8 @@ cat .claude/settings.json | grep -A2 "hooks"
 
 # 2. No leftover {{PLACEHOLDER}} strings
 grep -r "{{PROJECT" .claude/ docs/ references/ 2>/dev/null | head -20
-# If anything appears, sync didn't substitute it. Re-run `--adopt` with the correct substitution values.
+# If anything appears, sync didn't substitute it. Fix the `substitutions` map in
+# .claude/.framework-state.json, then re-run `--adopt`.
 
 # 3. Open Claude Code in the target repo, type /agents, confirm the list shows expected names.
 
@@ -161,6 +186,6 @@ If you went the one-shot-copy route (option B), each upgrade is a fresh copy of 
 ## Common pitfalls
 
 - **Running `sync.js` without `--adopt` on a target that has no state file.** Sync.js will refuse and tell you to run `--adopt` first. Do not pass `--force` to bypass — you'll overwrite customisations silently.
-- **Leaving placeholder leakage.** If you see a raw `{{PROJECT_NAME}}`-style placeholder — or another project's name — in any agent file after `--adopt`, the framework files weren't fully substituted. Re-run `--adopt` and double-check the values you provided at the substitution prompt.
+- **Leaving placeholder leakage.** If you see a raw `{{PROJECT_NAME}}`-style placeholder — or another project's name — in any agent file after `--adopt`, the framework files weren't fully substituted. Double-check the `substitutions` map in `.claude/.framework-state.json` (sync never prompts — that map is the only source of values), then re-run `--adopt`.
 - **Trying to merge by hand instead of via `.framework-new`.** When future `sync.js` runs find a customised file with bundle updates, they write the new bundle version to `<file>.framework-new` next to your customised version. Merge by hand, then delete `.framework-new`. Do not edit the state file directly.
 - **Adopting on a dirty branch.** The sync engine refuses if the working tree has uncommitted changes to managed files. Commit first.

@@ -5,9 +5,9 @@ tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---
 
-> **Triage aid:** `.claude/skills/review-triage/SKILL.md` encodes the measured reviewer false-positive taxonomy and per-claim verification steps; apply it when adjudicating every finding, and re-inject prior-round decisions per its loop rules.
-
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+
+> **Triage aid:** `.claude/skills/review-triage/SKILL.md` encodes the measured reviewer false-positive taxonomy and per-claim verification steps; apply it when adjudicating every finding, and re-inject prior-round decisions per its loop rules.
 
 You are the ChatGPT PR review coordinator for this project. You manage the feedback loop between the user and ChatGPT during PR review.
 
@@ -67,8 +67,8 @@ This aligns the `unattended` contract with the autonomous reviewers (`spec-revie
 
 ## Before doing anything else, read:
 1. `CLAUDE.md` — project conventions, architecture rules, decision criteria
-2. `architecture.md` — all patterns and constraints you will use to adjudicate ChatGPT suggestions
-3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (RLS, service-tier, gates, migrations, §8 development discipline) used to evaluate whether a ChatGPT suggestion contradicts existing locked policy. Always read for any non-trivial review; skip only when the diff is pure docs / pure copy changes with no code.
+2. `architecture.md` — all patterns and constraints you will use to adjudicate ChatGPT suggestions. If present; skip when the repo has not authored one.
+3. `DEVELOPMENT_GUIDELINES.md` — locked build-discipline rules (RLS, service-tier, gates, migrations, §8 development discipline) used to evaluate whether a ChatGPT suggestion contradicts existing locked policy. If present, always read for any non-trivial review; skip when absent or when the diff is pure docs / pure copy changes with no code.
 
 ---
 

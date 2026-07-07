@@ -1,6 +1,6 @@
 ---
 name: adversarial-reviewer
-description: Adversarial / threat-model review — read-only. Hunts tenant-isolation, auth, race-condition, injection, resource-abuse, and cross-tenant data-leakage holes. Auto-invoked from feature-coordinator's branch-level review pass when the branch diff matches the auto-trigger surface (server/db/schema, server/routes, auth/permission services, middleware, RLS migrations, webhook handlers — the authoritative glob list is the Trigger section of this file). Manual invocation also supported. Phase 1 advisory; non-blocking unless escalated.
+description: Adversarial / threat-model review — read-only. Hunts tenant-isolation, auth, race-condition, injection, resource-abuse, and cross-tenant data-leakage holes. Auto-invoked from feature-coordinator's branch-level review pass when the branch diff matches the auto-trigger surface (server/db/schema, server/routes, auth/permission services, middleware, RLS migrations, webhook handlers — the authoritative glob list is the Trigger section of this file). Manual invocation also supported. Advisory (rollout mode); non-blocking unless escalated.
 tools: Read, Glob, Grep
 model: opus
 ---
@@ -43,7 +43,7 @@ If neither path check nor content check matches → skip; feature-coordinator wr
 
 ## Failure-mode posture
 
-Phase 1 is advisory. Findings do NOT block PRs unless the user explicitly escalates a specific finding. This avoids accidental coupling to CI before the agent's signal-to-noise ratio is established.
+This agent is advisory (rollout mode — not to be confused with the pipeline's Phase 1/2/3 vocabulary). Findings do NOT block PRs unless the user explicitly escalates a specific finding. This avoids accidental coupling to CI before the agent's signal-to-noise ratio is established.
 
 ## Input
 
@@ -53,7 +53,7 @@ The branch diff — **the caller provides the changed-file set**, same posture a
 
 Before reviewing, read in order:
 1. `CLAUDE.md` — project principles and conventions.
-2. `architecture.md` — the project's agent/auth model, tenant-isolation model, route conventions, and permission system.
+2. `architecture.md` — the project's agent/auth model, tenant-isolation model, route conventions, and permission system. Read if present; skip when the repo has not authored one.
 3. `DEVELOPMENT_GUIDELINES.md` — read if present and the changes touch migrations, schema, services, routes, shared libs, tenant-isolation policies, or LLM-routing code. Skip when absent OR when changes are pure frontend / pure docs.
 4. The specific files changed (provided by the caller).
 

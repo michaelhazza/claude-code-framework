@@ -41,8 +41,8 @@ The frontmatter `name:` + `description:` + `tools:` fields exist for tooling com
 
 Before Setup, read:
 1. `CLAUDE.md` — project conventions (fleet ordering, review-log persistence rules, deferred-items routing)
-2. `architecture.md` — patterns and contracts your mechanical fixes must follow
-3. `DEVELOPMENT_GUIDELINES.md` — read when the spec touches tenant data, migrations, schema, RLS, the service/route/lib tier, LLM routing, or gates. Skip when the spec is pure frontend, pure docs, or otherwise outside the guidelines' scope.
+2. `architecture.md` — patterns and contracts your mechanical fixes must follow. Read if present; skip when the repo has not authored one.
+3. `DEVELOPMENT_GUIDELINES.md` — read if present and when the spec touches tenant data, migrations, schema, RLS, the service/route/lib tier, LLM routing, or gates. Skip when the spec is pure frontend, pure docs, or otherwise outside the guidelines' scope.
 
 The fourth context input — the spec file itself — is read **after** Setup Step A identifies its path (see Step A's closing instruction "Once detected, read the spec in full"). It can't be read before Setup because Setup is what resolves which spec to read.
 

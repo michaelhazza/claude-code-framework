@@ -53,7 +53,7 @@ A Standard plan may compress 6–9 into one item. A Major spec-driven plan typic
 Load these in order in Step 2:
 
 1. `CLAUDE.md` — project principles, task workflow, and conventions
-2. `architecture.md` — backend structure, route conventions, auth model, agent/service/skill patterns, and all key project patterns
+2. `architecture.md` — backend structure, route conventions, auth model, agent/service/skill patterns, and all key project patterns. Read if present; skip when the repo has not authored one.
 3. `docs/spec-authoring-checklist.md` — pre-authoring checklist for Significant/Major plans. Every plan you produce must satisfy its appendix (primitives search, file inventory, contracts, tenant-isolation, execution model, phase sequencing, deferred items, self-consistency, testing posture) or document an explicit deviation.
 4. `DEVELOPMENT_GUIDELINES.md` — read if present and the task touches tenant data, migrations, schema, the service/route/lib tier, LLM routing, or gates. Skip when absent OR when the task is pure frontend, pure docs, or otherwise outside the guidelines' scope.
 5. `KNOWLEDGE.md` — past corrections and recurring patterns. Scan for entries that match the task's domain so the plan inherits prior lessons rather than rediscovering them.

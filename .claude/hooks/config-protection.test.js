@@ -252,6 +252,52 @@ for (const [label, input, expectedExit] of CASES) {
   check('matching sentinel consumed', existsSync(SENTINEL), false);
 }
 
+// ── toRelativePath repo-root heuristic (fail-open regression) ──────────────
+// Absolute paths NOT under CLAUDE_PROJECT_DIR/cwd and without a known marker
+// used to return null from toRelativePath, silently skipping pathMatch — an
+// edit to <other-repo>/.claude/settings.json bypassed the guard. The hook now
+// walks up from the target looking for a directory containing .claude/.
+{
+  // Run the hook with CLAUDE_PROJECT_DIR unset and cwd inside a subfolder of
+  // the fake project, targeting the fake project's .claude/settings.json.
+  const SUB = join(PROJ, 'sub');
+  mkdirSync(SUB, { recursive: true });
+  const envNoProjectDir = { ...process.env };
+  delete envNoProjectDir.CLAUDE_PROJECT_DIR;
+
+  function runHookBare(input, cwd) {
+    return spawnSync(process.execPath, [HOOK], {
+      input: JSON.stringify(input),
+      encoding: 'utf8',
+      cwd,
+      env: envNoProjectDir,
+    });
+  }
+
+  // 1. CLAUDE_PROJECT_DIR unset + cwd in a subfolder → still blocked via the
+  //    walk-up repo-root heuristic (was exit 0 before the fix).
+  const r1 = runHookBare(
+    payload('Edit', { file_path: `${PROJ}/.claude/settings.json`, old_string: 'a', new_string: 'b' }),
+    SUB,
+  );
+  check('no CLAUDE_PROJECT_DIR, cwd=subfolder: Edit .claude/settings.json → exit 2', r1.status, 2, r1.stderr && r1.stderr.slice(0, 200));
+
+  // 2. Same environment, hook script target → blocked.
+  const r2 = runHookBare(
+    payload('Write', { file_path: `${PROJ}/.claude/hooks/config-protection.js`, content: '// gutted' }),
+    SUB,
+  );
+  check('no CLAUDE_PROJECT_DIR, cwd=subfolder: Write .claude/hooks/* → exit 2', r2.status, 2, r2.stderr && r2.stderr.slice(0, 200));
+
+  // 3. Same environment, ordinary file in the same repo → still allowed
+  //    (heuristic must not over-block).
+  const r3 = runHookBare(
+    payload('Edit', { file_path: `${PROJ}/sub/app.ts`, old_string: 'a', new_string: 'b' }),
+    SUB,
+  );
+  check('no CLAUDE_PROJECT_DIR, cwd=subfolder: Edit ordinary file → exit 0', r3.status, 0, r3.stderr && r3.stderr.slice(0, 200));
+}
+
 // ── Cleanup + report ───────────────────────────────────────────────────────
 
 rmSync(PROJ, { recursive: true, force: true });

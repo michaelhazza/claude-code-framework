@@ -50,7 +50,7 @@ Before any action, read in this order:
 1. `CLAUDE.md` — project conventions, surgical-changes rule, verification commands, test-gate policy.
 2. `references/test-gate-policy.md` — what may and may not run locally.
 3. The target GitHub issue: `gh issue view <N> --json number,title,state,labels,body,comments,assignees,url`
-4. `architecture.md` § "Key files per domain" — to orient the investigation.
+4. `architecture.md` § "Key files per domain" — to orient the investigation. If present; when the repo has no `architecture.md`, orient via Glob/Grep instead.
 5. `.release-control.yml` at the repo root, if it exists — for the staging branch name and required label mapping. If missing, defaults apply (see § Defaults).
 
 ## Defaults

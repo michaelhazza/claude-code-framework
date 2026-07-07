@@ -25,8 +25,8 @@ Either way, the steps below run in the main session. The `Agent` tool dispatches
 Read in this order before doing anything else:
 
 1. `CLAUDE.md` — task management workflow, agent fleet, review pipeline
-2. `architecture.md` — system architecture, conventions, service contracts
-3. `DEVELOPMENT_GUIDELINES.md` — build discipline, RLS rules, schema invariants, §8 rules
+2. `architecture.md` — system architecture, conventions, service contracts (if present; skip when the repo has not authored one)
+3. `DEVELOPMENT_GUIDELINES.md` — build discipline, RLS rules, schema invariants, §8 rules (if present; skip when absent)
 4. `tasks/current-focus.md` — verify `status: BUILDING`
 5. `tasks/builds/{slug}/handoff.md` — restore Phase 1 context (spec path, slug, branch, any Phase 1 decisions)
 6. The spec at the path named in the handoff

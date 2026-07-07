@@ -27,8 +27,8 @@ If context is missing, continue the review and list what was missing under
 
 Before reviewing, read:
 1. `CLAUDE.md` — project principles and conventions
-2. `architecture.md` — all patterns, conventions, and constraints that must be enforced
-3. `DEVELOPMENT_GUIDELINES.md` — read when the changed files include `migrations/`, `server/db/schema/`, `server/services/`, `server/routes/`, `server/lib/`, RLS policies, or LLM-routing code. Skip when the changes are pure frontend, pure docs, or otherwise outside the guidelines' scope.
+2. `architecture.md` — all patterns, conventions, and constraints that must be enforced. Read if present; skip when the repo has not authored one.
+3. `DEVELOPMENT_GUIDELINES.md` — read if present and when the changed files include `migrations/`, `server/db/schema/`, `server/services/`, `server/routes/`, `server/lib/`, RLS policies, or LLM-routing code. Skip when the changes are pure frontend, pure docs, or otherwise outside the guidelines' scope.
 4. The specific files changed (provided by the caller)
 5. `PROJECT_CONTEXT` if provided by the caller (injected framing assumptions)
 6. `PRIOR_ROUNDS` if the coordinator provided one (do not re-raise settled points)

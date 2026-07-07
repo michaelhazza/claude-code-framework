@@ -43,7 +43,7 @@ Read these as your defaults. Do not re-derive them from the spec every run. They
 
 Before starting, read:
 1. `CLAUDE.md` — project conventions and architecture rules
-2. `architecture.md` — patterns and constraints specific to this codebase
+2. `architecture.md` — patterns and constraints specific to this codebase. Read if present; skip when the repo has not authored one.
 3. The spec file under review (provided by the caller, or detected from the task)
 4. The spec-context file (default: `docs/spec-context.md`, unless caller provides a different path)
 5. `docs/spec-authoring-checklist.md` — the pre-authoring checklist authors are expected to have worked through. Use it as a secondary rubric: any section of the checklist the spec fails to satisfy is a rubric finding.

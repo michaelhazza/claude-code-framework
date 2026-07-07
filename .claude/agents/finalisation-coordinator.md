@@ -1,6 +1,6 @@
 ---
 name: finalisation-coordinator
-description: Phase 3 orchestrator. Restores Phase 2 handoff, runs branch-sync S2 (auto-resolves known-shape conflicts in append-only artefact files; pauses only on code-area conflicts) + G4 regression guard, runs chatgpt-pr-review (manual ChatGPT-web rounds), runs the full doc-sync sweep, updates KNOWLEDGE.md and tasks/todo.md, re-syncs main (S3), drives the CI-parity gate (G5 — diff-scoped by default, full on escape-hatch diffs) to green locally BEFORE any label, transitions current-focus to MERGE_READY, applies the ready-to-merge label as the final CI confirmation, watches CI with the label-pull fix loop (any CI failure → remove label immediately → fix + verify locally → re-add label), and auto-merges on green. Step 0 — context loading + REVIEW_GAP check. Step 1 — TodoWrite list. Step 2 — S2 branch sync. Step 3 — G4 regression guard. Step 4 — PR existence check. Step 5 — chatgpt-pr-review. Step 6 — full doc-sync sweep. Step 7 — KNOWLEDGE.md pattern extraction. Step 7a — Compound Learning Feedback. Step 8 — tasks/todo.md cleanup. Step 8b — post-review branch re-sync (S3). Step 8c — G5 local CI-parity gate. Step 9 — current-focus.md → MERGE_READY. Step 10 — apply ready-to-merge label. Step 11 — CI watch + label-pull fix loop. Step 12 — auto-merge. Step 13 — end-of-phase prompt.
+description: Phase 3 orchestrator. Restores Phase 2 handoff, runs branch-sync S2 (auto-resolves known-shape conflicts in append-only artefact files; pauses only on code-area conflicts) + G4 regression guard, runs chatgpt-pr-review (manual ChatGPT-web rounds), runs the full doc-sync sweep, updates KNOWLEDGE.md and tasks/todo.md, re-syncs main (S3), drives the CI-parity gate (G5 — diff-scoped by default, full on escape-hatch diffs) to green locally BEFORE any label, transitions current-focus to MERGE_READY, applies the ready-to-merge label as the final CI confirmation, watches CI with the label-pull fix loop (any CI failure → remove label immediately → fix + verify locally → re-add label), and auto-merges on green. Step 0 — context loading + REVIEW_GAP check. Step 1 — TodoWrite list. Step 2 — S2 branch sync. Step 3 — G4 regression guard. Step 4 — PR existence check. Step 5 — chatgpt-pr-review. Step 6 — full doc-sync sweep. Step 7 — KNOWLEDGE.md pattern extraction. Step 7a — Compound Learning Feedback. Step 8 — tasks/todo.md cleanup. Step 8b — post-review branch re-sync (S3). Step 8c — G5 local CI-parity gate. Step 9 — current-focus.md → MERGE_READY. Step 10 — apply ready-to-merge label. Step 11 — CI watch + label-pull fix loop. Step 12 — auto-merge. Step 12.5 — release-note block (advisory). Step 13 — end-of-phase prompt.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -54,7 +54,7 @@ Either way, the steps below run in the main session. The `Agent` tool dispatches
 Read in order:
 
 1. `CLAUDE.md`
-2. `architecture.md`
+2. `architecture.md` (if present; skip when the repo has not authored one)
 3. `DEVELOPMENT_GUIDELINES.md` (if present; skip when absent)
 4. `docs/doc-sync.md` — canonical reference doc list
 5. `tasks/current-focus.md` — verify `status: REVIEWING`; refuse if not REVIEWING
@@ -118,6 +118,7 @@ Emit a TodoWrite list before doing any other work. Update items in real time as 
 10. Apply ready-to-merge label to PR (only after G5 green)
 11. CI watch + label-pull fix loop
 12. Auto-merge
+12.5. Release-note block (advisory)
 13. End-of-phase prompt
 
 ## Step 2 — Branch-sync S2
@@ -840,6 +841,22 @@ If branch protection on `main` requires PRs (no direct push allowed):
 
 - Skip 12.4 and surface the placeholder to the operator: "Squash sha is `{SQUASH_SHA}`. `tasks/current-focus.md` on main still says `pending-squash` — open a small follow-up PR to patch, OR amend in the next merge's pre-merge prep."
 - Do not force-push to main. Do not bypass branch protection.
+
+## Step 12.5 — Release-note block (advisory, non-blocking)
+
+After the merge lands, draft a short operator-facing release-note block — plain English, same jargon rules as Step 13.1 (no agent names, no phase/gate vocabulary, no file paths):
+
+```
+## {YYYY-MM-DD} — {one-line title of what shipped} (PR #{N})
+- {1-3 bullets: user-visible changes / behaviour deltas}
+```
+
+Persistence — first match wins:
+
+1. **Consumer has a root `CHANGELOG.md`** → append the block under its top-most unreleased/dated section (match the file's existing heading convention; do not restructure it). You are already on `main` after Step 12.4 — include this edit in a small follow-up commit (`docs({slug}): release note`) and push with the same branch-protection caveat as 12.4.
+2. **No `CHANGELOG.md`** → append the block to `tasks/builds/{slug}/progress.md` under `## Release notes`.
+
+This step is **advisory and never blocks**: if the write or push fails (branch protection, missing file permissions), print the block in the Step 13 output with a one-line note that it was not persisted, and move on. Do not open a PR for it, do not retry-loop, do not escalate.
 
 ## Step 13 — End-of-phase prompt (merged)
 

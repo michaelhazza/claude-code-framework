@@ -1,0 +1,18 @@
+{
+  "_comment": "Allowlist for scripts/validate-framework.js markdown link checking. consumerFiles: paths that exist only in CONSUMER repos — the framework's managed docs legitimately cite them ('if present' cites). Supports exact repo-relative paths and 'dir/**' prefixes. knownIssues: temporarily suppressed genuinely-broken links, each { file, target, note } — fix the doc and remove the entry; stale entries fail validation.",
+  "consumerFiles": [
+    "CLAUDE.md",
+    "KNOWLEDGE.md",
+    "architecture.md",
+    "DEVELOPMENT_GUIDELINES.md",
+    "docs/capabilities.md",
+    "docs/codebase-audit-framework.md",
+    "docs/testing-conventions.md",
+    "docs/env-manifest.json",
+    "replit.md",
+    "tasks/**",
+    "references/project-map.md",
+    "references/import-graph/**"
+  ],
+  "knownIssues": []
+}

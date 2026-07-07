@@ -9,7 +9,7 @@ Silent failure is the defect class reviewers catch most often after tenant isola
 
 ## The prime directive
 
-A caller must never observe success when the operation didn't durably happen. No toast on `emitted: false`; no 202 "submitted" when the enqueue was caught-and-logged; no webhook ack without a terminal outcome row; no "completed" ledger slot for an unimplemented handler (it suppresses the real path downstream).
+A caller must never observe success when the operation didn't durably happen. No success signal on a failed emit; no 202 "submitted" when the enqueue was caught-and-logged; no webhook ack without a terminal outcome row; no "completed" ledger slot for an unimplemented handler (it suppresses the real path downstream). The React-side shapes of this rule (toast on a false success flag, adapters swallowing errors, permission gating): see the frontend-correctness skill.
 
 ## Fail-closed defaults
 
@@ -19,8 +19,7 @@ A caller must never observe success when the operation didn't durably happen. No
 - Terminal-state success columns are facts about the past — a revoked connection still carries `lastSuccessfulAt` — so health/completion predicates require current-active-status AND the success marker, through ONE exported helper shared by every consumer, or the trigger path drifts from the display path.
 - Never let one value carry two semantics (`'0'` as both no-capacity and route-to-review; `'off'` persisted as both string and null): one semantic per value — null for unset, explicit enum members for modes; unavailability is computed effective state with a reason, never a mutation of stored preference rows.
 - "Inconclusive" verification outcomes are treated as "fail" in rollback/suspension logic — a change whose safety cannot be confirmed is operationally a broken change; infrastructure outages don't grant immunity.
-- When a stricter resolution path returns null meaning "deny", never fall back to the legacy permissive path on that null — gate the fallback on whether the new path was applicable at all.
-- Permission-gated UI fails closed during async load: `permissions === null` renders as denied, not as visible-until-loaded.
+- When a stricter resolution path returns null meaning "deny", never fall back to the legacy permissive path on that null — gate the fallback on whether the new path was applicable at all. Client-side permission gating during async load: see the frontend-correctness skill.
 - Ownership lookups distinguish three states — owner (owned) / null (unowned, no boundary) / undefined (not found or cross-tenant) — and the distinction survives every layer. `undefined ?? null` at any layer turns "lookup failed" into "no privacy boundary".
 
 ## Boundary validation and coercion traps
@@ -35,8 +34,7 @@ A caller must never observe success when the operation didn't durably happen. No
 - No empty catches. Never `.catch(() => {})`. Every fire-and-forget promise gets `.catch()` with a logged warning naming caller and callee — even when the callee "never throws" today; one unhandled rejection can kill a long-lived worker.
 - Fire-and-forget is acceptable only for non-critical observability. Producers on critical paths (user submissions, paid jobs) throw on failure and rethrow enqueue errors. Re-throw retryables so the transaction rolls back and the queue retries; every external-call failure path (401 on a cached token, 429) gets an explicit recovery contract.
 - Split failure domains exactly at the external call's resolution: one catch wrapping both the provider call AND the post-success bookkeeping write reports a successful send as failure and invites double-send retries. Provider error → finalise failed; bookkeeping error after success → log loudly, return success, keep the durable "attempted" row as the honest indeterminate state.
-- A helper that deliberately swallows its own error RETURNS a result (`{committed}`), never void — await-without-return on a no-throw helper tells the caller nothing about durability; pair with a bounded inline retry plus an out-of-band sweep backstop.
-- Client API adapters must not swallow errors into empty results (`catch { return [] }`) — auth failure becomes indistinguishable from zero data and operators stop diagnosing. Minimum: log the error while returning the fail-closed shape.
+- A helper that deliberately swallows its own error RETURNS a result (`{committed}`), never void — await-without-return on a no-throw helper tells the caller nothing about durability; pair with a bounded inline retry plus an out-of-band sweep backstop. Client API adapters swallowing errors into empty results: see the frontend-correctness skill.
 - A runtime branch covering a case the system's invariants make impossible throws a typed, greppable error — returning silent false says "recoverable" when the truth is "invalid configuration that was promised impossible".
 - Partially-wired features: replace the unsafe method body with a runtime throw carrying a typed reason and tracking pointer — never leave a half-implementation an accidental caller could execute.
 
@@ -50,13 +48,9 @@ A caller must never observe success when the operation didn't durably happen. No
 
 ## Observability of failure
 
-- Trust the structured category field the error's owner set; substring-matching on messages misclassifies on the first rewording.
-- Side-effect logs describing persisted state changes emit AFTER the write succeeds; a "reset/flipped" log before a failed write lies to every downstream observer.
-- Stable log codes and invariant rejections go through the structured logger with correlation fields — `console.*` writes outside the observability pipeline are never found.
+- Trust the structured category field the error's owner set; substring-matching on messages misclassifies on the first rewording. General logging/metrics discipline (structured logger shape, correlation IDs, log levels, lifecycle choke-point logging, paired events): see the logging-observability skill.
 - Never silently truncate inputs to embeddings/summaries/search: every cap is an exported named constant and every truncation emits a structured warning with sizes.
 - Durable audit rows are written in-transaction with the state change; post-commit best-effort events are supplementary. Privileged mutations an operator could dispute get an append-only audit row. Audit rows claim what actually RAN: distinguish a flag-gated admission path from a legacy fallthrough with a runtime admission-passed boolean — deriving the audit decision from static config records approvals that never happened.
 - A fixed failure-summary constant concatenated with variable detail must be true for EVERY branch that can fire it — a multi-branch check with a single-branch summary persists findings naming the wrong cause; make the lead cause-neutral or split one probe per sub-assertion.
 - Emitters writing into durable or user-visible storage persist closed enums + counts, never verbatim upstream-derived strings — the producer's content hygiene is not the consumer's guarantee; lock with a `not.toContain(rawText)` regression test.
 - Drift detectors on operator-visible state hash a NORMALISED representation (filter cosmetic mutations) and act only after ≥2 consecutive mismatched checks — single-check raw-content detectors false-positive on transformation layers and erode trust.
-- When an exit-code vocabulary can't carry all states, emit an always-present machine-scrapeable summary line per state.
-- Paired `*_started`/`*_completed` events need a stable identity on both ends; an end with no matching start is drop-and-warn, never paired to an unrelated open. Worst case must be under-count, never mis-attribution.

@@ -42,7 +42,7 @@ Rules distilled from recurring migration defects. Postgres-specific unless noted
 - When the deployed column is text+CHECK, align the ORM with a compile-time-only type annotation (Drizzle `.$type<>()`), not a native enum — invisible to the SQL diff, kills a perpetual enum-creating migration. Sweep ALL drifted columns on the affected tables, not just the ones the spec names.
 - A NOT NULL column added to a table written by code outside your typecheck surface (separate worker process, external service) needs a grep-enumerated list of every producer, each confirmed updated — cross-process producers get no compile signal.
 - Column renames: grep BOTH the ORM camelCase name AND raw snake_case literals in SQL templates, plus provisioning/seed paths. Update side-registries (RLS manifest, job maps, env manifest) in the same change.
-- Value-set changes (enum member added/renamed): grep every enumeration site — SQL CHECK, ORM schema, validation schema, state-machine table, query filters, agent/config files.
+- Value-set changes (enum member added/renamed): update the SQL CHECK (drop-and-replace, never stack) and the ORM schema together in one migration; the full cross-layer enumeration sweep (validation schemas, state machines, query filters, config files): see the wire-it-through skill.
 
 ## Process
 

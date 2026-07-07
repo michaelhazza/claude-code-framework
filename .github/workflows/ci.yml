@@ -12,40 +12,34 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the schemas-vs-CHANGELOG gate can diff origin/main.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      # The framework repo intentionally ships no node_modules; pin the
-      # toolchain here. (If package.json later grows pinned devDependencies
-      # and scripts, switch to `npm ci` + `npm test`.)
-      - name: Install test toolchain
-        run: npm install --no-save --no-audit --no-fund tsx@^4 vitest@^3 ajv@^8 ajv-formats@^3 @types/node@^22
+      - name: Install pinned toolchain
+        run: npm ci
 
-      - name: Sync-engine suite (node:test via tsx)
-        run: npx tsx --test tests/*.test.ts
+      # Test discovery is glob-driven via scripts/run-tests.js (single source
+      # of truth shared with local runs): it walks the tree, classifies every
+      # *.test.* / __tests__ file by runner (vitest, node:test-via-tsx, plain
+      # node), fails on unclassifiable files, and runs each group. No
+      # hand-kept file lists — a new test file anywhere runs automatically.
+      - name: Sync-engine suites (tests/)
+        run: npm run test:sync
 
-      - name: Scripts suite (vitest)
-        run: >-
-          npx vitest run
-          scripts/__tests__/chatgpt-reviewPure.test.ts
-          scripts/__tests__/applyFindingsPure.test.ts
-          scripts/__tests__/capture-manifestPure.test.ts
-          scripts/__tests__/capture-surfacePure.test.ts
+      - name: Scripts suites (scripts/)
+        run: npm run test:scripts
 
-      - name: Scripts suite (node:test via tsx)
-        run: >-
-          npx tsx --test
-          scripts/__tests__/audit-context-packs.test.ts
-          scripts/__tests__/cross-repo-scoutPure.test.ts
-          scripts/__tests__/experiment-runner-loopPure.test.ts
+      - name: Hook suites (.claude/hooks/)
+        run: npm run test:hooks
 
-      - name: Hook suites (plain node)
-        run: |
-          node .claude/hooks/phase-lock.test.js
-          node .claude/hooks/config-protection.test.js
-          node .claude/hooks/spec-creation-grill-nudge.test.js
+      - name: Framework validation (frontmatter, schemas, markdown links)
+        run: npm run validate
 
       - name: Manifest / settings JSON validity
         run: |
@@ -60,3 +54,35 @@ jobs:
           if [ "$FV" != "$MV" ]; then echo "::error::FRAMEWORK_VERSION ($FV) != manifest.frameworkVersion ($MV)"; exit 1; fi
           if ! grep -q "^## ${FV}" .claude/CHANGELOG.md; then echo "::error::CHANGELOG missing heading for ${FV}"; exit 1; fi
           echo "version consistency ok ($FV)"
+
+          # Every manifest removedFiles path must actually be absent from the
+          # tree — a lingering file would be re-shipped to consumers while
+          # sync simultaneously tells them to delete it.
+          node -e "
+            const { existsSync } = require('fs');
+            const removed = require('./manifest.json').removedFiles || [];
+            const present = removed.map(r => r.path).filter(p => existsSync(p));
+            if (present.length) {
+              console.error('::error::removedFiles entries still present in the tree: ' + present.join(', '));
+              process.exit(1);
+            }
+            console.log('removedFiles absence ok (' + removed.length + ' entries checked)');
+          "
+
+          # If any schema changed relative to origin/main, schemas/CHANGELOG.md
+          # must change too (D10 schema-version discipline). Skip gracefully
+          # when the origin ref is unavailable (e.g. shallow or detached runs).
+          if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            SCHEMA_CHANGES=$(git diff --name-only origin/main -- 'schemas/*.json')
+            if [ -n "$SCHEMA_CHANGES" ]; then
+              if git diff --quiet origin/main -- schemas/CHANGELOG.md; then
+                echo "::error::schemas/*.json changed ($SCHEMA_CHANGES) but schemas/CHANGELOG.md was not updated"
+                exit 1
+              fi
+              echo "schema changelog gate ok (schemas changed WITH changelog update)"
+            else
+              echo "schema changelog gate ok (no schema changes vs origin/main)"
+            fi
+          else
+            echo "schema changelog gate skipped (origin/main not available)"
+          fi

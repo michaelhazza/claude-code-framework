@@ -18,7 +18,7 @@ Re-read at the start of EVERY round (not just round 1 — these docs evolve):
 1. `docs/frontend-design-principles.md` — **mandatory every round**
 2. `docs/mobile-capability-principles.md` — **mandatory every round** (mobile is a peer to desktop, reviewed as such)
 3. `CLAUDE.md` § *Frontend Design Principles* (the brief operator-facing summary)
-4. `architecture.md` § *Frontend conventions*
+4. `architecture.md` § *Frontend conventions* (if present; skip when the repo has not authored one)
 5. The brief (provided by caller)
 6. Any existing prototype files for this slug (Read before Edit)
 

@@ -1,6 +1,6 @@
 ---
 name: validate-setup
-description: Runs framework health checks against the agent fleet, hooks, context packs, ADRs, and references. Confirms every agent's referenced files exist, every context-pack anchor resolves in architecture.md, and the framework version matches the changelog. Use periodically to catch drift after adoption, or in CI as a pre-merge gate for framework changes.
+description: Runs framework health checks against the agent fleet, hooks, context packs, ADRs, and references. Confirms every agent's referenced files exist, every context-pack anchor resolves in architecture.md (when the repo has authored one — absence is a warning, not a failure), and the framework version matches the changelog. Use periodically to catch drift after adoption, or in CI as a pre-merge gate for framework changes.
 tools: Read, Glob, Grep, Bash, TodoWrite
 model: sonnet
 ---

@@ -27,7 +27,7 @@ Either way, the steps below run in the main session. The `Agent` tool dispatches
 Before any work, read in order:
 
 1. `CLAUDE.md` — task management workflow, agent fleet rules, doc-sync rule
-2. `architecture.md` — patterns and conventions the spec must align with
+2. `architecture.md` — patterns and conventions the spec must align with (if present; skip when the repo has not authored one)
 3. `docs/spec-context.md` — framing ground truth (pre-production, rapid evolution, etc.)
 4. `docs/spec-authoring-checklist.md` — pre-authoring rubric the spec must satisfy
 5. `docs/frontend-design-principles.md` — read IF the brief mentions UI / page / screen / surface (for the UI-detect step)
@@ -220,7 +220,7 @@ This step runs immediately after Step 3 produces `intent.md` and before Step 4 d
 ### Inputs (read at Step 3a)
 
 1. The just-authored `intent.md` — specifically: Problem Statement, Desired Outcome, Affected Capability Area.
-2. The Asset Register at `docs/capabilities.md` (read all rows; the register's own header defines the row schema).
+2. The Asset Register at `docs/capabilities.md` (read all rows; the register's own header defines the row schema). If the repo has no register, skip the register comparison, treat Strategic fit as `clear`, note `no Asset Register — duplication check ran against in-flight builds only` in the recorded table, and run the in-flight comparison alone.
 3. Any in-flight build under `tasks/builds/*/` with a non-merged spec.
 
 ### Sources to consult (mechanical greps)
