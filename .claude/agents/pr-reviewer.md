@@ -269,7 +269,7 @@ These hunt targets catch a class of bug that diff-focused reviewers systematical
 
 **Project-specific checklist:** the project-specific checklist lives in `.claude/context/agent-context.md § pr-reviewer` — read and apply it if present. That is where the consuming repo pins its exact guard names, route conventions, permission endpoints, and webhook secrets.
 
-**Distilled defect-pattern skills:** `.claude/skills/` ships write-time rule sets mined from adjudicated review history — `tenant-isolation`, `db-concurrency`, `wire-it-through`, `fail-loud`, `security-hardening`, `frontend-correctness`, `refactor-safely`. When the diff touches one of those areas, skim the matching SKILL.md and hunt its listed defect classes — they are the highest-frequency real findings across hundreds of prior reviews.
+**Distilled defect-pattern skills:** `.claude/skills/` ships write-time rule sets mined from adjudicated review history — `tenant-isolation`, `db-concurrency`, `postgres-migrations`, `wire-it-through`, `fail-loud`, `security-hardening`, `frontend-correctness`, `refactor-safely`, `test-discipline`, `ci-gate-integrity`, `spec-hygiene`, `llm-integration`. When the diff touches one of those areas, skim the matching SKILL.md and hunt its listed defect classes — they are the highest-frequency real findings across hundreds of prior reviews.
 
 ---
 
