@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.29.0 — 2026-07-07 — /cleanfiles repo-maintenance command
+
+**Highlights:** New operator command `/cleanfiles` — a repo-maintenance sweep for the working files every consuming repo accumulates (KNOWLEDGE.md, tasks/todo.md, lessons, review logs, merged-build artifacts, stale current-focus pointers, prototypes, session state). Audit-first with operator confirmation, archive-with-pointer for knowledge content, git-history-backed removal for the rest, docs-only diff guard, one reviewable commit on a `chore/cleanfiles-<date>` branch. Configurable retention via `.claude/cleanfiles.json`.
+
+**Breaking:** none — purely additive. The command syncs to consumers via the existing `.claude/commands/*.md` manifest glob.
+
+**Added:**
+- `.claude/commands/cleanfiles.md` — the `/cleanfiles` command: modes (`audit`, default confirm-then-apply, `--yes`), 9 cleaning targets with per-target process, hard safety rules (never delete knowledge; untracked files report-only; docs-only guard), size thresholds for suggesting a sweep, and the before/after report format.
+- README What-ships row for `.claude/commands/`.
+
 ## 2.28.2 — 2026-07-07
 
 **Highlights:** settings-merge idempotency fix — hook identity now recognises every `$CLAUDE_PROJECT_DIR` quoting variant, so consumer `settings.json` hooks no longer duplicate on every sync.
