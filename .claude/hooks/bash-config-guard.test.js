@@ -94,6 +94,26 @@ const CASES = [
   ["rm ordinary file → exit 0", bash("rm -f /tmp/old.log"), 0],
   ["settings.json elsewhere is not protected → exit 0", bash("echo x > config/settings.json"), 0],
 
+  // Blocked: Bash write shapes on KNOWLEDGE.md (append-only lives in the Edit
+  // tool path; the shell cannot prove append-only, so ALL write shapes block)
+  ["sed -i on KNOWLEDGE.md → exit 2", bash("sed -i 's/a/b/' KNOWLEDGE.md"), 2],
+  ["truncating redirect to KNOWLEDGE.md → exit 2", bash("cat draft.md > KNOWLEDGE.md"), 2],
+  ["append redirect to KNOWLEDGE.md → exit 2 (appends go via Edit)", bash("echo 'entry' >> KNOWLEDGE.md"), 2],
+  ["rm KNOWLEDGE.md → exit 2", bash("rm KNOWLEDGE.md"), 2],
+  ["tee into KNOWLEDGE.md → exit 2", bash("echo x | tee KNOWLEDGE.md"), 2],
+  ["cp over KNOWLEDGE.md → exit 2", bash("cp /tmp/new.md ./KNOWLEDGE.md"), 2],
+  ["mv KNOWLEDGE.md away → exit 2", bash("mv KNOWLEDGE.md /tmp/gone.md"), 2],
+  ["truncate KNOWLEDGE.md → exit 2", bash("truncate -s 0 KNOWLEDGE.md"), 2],
+  ["perl -i on nested KNOWLEDGE.md → exit 2", bash("perl -pi -e 's/a/b/' docs/KNOWLEDGE.md"), 2],
+  ["python -i style in-place on KNOWLEDGE.md → exit 2", bash("python -i edit.py KNOWLEDGE.md"), 2],
+
+  // Allowed: read-only + lookalike paths
+  ["cat KNOWLEDGE.md → exit 0 (read-only)", bash("cat KNOWLEDGE.md"), 0],
+  ["grep in KNOWLEDGE.md → exit 0", bash("grep -n 'Correction' KNOWLEDGE.md"), 0],
+  ["cp KNOWLEDGE.md to backup → exit 0 (source read, dest unprotected)", bash("cp KNOWLEDGE.md /tmp/backup.md"), 0],
+  ["KNOWLEDGE-archive is not protected → exit 0", bash("echo x >> KNOWLEDGE-archive-2026-Q3.md"), 0],
+  ["OLDKNOWLEDGE.md is not protected → exit 0", bash("rm OLDKNOWLEDGE.md"), 0],
+
   // Pass-through / fail-open
   ["non-Bash tool → exit 0", { tool_name: 'Edit', tool_input: { file_path: '.claude/settings.json' } }, 0],
   ["empty command → exit 0", bash(''), 0],
@@ -131,6 +151,25 @@ for (const [label, input, expectedExit] of CASES) {
   const wrong = runHook(bash("rm .claude/hooks/phase-lock.js"));
   check('sentinel for settings.json does NOT authorise hook rm → exit 2', wrong.status, 2, wrong.stderr && wrong.stderr.slice(0, 200));
   check('mismatched sentinel NOT consumed', existsSync(SENTINEL), true);
+  rmSync(SENTINEL, { force: true });
+}
+
+// ── Knowledge sentinel flow (separate sentinel file, knowledge kind) ───────
+{
+  const kr = runHook(bash("echo 'entry' >> KNOWLEDGE.md"));
+  check('knowledge block message names the knowledge sentinel', /knowledge-edit-approved/.test(kr.stderr || ''), true, kr.stderr && kr.stderr.slice(0, 200));
+  check('knowledge block message routes appends to the Edit tool', /Edit tool/.test(kr.stderr || ''), true);
+
+  const KSENTINEL = join(PROJ, '.claude', 'knowledge-edit-approved');
+  writeFileSync(KSENTINEL, 'KNOWLEDGE.md\n');
+  const ok = runHook(bash("echo 'entry' >> KNOWLEDGE.md"));
+  check('knowledge sentinel: approved Bash write → exit 0 (consumed)', ok.status, 0, ok.stderr && ok.stderr.slice(0, 200));
+  check('knowledge sentinel deleted after consume', existsSync(KSENTINEL), false);
+
+  // A config sentinel must NOT authorise a knowledge write
+  writeFileSync(SENTINEL, 'KNOWLEDGE.md\n');
+  const cross = runHook(bash("echo 'entry' >> KNOWLEDGE.md"));
+  check('config sentinel does NOT authorise KNOWLEDGE.md write → exit 2', cross.status, 2, cross.stderr && cross.stderr.slice(0, 200));
   rmSync(SENTINEL, { force: true });
 }
 

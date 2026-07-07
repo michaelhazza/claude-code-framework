@@ -6,19 +6,18 @@
  * existing entries — only append new ones." Guards Edit, Write, and
  * MultiEdit calls that target a file named KNOWLEDGE.md.
  *
- * Allowed without approval (pure appends):
+ * Allowed without approval (pure appends ONLY):
  *   - Edit whose old_string is empty-ish (empty / whitespace-only)
  *   - Edit whose old_string matches the TAIL of the current file AND whose
  *     new_string starts with that old_string (anchor-on-tail append)
  *   - Write whose new content starts with the existing content (append via
  *     full rewrite), or Write to a not-yet-existing KNOWLEDGE.md
- *   - Edits that touch no dated `### [` entry heading (e.g. fixing a typo
- *     inside a paragraph) — conservative: history headings are the guarded
- *     invariant
  *
- * Blocked (exit 2, HITL): edits whose old_string spans an existing dated
- * `### [` entry heading without being a pure tail-append — i.e. deleting or
- * rewriting history — and Writes that drop or alter existing content.
+ * Blocked (exit 2, HITL): EVERYTHING else. Any Edit/MultiEdit that is not a
+ * pure tail append — including "typo fixes" and deletions inside an existing
+ * entry's body — rewrites history and requires explicit approval. Whether
+ * the old_string spans a dated `### [` heading is irrelevant: a body-line
+ * rewrite is still a rewrite.
  *
  * ── HITL override ─────────────────────────────────────────────────────
  * Mirrors config-protection.js: a ONE-SHOT sentinel file at
@@ -39,8 +38,6 @@
 
 import { readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
-
-const HEADING_RE = /^###\s*\[/m; // a dated entry heading, e.g. "### [2026-07-07] ..."
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -75,11 +72,9 @@ function isPureAppendEdit(fileContent, oldString, newString) {
 
 /** Classify one Edit-style change: 'allow' | 'block'. */
 function classifyEdit(fileContent, oldString, newString) {
-  if (isPureAppendEdit(fileContent, oldString, newString)) return 'allow';
-  // Not a pure append: block only when it spans a dated entry heading —
-  // that is the "deleting/rewriting history" shape the rule protects.
-  if (HEADING_RE.test(String(oldString ?? ''))) return 'block';
-  return 'allow';
+  // Append-only means append-only: anything that is not a pure tail append
+  // rewrites existing content and needs HITL — body edits included.
+  return isPureAppendEdit(fileContent, oldString, newString) ? 'allow' : 'block';
 }
 
 /** Classify a Write: 'allow' | 'block'. */
@@ -141,8 +136,8 @@ function blockWithHitl(toolName, filePath) {
     `HITL-APPROVAL-REQUIRED: ${toolName} to "${key}" rewrites existing KNOWLEDGE.md history.`,
     ``,
     `KNOWLEDGE.md is append-only (CLAUDE.md §3): "Never edit or remove`,
-    `existing entries — only append new ones." This change deletes or`,
-    `rewrites an existing dated entry instead of appending.`,
+    `existing entries — only append new ones." This change modifies`,
+    `existing content (heading or body) instead of appending after it.`,
     ``,
     `If you meant to ADD an entry: append it at the end of the file`,
     `(anchor your edit on the current tail, or use an empty old_string`,

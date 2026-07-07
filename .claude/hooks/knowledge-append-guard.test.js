@@ -4,7 +4,7 @@
  *
  * Verifies: pure appends are allowed (empty-ish old_string, tail-anchored
  * Edit, Write extending existing content, Write to a new file); edits whose
- * old_string spans a dated `### [` entry heading are blocked; MultiEdit
+ * old_string is not a pure tail append are blocked (body edits included); MultiEdit
  * inherits the same rules; non-KNOWLEDGE.md files pass through; the one-shot
  * HITL sentinel authorises exactly one blocked edit; malformed stdin fails
  * open.
@@ -106,10 +106,17 @@ const CASES = [
     payload('Write', { file_path: join(PROJ, 'sub', 'KNOWLEDGE.md'), content: '# fresh\n' }),
     0,
   ],
+
+  // ── Blocked: body rewrites are still rewrites (append-only means append-only)
   [
-    'Edit not touching any dated heading (typo fix in body) → exit 0',
+    'Edit rewriting a body line (typo fix) without spanning a heading → exit 2',
     payload('Edit', { file_path: KNOWLEDGE, old_string: 'Details about env sourcing.', new_string: 'Details about .env sourcing.' }),
-    0,
+    2,
+  ],
+  [
+    'Edit deleting a body line inside an existing entry → exit 2',
+    payload('Edit', { file_path: KNOWLEDGE, old_string: 'Details about env sourcing.\n', new_string: '' }),
+    2,
   ],
 
   // ── Blocked: rewriting/deleting history ──────────────────────────────────

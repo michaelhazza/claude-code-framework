@@ -16,6 +16,11 @@
  *   .claude/settings.json
  *   .claude/settings.local.json
  *   .claude/hooks/**            (and the .claude/hooks directory itself)
+ *   KNOWLEDGE.md                (any file with that basename — closes the
+ *     Bash bypass around knowledge-append-guard.js; ALL Bash write shapes
+ *     are blocked, including `>>` appends, because the shell cannot prove
+ *     append-only — legitimate appends go through the Edit tool, whose
+ *     guard validates the tail-append shape)
  *
  * SYNC NOTE: this list intentionally mirrors PROTECTED_PATHS in
  * .claude/hooks/config-protection.js (which additionally protects tooling
@@ -47,6 +52,10 @@ import { join } from 'path';
 // path carries ($VAR/..., absolute, relative, ./). See SYNC NOTE above.
 const PROTECTED_TARGET_RE =
   /(^|\/)\.claude\/(settings\.json$|settings\.local\.json$|hooks(\/|$))/;
+
+// KNOWLEDGE.md by basename, mirroring knowledge-append-guard.js's
+// isKnowledgeFile check (same file class, different tool surface).
+const KNOWLEDGE_TARGET_RE = /(^|\/)KNOWLEDGE\.md$/;
 
 // ── Tokenizer ──────────────────────────────────────────────────────────────
 
@@ -210,9 +219,9 @@ function normaliseTarget(t) {
 }
 
 /**
- * Scan a full Bash command string; return the first protected path a
- * write-shaped operation targets (repo-relative, starting at .claude/),
- * or null when the command is safe.
+ * Scan a full Bash command string; return the first protected write found:
+ * { kind: 'config' | 'knowledge', key: <sentinel key> }, or null when the
+ * command is safe.
  */
 function findProtectedWrite(command) {
   for (const tokens of splitCommands(command)) {
@@ -222,31 +231,48 @@ function findProtectedWrite(command) {
       if (m) {
         // Sentinel key: the path from `.claude/` onward.
         const idx = normalised.indexOf('.claude/', m.index);
-        return normalised.slice(idx === -1 ? m.index : idx);
+        return { kind: 'config', key: normalised.slice(idx === -1 ? m.index : idx) };
+      }
+      if (KNOWLEDGE_TARGET_RE.test(normalised)) {
+        // Sentinel key mirrors knowledge-append-guard.js: repo-relative when
+        // the project dir prefixes the path, else the token as given.
+        const projectDir = normaliseTarget(process.env.CLAUDE_PROJECT_DIR || process.cwd()).replace(/\/$/, '');
+        const key = normalised.startsWith(projectDir + '/')
+          ? normalised.slice(projectDir.length + 1)
+          : normalised.replace(/^\.\//, '');
+        return { kind: 'knowledge', key };
       }
     }
   }
   return null;
 }
 
-// ── HITL sentinel (mirrors config-protection.js) ───────────────────────────
+// ── HITL sentinels ─────────────────────────────────────────────────────────
+// 'config' writes share config-protection.js's sentinel; 'knowledge' writes
+// share knowledge-append-guard.js's sentinel — one approval file per guard
+// family, whichever tool surface (Edit or Bash) the write arrives through.
 
-function sentinelPath() {
+const SENTINEL_FILES = {
+  config: 'config-edit-approved',
+  knowledge: 'knowledge-edit-approved',
+};
+
+function sentinelPath(kind) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  return join(projectDir, '.claude', 'config-edit-approved');
+  return join(projectDir, '.claude', SENTINEL_FILES[kind] || SENTINEL_FILES.config);
 }
 
-function readSentinel() {
+function readSentinel(kind) {
   try {
-    return readFileSync(sentinelPath(), 'utf8').trim();
+    return readFileSync(sentinelPath(kind), 'utf8').trim();
   } catch {
     return null;
   }
 }
 
-function consumeSentinel() {
+function consumeSentinel(kind) {
   try {
-    unlinkSync(sentinelPath());
+    unlinkSync(sentinelPath(kind));
   } catch {
     // ignore — file may already be gone
   }
@@ -272,33 +298,50 @@ process.stdin.on('end', () => {
       process.exit(0);
     }
 
-    const protectedTarget = findProtectedWrite(command);
-    if (!protectedTarget) {
+    const found = findProtectedWrite(command);
+    if (!found) {
       process.exit(0); // read-only or unrelated — allow
     }
+    const { kind, key: protectedTarget } = found;
 
-    // One-shot approval sentinel — same file and semantics as
-    // config-protection.js, bound to the protected target's path.
-    const approved = readSentinel();
+    // One-shot approval sentinel — same semantics as the Edit-side guards,
+    // bound to the protected target's path, one sentinel file per guard kind.
+    const approved = readSentinel(kind);
     if (approved && approved === protectedTarget) {
-      consumeSentinel();
+      consumeSentinel(kind);
       process.stderr.write(
         `bash-config-guard: one-shot approval consumed for ${protectedTarget}\n`,
       );
       process.exit(0);
     }
 
-    const sentinel = sentinelPath();
+    const sentinel = sentinelPath(kind);
+    const rationale =
+      kind === 'knowledge'
+        ? [
+            `KNOWLEDGE.md is append-only (CLAUDE.md §3): "Never edit or remove`,
+            `existing entries — only append new ones." Shell writes (redirection`,
+            `including >>, sed/perl -i, tee, cp/mv/rm, truncate, ...) cannot be`,
+            `verified as pure appends, so they all require explicit approval.`,
+            ``,
+            `To APPEND an entry, use the Edit tool anchored on the file's tail`,
+            `(or Write with the existing content preserved) — the`,
+            `knowledge-append-guard validates that shape and lets it through`,
+            `without approval.`,
+          ]
+        : [
+            `The hook configuration (.claude/settings.json, .claude/settings.local.json)`,
+            `and the hook scripts themselves (.claude/hooks/**) require explicit human`,
+            `approval before any change — including changes made through the shell`,
+            `(redirection, sed -i, tee, cp/mv/rm, chmod, ...). Modifying them silently`,
+            `would let the agent disable its own guardrails, violating the project`,
+            `rule: "Never skip a failing check. Never suppress warnings to make a`,
+            `check pass."`,
+          ];
     const message = [
-      `HITL-APPROVAL-REQUIRED: this Bash command writes to "${protectedTarget}", a protected config path.`,
+      `HITL-APPROVAL-REQUIRED: this Bash command writes to "${protectedTarget}", a protected path.`,
       ``,
-      `The hook configuration (.claude/settings.json, .claude/settings.local.json)`,
-      `and the hook scripts themselves (.claude/hooks/**) require explicit human`,
-      `approval before any change — including changes made through the shell`,
-      `(redirection, sed -i, tee, cp/mv/rm, chmod, ...). Modifying them silently`,
-      `would let the agent disable its own guardrails, violating the project`,
-      `rule: "Never skip a failing check. Never suppress warnings to make a`,
-      `check pass."`,
+      ...rationale,
       ``,
       `Read-only access (cat, grep, ls) is always allowed and does not trigger`,
       `this guard.`,

@@ -14,9 +14,9 @@ Hooks registered via `.claude/settings.json` (merged into the consumer's setting
 | `correction-nudge.js` | UserPromptSubmit | Injects a KNOWLEDGE.md-capture nudge when the prompt looks like a correction | Never blocks (exit 0 always) |
 | `spec-creation-grill-nudge.js` | UserPromptSubmit | Injects a grill-me reminder when the prompt looks like spec creation | Never blocks (exit 0 always) |
 | `code-graph-freshness-check.js` | SessionStart | Checks code-intelligence cache freshness and may spawn a local rebuild (via `npx`, 180s timeout) | Fail-open — a stale cache, missing script, or build failure never blocks session start |
-| `bash-config-guard.js` | PreToolUse (Bash) | Guards shell-based edits to protected config (added 2.30.0) | See file header for its exit-code contract |
+| `bash-config-guard.js` | PreToolUse (Bash) | Guards shell-based writes to protected config AND KNOWLEDGE.md — all Bash write shapes incl. `>>` appends block with HITL (added 2.30.0) | See file header for its exit-code contract |
 | `framework-merge-reminder.js` | (added 2.30.0) | Reminds about pending `.framework-new` merges | See file header for its exit-code contract |
-| `knowledge-append-guard.js` | (added 2.30.0) | Enforces append-only discipline on KNOWLEDGE.md | See file header for its exit-code contract |
+| `knowledge-append-guard.js` | PreToolUse (Edit/Write/MultiEdit, added 2.30.0) | Enforces strict append-only on KNOWLEDGE.md: ONLY pure tail appends pass; any other edit (body rewrites included) requires HITL | See file header for its exit-code contract |
 
 Every hook is plain Node with no third-party dependencies, readable in `.claude/hooks/`. The only hook that spawns a subprocess is `code-graph-freshness-check.js`, and only to run the consumer's own code-graph build script if one exists.
 
