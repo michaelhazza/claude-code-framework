@@ -74,7 +74,7 @@ function canonicalisePath(raw: string): { canonical: string; caseFolded: string 
   if (raw === '') return null;
 
   // Replace backslashes with forward slashes (Windows path separators).
-  let p = raw.replace(/\\/g, '/');
+  const p = raw.replace(/\\/g, '/');
 
   // Reject absolute paths (Unix: leading /, Windows: drive letter C:/).
   if (/^\//.test(p) || /^[a-zA-Z]:/.test(p)) return null;

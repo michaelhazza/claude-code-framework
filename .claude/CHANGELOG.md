@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.28.1 — 2026-07-07
+
+**Highlights:** lint-hygiene patch for the build-scheduler validator pair — no behaviour change.
+
+**Fixed:** `scripts/build-scheduler/validatePlanMetadata.ts` used `let` for a never-reassigned binding (fails `prefer-const` in strict consumer repos); now `const`. `scripts/build-scheduler/__tests__/validatePlanMetadata.test.ts` cast invalid-input fixtures with `as any` (fails `no-explicit-any`); now `as never`. Both changes make canonical content identical to what lint-strict consumers (origin repo) had to fork locally, eliminating those forks.
+
 ## 2.28.0 — 2026-07-06 — Distilled-judgment skill library
 
 **Highlights:** Ships 14 new portable skills distilled from a consuming repo's accumulated engineering knowledge base (~470 lessons) and an exhaustive mine of its full review-log corpus (~1,900 logs in 194 batches across the Codex, ChatGPT, Claude, and spec-conformance reviewer families; ~5,300 accepted-defect and ~1,300 rejected-finding mentions). Each skill encodes the recurring defect classes reviewers actually caught, as write-time rules, so builders prevent at authoring time what the review pipeline previously caught two tiers later. Skills are trigger-described for automatic surfacing and wired into the builder and reviewer agent contracts.

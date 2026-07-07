@@ -117,15 +117,15 @@ describe('validatePlanMetadata', () => {
   });
 
   it('null input → ok:false, does NOT throw (Fix 3)', () => {
-    expect(() => validatePlanMetadata(null as any)).not.toThrow();
-    const result = validatePlanMetadata(null as any);
+    expect(() => validatePlanMetadata(null as never)).not.toThrow();
+    const result = validatePlanMetadata(null as never);
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.field === 'metadata')).toBe(true);
   });
 
   it('array with null/undefined/string elements → ok:false, does NOT throw (Fix 3)', () => {
-    expect(() => validatePlanMetadata([null, undefined, 'x'] as any)).not.toThrow();
-    const result = validatePlanMetadata([null, undefined, 'x'] as any);
+    expect(() => validatePlanMetadata([null, undefined, 'x'] as never)).not.toThrow();
+    const result = validatePlanMetadata([null, undefined, 'x'] as never);
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.field === 'metadata')).toBe(true);
   });
