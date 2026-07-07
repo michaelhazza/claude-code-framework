@@ -33,7 +33,7 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 |------|----------|
 | `.claude/agents/` | 28 agent definitions (with `{{...}}` placeholders; `_retired/` excluded) |
 | `.claude/hooks/` | 6 portable hooks: `long-doc-guard`, `correction-nudge`, `config-protection`, `code-graph-freshness-check`, `spec-creation-grill-nudge`, `phase-lock` |
-| `.claude/skills/` | 2 portable skills: grill-me, zoom-out |
+| `.claude/skills/` | 16 portable skills: grill-me, zoom-out, and 14 distilled-judgment skills (tenant-isolation, postgres-migrations, db-concurrency, wire-it-through, fail-loud, ci-gate-integrity, test-discipline, review-triage, spec-hygiene, frontend-correctness, security-hardening, frontend-design-check, refactor-safely, llm-integration) |
 | `.claude/settings.json` | Hook registration (PreToolUse, UserPromptSubmit, SessionStart) |
 | `.claude/FRAMEWORK_VERSION` | Semver — used to detect drift across repos |
 | `.claude/CHANGELOG.md` | Framework history + upgrade protocol |
