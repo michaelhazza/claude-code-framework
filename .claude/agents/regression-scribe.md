@@ -90,19 +90,29 @@ Skip this step if `DOWNGRADE=true`.
 
 ## Step 4 — Open the review-gated PR
 
-1. Determine branch name: `regression/<FINGERPRINT>` (deterministic; no suffix variation).
-2. Check if the branch already exists on origin:
+1. Resolve the default branch — never guess it, and never leave a placeholder in an executed command. If resolution fails, stop with an error; do not fall back to a guessed name:
    ```
-   git fetch origin
+   DEFAULT_BRANCH="$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')"
+   git fetch origin "$DEFAULT_BRANCH"
+   ```
+2. Determine branch name: `regression/<FINGERPRINT>` (deterministic; no suffix variation).
+3. **Check for an open PR FIRST — before touching any existing branch** (a review-gated PR may carry human commits that a reset would destroy):
+   ```
+   gh pr list --head regression/<FINGERPRINT> --state open --json number,url -q '.[0]'
+   ```
+   - **Open PR exists:** do NOT reset or force-push the branch. Inspect its commits (`gh pr view <PR-number> --json commits`): if ANY commit author is not this automation, the PR is human-owned — update only the PR body/labels if the marker payload changed (`gh pr edit <PR-number> --body "<new-body>"`), comment on the PR that the nightly re-run was skipped because it is under review, and STOP. If every commit is bot-authored, update content with a normal commit on top of the existing branch; never rewrite history under an open PR.
+   - **No open PR:** proceed to 4.
+4. Create or reset the branch (safe now — no open PR references it):
+   ```
    git rev-parse --verify --quiet refs/remotes/origin/regression/<FINGERPRINT>
    ```
-   - **Branch exists:** force-reset to current base and force-push:
+   - **Branch exists (stale, no open PR):** force-reset to the current base and force-push:
      ```
-     git checkout -B regression/<FINGERPRINT> origin/<default-branch>
+     git checkout -B regression/<FINGERPRINT> "origin/$DEFAULT_BRANCH"
      git push --force-with-lease origin regression/<FINGERPRINT>
      ```
-   - **Branch does not exist:** create fresh (`git checkout -b regression/<FINGERPRINT>`).
-3. Stage and commit the authored files:
+   - **Branch does not exist:** create fresh (`git checkout -b regression/<FINGERPRINT> "origin/$DEFAULT_BRANCH"`).
+5. Stage and commit the authored files:
    - If `DOWNGRADE=false`: the regression test file + the post-mortem file.
    - If `DOWNGRADE=true`: the post-mortem file only.
    ```
@@ -111,20 +121,15 @@ Skip this step if `DOWNGRADE=true`.
    git push -u origin regression/<FINGERPRINT>
    ```
    Downgrade commit message: `regression(<FINGERPRINT>): post-mortem only — test present in remediation PR`
-4. Check if an open PR for this branch already exists:
+6. Open the PR (this path is only reached when step 3 found no open PR):
    ```
-   gh pr list --head regression/<FINGERPRINT> --state open --json number,url -q '.[0]'
+   gh pr create \
+     --head regression/<FINGERPRINT> \
+     --base "$DEFAULT_BRANCH" \
+     --title "regression(<FINGERPRINT>): test + post-mortem for #$ISSUE_NUMBER" \
+     --body "<PR body — see below>"
    ```
-   - **Open PR exists:** update it in place (`gh pr edit <PR-number> --body "<new-body>"`). Do NOT open a duplicate.
-   - **No open PR:** open one:
-     ```
-     gh pr create \
-       --head regression/<FINGERPRINT> \
-       --base <default-branch> \
-       --title "regression(<FINGERPRINT>): test + post-mortem for #$ISSUE_NUMBER" \
-       --body "<PR body — see below>"
-     ```
-5. **PR body** (exact structure required — the incident-detail link lookup searches for the fingerprint marker):
+7. **PR body** (exact structure required — the incident-detail link lookup searches for the fingerprint marker):
 
    ```
    Refs #$ISSUE_NUMBER
@@ -182,7 +187,7 @@ On ANY of: marker absent, base64url decode failure, JSON parse failure, schema v
 
 | Artifact | Pattern | Collision behaviour |
 |---|---|---|
-| Branch | `regression/<FINGERPRINT>` | Force-reset existing branch (no suffix); at most one branch per fingerprint |
+| Branch | `regression/<FINGERPRINT>` | Force-reset ONLY when no open PR references it; branches under an open PR are never rewritten; at most one branch per fingerprint |
 | PR | One open PR per `regression/<FINGERPRINT>` head | Update existing open PR in place; never open a duplicate |
 | Post-mortem | `docs/incidents/<RESOLUTION_DATE>-<FINGERPRINT>.md` | Overwrite existing file on re-run; never create a duplicate |
 
@@ -214,7 +219,7 @@ When `DOWNGRADE=true` (remediation PR already added a test under the implicated 
 - **Follow the repo's import idiom** in authored test files (e.g. `.js` extension on relative imports under TypeScript-ESM `nodenext` resolution) — copy it from existing test files rather than guessing.
 - **Marker is the only source.** Never read incident context from prose. Parse-failure exits cleanly.
 - **At most one open PR per fingerprint.** Update in place if an open PR for `regression/<FINGERPRINT>` already exists.
-- **Force-reset on re-run.** If the branch exists, force-reset to base before re-drafting. Do not accumulate stale commits.
+- **PR-check before reset.** On re-run, check for an open PR first. A branch under an open PR is never force-reset: human commits win (skip with a PR comment), and even all-bot PRs only receive plain commits on top. Only stale branches with no open PR are force-reset to base.
 - **Overwrite post-mortem on re-run.** Never create a duplicate file for the same `<RESOLUTION_DATE>-<FINGERPRINT>`.
 - **Do not run the test suite.** The CI gate on the PR runs it. Per `references/test-gate-policy.md`.
 - **No production access.** Work from issue context + repo source only.
