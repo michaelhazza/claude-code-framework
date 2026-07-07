@@ -34,7 +34,7 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ## 2.28.0 — 2026-07-06 — Distilled-judgment skill library
 
-**Highlights:** Ships 14 new portable skills distilled from a consuming repo's accumulated engineering knowledge base (~470 lessons) and an exhaustive mine of its review-log corpus (Codex, ChatGPT, and Claude reviewer families — hundreds of adjudicated review rounds). Each skill encodes the recurring defect classes reviewers actually caught, as write-time rules, so builders prevent at authoring time what the review pipeline previously caught two tiers later. Skills are trigger-described for automatic surfacing and wired into the builder and reviewer agent contracts.
+**Highlights:** Ships 14 new portable skills distilled from a consuming repo's accumulated engineering knowledge base (~470 lessons) and an exhaustive mine of its full review-log corpus (~1,900 logs in 194 batches across the Codex, ChatGPT, Claude, and spec-conformance reviewer families; ~5,300 accepted-defect and ~1,300 rejected-finding mentions). Each skill encodes the recurring defect classes reviewers actually caught, as write-time rules, so builders prevent at authoring time what the review pipeline previously caught two tiers later. Skills are trigger-described for automatic surfacing and wired into the builder and reviewer agent contracts.
 
 **Breaking:** none — purely additive. Consuming repos receive the skills as `new` files on next sync; no migration required.
 
