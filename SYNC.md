@@ -100,7 +100,7 @@ Show the resulting report. After completion, continue to Phase 5.
 
 ## Phase 5 — Walk pending merges
 
-**Gitignore prerequisite.** Before working through `.framework-new` files for the first time in a repo, ensure `*.framework-new` is in the repo's `.gitignore`. These files are per-clone working state — they're sync.js's "here's what the new canonical looks like, decide if you want to absorb it" advisory for one developer's sync run. If they get tracked in git, one developer's mid-sync state propagates to every clone and creates a misleading appearance of a shared "pending decisions backlog" that other clones think they need to resolve. The framework does NOT auto-write this rule (it would not be safe to modify a consuming repo's root `.gitignore` from sync.js). Add it manually once per repo:
+**Gitignore prerequisite.** Before working through `.framework-new` files for the first time in a repo, ensure `*.framework-new` is in the repo's `.gitignore`. These files are per-clone working state — they're sync.js's "here's what the new canonical looks like, decide if you want to absorb it" advisory for one developer's sync run. If they get tracked in git, one developer's mid-sync state propagates to every clone and creates a misleading appearance of a shared "pending decisions backlog" that other clones think they need to resolve. sync.js itself never modifies a consuming repo's root `.gitignore`; since framework v2.30.0 the migration runner handles this instead — the v2.30.0 migration idempotently appends the rule during `/claudeupdate` (or a manual `run-migrations.js` pass). Only repos that have not yet run the v2.30.0 migration need to add it manually, once:
 
 ```
 # Framework sync working artefacts — per-clone, per-sync-run; never team-shared
@@ -164,6 +164,21 @@ N updated, M new, P customised, K removal warnings
 ```
 
 The operator commits manually. Sync never auto-commits.
+
+---
+
+## Far-behind repos: squash to current
+
+A consumer that is many versions behind (say v2.13.0 while the framework is at v2.30.0) does NOT step through intermediate versions one release at a time. The supported path is a single bump straight to the latest version:
+
+1. Point the submodule at the latest framework commit (`git submodule update --remote .claude-framework`).
+2. Run migrations across the whole gap: `node .claude-framework/scripts/run-migrations.js . <old-version> <latest-version>`. The runner discovers every migration script in the range and executes them in semver order; `appliedMigrations[]` in state.json guarantees nothing already applied re-runs.
+3. Run `node .claude-framework/sync.js` as usual (Phases 3–6 above).
+
+Two properties make the squash safe:
+
+- **Where no migration script exists for a gap version, the sync itself IS the migration.** Most versions ship only file updates, which sync.js deploys declaratively regardless of how many versions are being crossed. Migration scripts exist only for versions that needed imperative one-time work, and those run in order across the gap.
+- **`.framework-new` conflicts are the expected fallout, and are resolved once.** A long gap means more accumulated divergence between local customisations and canonical files, so expect a larger-than-usual batch of `.framework-new` siblings after the sync. This is not an error state: walk them once via Phase 5, against the latest canonical content only, and the repo is current. There is no per-version merge debt.
 
 ---
 

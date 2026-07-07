@@ -49,7 +49,7 @@
  *   Run with: node .claude/hooks/config-protection.test.js
  */
 
-import { readFileSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 
 // ── Protected file patterns ────────────────────────────────────────────────
@@ -260,6 +260,36 @@ function toRelativePath(absPath) {
     }
   }
 
+  // Last resort: walk up from the target looking for a directory that
+  // contains .claude/ — the repo-root heuristic. Without this, an absolute
+  // path outside CLAUDE_PROJECT_DIR/cwd with no marker returned null and
+  // silently SKIPPED the path-based protection (fail-open hole: an edit to
+  // /other/repo/.claude/settings.json bypassed pathMatch entirely).
+  const repoRoot = findRepoRootFor(normalised);
+  if (repoRoot && normalised.startsWith(repoRoot + '/')) {
+    return normalised.slice(repoRoot.length + 1);
+  }
+
+  return null;
+}
+
+/**
+ * Walk up from the target path's parent directories looking for one that
+ * contains a .claude/ directory — treated as the repo root. Returns the
+ * forward-slash-normalised root, or null. Any fs error → null (fail open).
+ */
+function findRepoRootFor(normalisedPath) {
+  try {
+    const segments = normalisedPath.split('/');
+    // Start at the immediate parent, stop before the filesystem root.
+    for (let end = segments.length - 1; end > 1; end--) {
+      const dir = segments.slice(0, end).join('/');
+      if (!dir || /^[A-Za-z]:$/.test(dir)) break;
+      if (existsSync(dir + '/.claude')) return dir;
+    }
+  } catch {
+    // fall through — treated as "no repo root found"
+  }
   return null;
 }
 

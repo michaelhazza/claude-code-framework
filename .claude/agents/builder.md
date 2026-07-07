@@ -13,7 +13,7 @@ You implement a single named chunk from an implementation plan. You are a leaf s
 
 Read in order:
 1. `CLAUDE.md`
-2. `architecture.md`
+2. `architecture.md` — if present; skip when the repo has not authored one
 3. `DEVELOPMENT_GUIDELINES.md` — read if present and the chunk touches migrations, schema, services, routes, shared libs, tenant-isolation policies, or LLM-routing code. Skip when absent OR for pure-frontend / pure-docs chunks.
 4. The plan file at the path provided by the caller
 5. The specific chunk section in the plan
@@ -80,6 +80,16 @@ Checks 1-3 correspond to CLAUDE.md §6 rules 1-3; checks 4-5 are field-sourced a
 
 5. **Reuse-before-duplicate** — Before writing a block that feels familiar, Grep for an existing helper, service, or component that already does it, and reuse or extend it. Never write the same logic twice (CLAUDE.md §6 "never duplicate logic"). The Three-Similar-Lines check limits premature NEW abstraction; it is never licence to copy-paste — reusing an existing helper is always allowed and always preferred over a second copy. Projects with a duplicate-block CI gate (e.g. a jscpd ratchet baseline) fail on ANY net-new duplicated block: complying while writing costs seconds, fixing after CI red costs a full fix loop. Source: 2026-07-04 coding-process audit — repeated code blocks are the field's most-reported Claude Code failure mode, and this checklist previously omitted the reuse rule while check 1 read like copy-paste licence.
 
+### Migration carve-out (apply BEFORE writing any DB migration)
+
+When the chunk includes a database migration or ORM schema change, this is mandatory, not advisory:
+
+1. Read `.claude/skills/postgres-migrations/SKILL.md` AND `.claude/skills/db-concurrency/SKILL.md` BEFORE writing the migration (the skill pre-read table below lists them; for migrations both are required, in full).
+2. Verify the **next-free migration number** against the migrations directory on disk (Glob, don't assume) — a collision with an unmerged branch's migration is a plan gap, not something to renumber around silently.
+3. Verify **ORM/SQL byte-consistency**: the generated SQL and the ORM schema definition describe the same change (columns, types, defaults, constraints, indexes — names and order). Any hand-edit to one side is mirrored on the other.
+
+Checks 2 and 3 are part of G1 for migration chunks — a chunk that fails either returns `G1_FAILED` with the specific mismatch, same cap and diagnostics rules as the other G1 checks.
+
 ### Skill pre-read (apply BEFORE writing in a covered area)
 
 The framework ships distilled-judgment skills under `.claude/skills/` encoding the recurring defect classes review pipelines catch. Before writing code in a covered area, Read the matching SKILL.md — prevention at write time costs seconds; the same defect caught at branch review costs a full fix loop.
@@ -104,7 +114,7 @@ The G1 gate (scoped lint only) does NOT exercise the static-gate scripts that ru
 
 ## Step 4 — G1 gate (scoped lint + targeted tests only)
 
-After implementation, run only the cheap, scoped checks. Cap at 3 attempts per check.
+After implementation, run only the cheap, scoped checks. Cap at 3 attempts per check. Migration chunks additionally verify the two migration carve-out checks (next-free number, ORM/SQL byte-consistency — see Step 3).
 
 ```bash
 # Scoped lint on touched files (always — fast)

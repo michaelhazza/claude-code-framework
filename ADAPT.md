@@ -25,7 +25,7 @@
 A drop-in agent fleet + governance docs + portable hooks for any Claude Code project. See `.claude/CHANGELOG.md` for the source release version and history.
 
 The framework ships:
-- 28 agent definitions in `.claude/agents/` (with placeholders for project name, description, stack; `_retired/` is excluded)
+- 29 agent definitions in `.claude/agents/` (with placeholders for project name, description, stack; `_retired/` is excluded)
 - 6 portable hooks in `.claude/hooks/` (`long-doc-guard`, `correction-nudge`, `config-protection`, `code-graph-freshness-check`, `spec-creation-grill-nudge`, `phase-lock`) + a `.claude/settings.json` registering them
 - ADRs at `docs/decisions/` (the generic framework ones — 0001, 0002, 0005–0008)
 - Context packs at `docs/context-packs/` (5 mode-scoped packs)
@@ -125,6 +125,10 @@ Context packs reference `architecture.md` sections via `{{ARCHITECTURE_ANCHOR:<p
 1. Run a one-shot anchor-generation pass: insert `<a id="<kebab-case-slug>"></a>` immediately before every `## ` heading.
 2. Open `docs/context-packs/*.md` and replace each `{{ARCHITECTURE_ANCHOR:<purpose>}}` token with the real anchor that serves that purpose in the target's `architecture.md` (delete lines whose purpose has no counterpart).
 3. If the target has no `architecture.md`, skip this step. The packs will fall back to whole-file reads (with warnings printed by `context-pack-loader`).
+
+### 3c — Sibling-repo registry (only if the project has sibling repos)
+
+If `cross-repo-scout` is in your profile and the project has sibling repos worth searching for prior art, copy `.claude/project-registries.json.template` to `.claude/project-registries.json` and fill in the `sibling_repos[]` entries (see `.claude/project-registries.json.template.example.md` for a worked example). Skip otherwise — the scout degrades gracefully when the file is absent.
 
 ## 9. Phase 4 — Wire into target CLAUDE.md
 
@@ -301,7 +305,7 @@ MINIMAL 4 plus: `spec-coordinator`, `feature-coordinator`, `finalisation-coordin
 
 Use when the project has multiple in-flight features and benefits from spec → plan → build phase separation. Default for most projects.
 
-### FULL (28 agents) — large project / multi-stream development
+### FULL (29 agents) — large project / multi-stream development
 
 STANDARD 10 plus: `adversarial-reviewer`, `audit-runner`, `bug-fixer`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `claude-spec-review`, `claude-plan-review`, `codebase-explainer`, `context-pack-loader`, `cross-repo-scout`, `dual-reviewer`, `experiment-runner`, `incident-commander`, `mockup-coordinator`, `mockup-designer`, `mockup-reviewer`, `validate-setup`.
 

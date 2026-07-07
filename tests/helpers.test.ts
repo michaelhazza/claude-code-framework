@@ -301,7 +301,13 @@ describe('loadManifest', () => {
     );
     // Files that live inside glob-owned directories but are deliberately NOT
     // framework-managed. Add entries here with a reason when introducing one.
-    const EXEMPT = new Set<string>([]);
+    const EXEMPT = new Set<string>([
+      // Migration shared helpers/scaffold: consumers execute migrations from the
+      // submodule (frameworkRoot), never from synced copies, so these underscore
+      // files ship via the submodule and must not sync (migrations/README.md).
+      'migrations/_helpers.js',
+      'migrations/_template.js',
+    ]);
 
     // Directories where the framework claims wildcard ownership (entries whose
     // final segment contains '*'). A file appearing there without being managed

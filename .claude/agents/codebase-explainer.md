@@ -37,8 +37,8 @@ Emit a TodoWrite list with these items:
 In order:
 
 1. `README.md` (root) — what the project tells GitHub. Often the closest thing to a product pitch.
-2. `docs/capabilities.md` — vendor-neutral product capabilities. The "what" without engineering jargon.
-3. `architecture.md` § Project Structure + § Key files per domain — the engineering "where".
+2. `docs/capabilities.md` — vendor-neutral product capabilities. The "what" without engineering jargon. If present; fall back to the README and any product docs when absent.
+3. `architecture.md` § Project Structure + § Key files per domain — the engineering "where". If present; derive the structure from the source tree when absent.
 4. `package.json` (or stack-specific equivalent) — confirms the runtime story.
 5. `replit.md` if it exists — boot procedure.
 

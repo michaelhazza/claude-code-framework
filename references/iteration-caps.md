@@ -25,6 +25,7 @@ commit. `validate-setup` may diff agent-stated caps against this table.
 | 16 | bug-fixer verification checks | 2 | per fix | `.claude/agents/bug-fixer.md` |
 | 17 | experiment-runner consecutive non-keeps | 5 (warn) / 10 (stop) | per experiment | `.claude/agents/experiment-runner.md` |
 | 18 | spec-coordinator Step 3a revise loop | 3 | per intent — on the 4th `revise`, escalate to the operator instead of looping (added 2.27.0; previously unbounded) | `.claude/agents/spec-coordinator.md` (Step 3a) |
+| 19 | G3 lint+typecheck fix attempts | 3 | per gate invocation (§8.1 CONFORMANT_AFTER_FIXES, §8.4 fix-loop, §8.5 post-dual-review) — on exceed, escalate with full diagnostics per failure path 4; never mark the gate passed | `.claude/agents/feature-coordinator.md` (Step 8) |
 
 Auto-fix guardrails AF1–AF4 (`finalisation-coordinator` Step 11) are rules, not
 loops — they are intentionally not in this table.

@@ -1,6 +1,6 @@
 ---
 name: frontend-correctness
-description: Use when writing or modifying React components, hooks, forms, modals/drawers, client API adapters, or polling/streaming consumers. Engineering-correctness pitfalls (state lifecycle, async races, permission gating) — distinct from design/style guidance, which lives in the frontend design-principles docs.
+description: Use when writing or modifying React component logic — state lifecycle (modals, drawers, forms, hooks), async races (fetches, polling, SSE/WebSocket consumers), permission gating, client API adapters, or data-handling bugs. Engineering correctness, not visual design. Sibling: invoke frontend-design-check alongside when the change alters what the user sees — layout, copy, controls, or a new UI surface.
 ---
 
 # Frontend correctness (React)

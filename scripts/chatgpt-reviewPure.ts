@@ -887,6 +887,35 @@ Hunt targets:
   guarantee section). Without an explicit
   cutover discipline, the new idempotency guarantee is silently false
   for events spanning the deploy boundary.
+- Enforcement-mechanism claims without proof evidence. When acceptance
+  relies on an external enforcement mechanism (branch protection,
+  required status checks, permission gates, CI triggers, webhook
+  validation, scheduled rails), the acceptance criteria must name
+  concrete proof evidence for each blocked state — e.g. an unlabeled PR
+  is actually blocked, a stale-HEAD run is not accepted, a skipped job
+  does not satisfy the required check. A plausible mechanism description
+  with no proof fixture per blocked state is a finding: enforcement that
+  is never demonstrated to block is the classic gate-that-cannot-fail.
+  The fix sketch should name the negative-path fixture or audit query
+  for each blocked state the spec claims.
+- Caps, limits, and rate controls without a key + exceeded-behaviour
+  contract. When the spec commits to any cap / limit / quota / rate
+  control, require: the limit key and its scoping (per-tenant, per-user,
+  per-resource, global), the exceeded behaviour (status code, typed
+  error, whether work is rejected before expensive processing, audit
+  trail), and a race-safety requirement for concurrent counting.
+  Numeric thresholds may defer to the implementation plan; the contract
+  shape may not. A cap named without its key and exceeded behaviour is
+  unimplementable-as-specified and every builder will invent a different
+  one.
+- Permissive closure taxonomies on defect or item lists. When acceptance
+  allows "fixed or closed-with-reason" (or any free-text closure) on
+  defects, findings, or enumerated work items, require an enumerated
+  disposition set (e.g. fixed-with-evidence / duplicate-of /
+  not-reproducible-with-environment / deferred-with-sign-off) plus a
+  final disposition table covering every listed item. Free-text closure
+  lets items silently exit the list with no evidence; the enumerated set
+  plus a per-item table is what makes "all items addressed" checkable.
 
 Process:
 Pass 1 Inventory. Pass 2 Evidence. Pass 3 Implementation simulation on the top

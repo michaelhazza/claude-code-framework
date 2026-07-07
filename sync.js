@@ -23,7 +23,7 @@ const { spawnSync } = require('child_process');
  * @typedef {{ frameworkVersion: string, adoptedAt: string, adoptedFromCommit: string|null, profile: 'MINIMAL'|'STANDARD'|'FULL', substitutions: Substitutions, lastSubstitutionHash?: string, files: Record<string, FileStateEntry>, syncIgnore: string[], appliedMigrations?: string[] }} FrameworkState
  * @typedef {'skipped'|'new'|'customised'|'updated'|'removed-warn'|'ownership-transferred'|'rebaselined'} FileOpStatus
  * @typedef {{ targetRoot: string, frameworkRoot: string, manifest: Manifest, state: FrameworkState|null, frameworkVersion: string, frameworkCommit: string|null, flags: SyncFlags, maintenance?: boolean }} SyncContext
- * @typedef {{ adopt: boolean, dryRun: boolean, check: boolean, strict: boolean, doctor: boolean, force: boolean }} SyncFlags
+ * @typedef {{ adopt: boolean, dryRun: boolean, check: boolean, strict: boolean, doctor: boolean, force: boolean, forceDowngrade: boolean }} SyncFlags
  */
 
 // ---------------------------------------------------------------------------
@@ -367,6 +367,39 @@ async function writeStateAtomic(targetRoot, state) {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: writeManagedFileAtomic
+// ---------------------------------------------------------------------------
+
+/**
+ * Atomically write a managed target file via the same tmp + rename pattern as
+ * writeStateAtomic, so a crash mid-write can never leave a truncated managed
+ * file behind. Refuses to write when the destination is a symlink: managed
+ * writes must land on the file itself, never through a link (lstat inspects
+ * the link rather than following it).
+ *
+ * @param {string} finalPath  Absolute destination path.
+ * @param {string} content
+ * @returns {Promise<void>}
+ */
+async function writeManagedFileAtomic(finalPath, content) {
+  const st = await fs.lstat(finalPath).catch(() => null);
+  if (st && st.isSymbolicLink()) {
+    throw new Error(`refusing to write managed file through symlink: ${finalPath}`);
+  }
+  // PID-suffix the tmp file so two concurrent sync processes cannot clobber
+  // each other's tmp before rename (same rationale as writeStateAtomic).
+  const tmpPath = `${finalPath}.${process.pid}.tmp`;
+  try {
+    await fs.writeFile(tmpPath, content, 'utf8');
+    await fs.rename(tmpPath, finalPath);
+  } catch (err) {
+    // Never leave a stray tmp file behind on failure.
+    await fs.unlink(tmpPath).catch(() => {});
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helper: readFrameworkVersion
 // ---------------------------------------------------------------------------
 
@@ -389,6 +422,29 @@ function readFrameworkVersion(frameworkRoot) {
     throw new Error(`FRAMEWORK_VERSION is not a valid semver: "${version}"`);
   }
   return version;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: compareSemver
+// ---------------------------------------------------------------------------
+
+/**
+ * Compare two MAJOR.MINOR.PATCH version strings numerically.
+ * Returns -1 when a < b, 0 when equal, 1 when a > b. No prerelease/build
+ * handling — FRAMEWORK_VERSION is validated to plain \d+.\d+.\d+ upstream.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {-1|0|1}
+ */
+function compareSemver(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
+    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
+  }
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -438,24 +494,38 @@ function checkSubmoduleClean(frameworkRoot) {
 
 /**
  * Return managed paths that have a `.framework-new` sibling in `targetRoot`.
+ * Also scans state-tracked paths when `state` is provided: a path dropped
+ * from the manifest can still have an orphaned `.framework-new` sibling
+ * awaiting resolution, invisible to the manifest globs.
  *
  * @param {string} targetRoot
  * @param {Manifest} manifest
+ * @param {FrameworkState|null} [state]
  * @returns {string[]}
  */
-function scanForUnresolvedMerges(targetRoot, manifest) {
-  /** @type {string[]} */
-  const unresolved = [];
+function scanForUnresolvedMerges(targetRoot, manifest, state = null) {
+  /** @type {Set<string>} */
+  const unresolved = new Set();
   for (const entry of manifest.managedFiles) {
     const expanded = expandGlob(entry.path, targetRoot);
     for (const rel of expanded) {
       const newFilePath = path.join(targetRoot, rel + '.framework-new');
       if (fsSync.existsSync(newFilePath)) {
-        unresolved.push(rel);
+        unresolved.add(rel);
       }
     }
   }
-  return unresolved.sort();
+  if (state && state.files) {
+    for (const rel of Object.keys(state.files)) {
+      // Defence against a tampered state file declaring escaping paths.
+      if (path.isAbsolute(rel) || rel.split('/').includes('..')) continue;
+      const newFilePath = path.join(targetRoot, rel + '.framework-new');
+      if (fsSync.existsSync(newFilePath)) {
+        unresolved.add(rel);
+      }
+    }
+  }
+  return Array.from(unresolved).sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -487,8 +557,8 @@ function logFileOp(filePath, status, extra = {}) {
  * @returns {SyncFlags}
  */
 function parseFlags(argv) {
-  const known = new Set(['--adopt', '--dry-run', '--check', '--strict', '--doctor', '--force']);
-  const flags = { adopt: false, dryRun: false, check: false, strict: false, doctor: false, force: false };
+  const known = new Set(['--adopt', '--dry-run', '--check', '--strict', '--doctor', '--force', '--force-downgrade']);
+  const flags = { adopt: false, dryRun: false, check: false, strict: false, doctor: false, force: false, forceDowngrade: false };
   for (const arg of argv) {
     if (!known.has(arg)) {
       process.stderr.write(`ERROR: Unknown flag "${arg}". Supported: ${Array.from(known).join(', ')}\n`);
@@ -500,6 +570,7 @@ function parseFlags(argv) {
     if (arg === '--strict') flags.strict = true;
     if (arg === '--doctor') flags.doctor = true;
     if (arg === '--force') flags.force = true;
+    if (arg === '--force-downgrade') flags.forceDowngrade = true;
   }
   return flags;
 }
@@ -589,6 +660,12 @@ function classifyFile(ctx, entry, relativePath) {
   if (targetHash === stateEntry.lastAppliedHash) {
     // Clean: check if needs update
     if (stateEntry.lastAppliedFrameworkVersion === frameworkVersion) {
+      // Self-heal: hash matches the baseline but the customised flag is still
+      // set (stale state from an interrupted or hand-resolved merge). Route
+      // through writeUpdated so lastAppliedHash is refreshed and the flag cleared.
+      if (stateEntry.customisedLocally) {
+        return { kind: 'clean', needsUpdate: true };
+      }
       return { kind: 'skipped', reason: 'already-on-version' };
     }
     return { kind: 'clean', needsUpdate: true };
@@ -607,15 +684,15 @@ function classifyFile(ctx, entry, relativePath) {
     fwContent = applySubstitutions(fwContent, state && state.substitutions ? state.substitutions : {});
   }
   const inj = injectConsumerOverrides(fwContent, targetPath);
-  if (inj.frameworkBlockNames.length === 0) {
-    // No override slots in framework — divergence is real customisation.
-    return { kind: 'customised' };
-  }
   const synthesisedHash = hashContent(normaliseContent(inj.injected));
   if (synthesisedHash === targetHash) {
-    // Consumer edits live entirely within LOCAL-OVERRIDE blocks — clean.
-    // Mark as needing update so the new framework version (with consumer's overrides re-injected) gets written;
-    // even if framework content is identical, we still want lastAppliedHash and lastAppliedFrameworkVersion refreshed.
+    // Target already matches the current framework content (with the consumer's
+    // LOCAL-OVERRIDE contents re-injected when the framework declares slots).
+    // Two cases land here: consumer edits living entirely within override blocks,
+    // and a stale state baseline over a byte-identical file (e.g. a hand-merge
+    // that never re-ran sync). Neither is a real conflict — mark as needing
+    // update so lastAppliedHash and lastAppliedFrameworkVersion get refreshed
+    // and customisedLocally cleared, with no .framework-new emitted.
     return { kind: 'clean', needsUpdate: true };
   }
   return { kind: 'customised' };
@@ -935,7 +1012,7 @@ async function writeUpdated(ctx, entry, relativePath) {
 
   if (!flags.dryRun) {
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, normalisedContent, 'utf8');
+    await writeManagedFileAtomic(targetPath, normalisedContent);
     // Update state
     if (ctx.state) {
       ctx.state.files[relativePath] = {
@@ -953,10 +1030,14 @@ async function writeUpdated(ctx, entry, relativePath) {
   logFileOp(relativePath, 'updated', extra);
 }
 
-/** @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath @returns {Promise<void>} */
+/**
+ * @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath
+ * @returns {Promise<'customised'|'rebaselined'|'skipped'>} the FileOpStatus logged —
+ *   'rebaselined' when the false-conflict short-circuit fired (no .framework-new written).
+ */
 async function writeFrameworkNew(ctx, entry, relativePath) {
   const { frameworkRoot, targetRoot, flags } = ctx;
-  if (refuseIfDoNotTouch(ctx, relativePath)) return;
+  if (refuseIfDoNotTouch(ctx, relativePath)) return 'skipped';
   assertWithinRoot(frameworkRoot, relativePath);
   assertWithinRoot(targetRoot, relativePath);
   const sourcePath = path.join(frameworkRoot, relativePath);
@@ -969,6 +1050,30 @@ async function writeFrameworkNew(ctx, entry, relativePath) {
   // operator's manual merge diff only shows the actually-customised-outside-blocks lines.
   const injNew = injectConsumerOverrides(content, targetPath);
   const normalisedContent = normaliseContent(injNew.injected);
+
+  // False-conflict short-circuit: if the target already matches the incoming
+  // framework content after normalisation, there is nothing to merge — the state
+  // baseline was stale (e.g. a hand-merge that never re-ran sync). Refresh state
+  // and write no conflict file.
+  let existingTarget = null;
+  try { existingTarget = await fs.readFile(targetPath, 'utf8'); } catch { /* missing target — real conflict, fall through */ }
+  if (existingTarget !== null && hashContent(normaliseContent(existingTarget)) === hashContent(normalisedContent)) {
+    if (!flags.dryRun && ctx.state) {
+      ctx.state.files[relativePath] = {
+        ...ctx.state.files[relativePath],
+        lastAppliedHash: hashContent(normalisedContent),
+        lastAppliedFrameworkVersion: ctx.frameworkVersion,
+        lastAppliedFrameworkCommit: ctx.frameworkCommit,
+        lastAppliedSourcePath: entry.path,
+        customisedLocally: false,
+      };
+    }
+    /** @type {Record<string, string>} */
+    const healExtra = { reason: 'identical-content' };
+    if (flags.dryRun) healExtra.dry_run = 'true';
+    logFileOp(relativePath, 'rebaselined', healExtra);
+    return 'rebaselined';
+  }
 
   const newFilePath = `${targetPath}.framework-new`;
 
@@ -991,7 +1096,7 @@ async function writeFrameworkNew(ctx, entry, relativePath) {
 
   if (!flags.dryRun) {
     await fs.mkdir(path.dirname(newFilePath), { recursive: true });
-    await fs.writeFile(newFilePath, normalisedContent, 'utf8');
+    await writeManagedFileAtomic(newFilePath, normalisedContent);
     if (ctx.state && ctx.state.files[relativePath]) {
       ctx.state.files[relativePath].customisedLocally = true;
     }
@@ -1004,12 +1109,16 @@ async function writeFrameworkNew(ctx, entry, relativePath) {
     `Merge, delete .framework-new, re-run sync.\n`
   );
   logFileOp(relativePath, 'customised', extra);
+  return 'customised';
 }
 
-/** @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath @returns {Promise<void>} */
+/**
+ * @param {SyncContext} ctx @param {ManifestEntry} entry @param {string} relativePath
+ * @returns {Promise<'new'|'customised'|'skipped'>} the FileOpStatus logged.
+ */
 async function writeNewFile(ctx, entry, relativePath) {
   const { frameworkRoot, targetRoot, flags } = ctx;
-  if (refuseIfDoNotTouch(ctx, relativePath)) return;
+  if (refuseIfDoNotTouch(ctx, relativePath)) return 'skipped';
   assertWithinRoot(frameworkRoot, relativePath);
   assertWithinRoot(targetRoot, relativePath);
   const sourcePath = path.join(frameworkRoot, relativePath);
@@ -1026,7 +1135,7 @@ async function writeNewFile(ctx, entry, relativePath) {
     // Branch 1: target missing — write fresh
     if (!flags.dryRun) {
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
-      await fs.writeFile(targetPath, normalisedContent, 'utf8');
+      await writeManagedFileAtomic(targetPath, normalisedContent);
       if (ctx.state) {
         if (!ctx.state.files) ctx.state.files = {};
         ctx.state.files[relativePath] = {
@@ -1041,14 +1150,58 @@ async function writeNewFile(ctx, entry, relativePath) {
     }
     const extra = flags.dryRun ? { dry_run: 'true' } : {};
     logFileOp(relativePath, 'new', extra);
+    return 'new';
   } else {
     // Branch 2: target exists but no state entry
+    // Both sub-branches compare against the framework copy with the consumer's
+    // LOCAL-OVERRIDE block contents re-injected — divergence inside declared
+    // slots is not a customisation.
+    const injExisting = injectConsumerOverrides(content, targetPath);
+    const frameworkFinal = normaliseContent(injExisting.injected);
+    const existingContent = await fsp.readFile(targetPath, 'utf8');
+    const existingHash = hashContent(normaliseContent(existingContent));
     if (ctx.flags && ctx.flags.adopt) {
-      // --adopt mode: catalogue existing file, do NOT write .framework-new, do NOT overwrite
-      if (!ctx.flags.dryRun) {
-        const existingContent = await fsp.readFile(targetPath, 'utf8');
-        const existingHash = hashContent(normaliseContent(existingContent));
-        if (ctx.state) {
+      // --adopt mode: catalogue existing file, do NOT overwrite. Compare the
+      // on-disk content to the framework copy: identical → clean catalogue;
+      // divergent (sync-mode entries only) → flag customisedLocally and write
+      // the .framework-new sibling so the divergence surfaces as a merge
+      // (MIGRATION-FROM-COPY-PASTE.md § 3). adopt-only entries hand ownership
+      // to the project, so divergence there is expected and never flagged.
+      const diverges = entry.mode !== 'adopt-only' && existingHash !== hashContent(frameworkFinal);
+      if (!ctx.flags.dryRun && ctx.state) {
+        if (!ctx.state.files) ctx.state.files = {};
+        ctx.state.files[relativePath] = {
+          lastAppliedHash: existingHash,
+          lastAppliedFrameworkVersion: ctx.frameworkVersion,
+          lastAppliedFrameworkCommit: ctx.frameworkCommit,
+          lastAppliedSourcePath: entry.path,
+          customisedLocally: diverges,
+          ...(entry.mode === 'adopt-only' ? { adoptedOwnership: true } : {}),
+        };
+      }
+      if (diverges) {
+        if (!ctx.flags.dryRun) {
+          const newFilePath = `${targetPath}.framework-new`;
+          await fs.mkdir(path.dirname(newFilePath), { recursive: true });
+          await writeManagedFileAtomic(newFilePath, frameworkFinal);
+        }
+        process.stderr.write(
+          `MANUAL MERGE: ${relativePath} — adopted content differs from framework. ` +
+          `See ${relativePath}.framework-new. Merge, delete .framework-new, re-run sync.\n`
+        );
+        const extra = { reason: 'adopted-divergent', ...(ctx.flags.dryRun ? { dry_run: 'true' } : {}) };
+        logFileOp(relativePath, 'customised', extra);
+        return 'customised';
+      }
+      const extra = { reason: 'catalogued-existing', ...(ctx.flags.dryRun ? { dry_run: 'true' } : {}) };
+      logFileOp(relativePath, 'new', extra);
+      return 'new';
+    } else {
+      // Non-adopt mode: file exists but not in state.
+      // False-conflict short-circuit: byte-identical to the framework copy →
+      // catalogue as clean, no .framework-new needed.
+      if (existingHash === hashContent(frameworkFinal)) {
+        if (!flags.dryRun && ctx.state) {
           if (!ctx.state.files) ctx.state.files = {};
           ctx.state.files[relativePath] = {
             lastAppliedHash: existingHash,
@@ -1056,22 +1209,19 @@ async function writeNewFile(ctx, entry, relativePath) {
             lastAppliedFrameworkCommit: ctx.frameworkCommit,
             lastAppliedSourcePath: entry.path,
             customisedLocally: false,
-            ...(entry.mode === 'adopt-only' ? { adoptedOwnership: true } : {}),
           };
         }
+        const extra = { reason: 'identical-to-framework', ...(flags.dryRun ? { dry_run: 'true' } : {}) };
+        logFileOp(relativePath, 'new', extra);
+        return 'new';
       }
-      const extra = { reason: 'catalogued-existing', ...(ctx.flags.dryRun ? { dry_run: 'true' } : {}) };
-      logFileOp(relativePath, 'new', extra);
-    } else {
-      // Non-adopt mode: file exists but not in state — write .framework-new
-      // Preserve consumer's LOCAL-OVERRIDE block contents in the .framework-new so the
-      // operator's merge view focuses on out-of-block divergence only.
-      const injOrphan = injectConsumerOverrides(content, targetPath);
-      const orphanFinal = normaliseContent(injOrphan.injected);
+      // Divergent — write .framework-new. The consumer's LOCAL-OVERRIDE block
+      // contents are already injected into frameworkFinal so the operator's
+      // merge view focuses on out-of-block divergence only.
       if (!flags.dryRun) {
         const newFilePath = `${targetPath}.framework-new`;
         await fs.mkdir(path.dirname(newFilePath), { recursive: true });
-        await fs.writeFile(newFilePath, orphanFinal, 'utf8');
+        await writeManagedFileAtomic(newFilePath, frameworkFinal);
         if (ctx.state) {
           if (!ctx.state.files) ctx.state.files = {};
           ctx.state.files[relativePath] = {
@@ -1089,6 +1239,7 @@ async function writeNewFile(ctx, entry, relativePath) {
       );
       const extra = { reason: 'untracked-pre-existing', ...(flags.dryRun ? { dry_run: 'true' } : {}) };
       logFileOp(relativePath, 'customised', extra);
+      return 'customised';
     }
   }
 }
@@ -1351,7 +1502,7 @@ async function mergeSettings(ctx, entry, relativePath) {
 
   if (!flags.dryRun) {
     await fs.mkdir(path.dirname(targetSettingsPath), { recursive: true });
-    await fs.writeFile(targetSettingsPath, normalisedContent, 'utf8');
+    await writeManagedFileAtomic(targetSettingsPath, normalisedContent);
     if (ctx.state) {
       ctx.state.files[relativePath] = {
         ...ctx.state.files[relativePath],
@@ -1557,6 +1708,26 @@ async function main() {
   // Step 4: Read new framework version
   const frameworkVersion = readFrameworkVersion(frameworkRoot);
 
+  // Downgrade guard: refuse to sync a framework checkout OLDER than the version
+  // the state file records — mirrors run-migrations.js refusing fromVersion >
+  // toVersion. Read-only modes (--check, --strict, --doctor) are exempt.
+  if (state && typeof state.frameworkVersion === 'string' &&
+      /^\d+\.\d+\.\d+$/.test(state.frameworkVersion) &&
+      compareSemver(frameworkVersion, state.frameworkVersion) < 0 &&
+      !flags.check && !flags.strict && !flags.doctor) {
+    if (!flags.forceDowngrade) {
+      process.stderr.write(
+        `ERROR: framework checkout is v${frameworkVersion} but .framework-state.json records v${state.frameworkVersion} — ` +
+        `refusing to downgrade. Update the framework submodule to v${state.frameworkVersion} or newer, ` +
+        `or pass --force-downgrade to override.\n`
+      );
+      process.exit(1);
+    }
+    process.stderr.write(
+      `WARN: downgrading framework v${state.frameworkVersion} → v${frameworkVersion} (--force-downgrade).\n`
+    );
+  }
+
   // Step 5: Already on latest? Same-version runs no longer early-exit — they run
   // the file walk in maintenance mode: rebaseline resolved .framework-new merges
   // (SYNC.md Phase 5 step 6, --doctor case(b)), surface files still customised,
@@ -1573,7 +1744,7 @@ async function main() {
 
   // Step 0: Scan for unresolved merges (after --force check)
   if (!flags.force && !flags.adopt && !flags.check && !flags.strict && !flags.doctor) {
-    const unresolved = scanForUnresolvedMerges(targetRoot, manifest);
+    const unresolved = scanForUnresolvedMerges(targetRoot, manifest, state);
     if (unresolved.length > 0) {
       const showing = unresolved.slice(0, 10);
       process.stderr.write(`ERROR: ${unresolved.length} unresolved .framework-new file(s) found. Resolve or delete before syncing (or pass --force to override).\n`);
@@ -1755,10 +1926,12 @@ async function main() {
           await mergeSettings(ctx, entry, relativePath);
           updatedCount++;
           break;
-        case 'new-file-no-state':
-          await writeNewFile(ctx, entry, relativePath);
-          if (!classification.targetExists) newCount++; else customisedCount++;
+        case 'new-file-no-state': {
+          const op = await writeNewFile(ctx, entry, relativePath);
+          if (op === 'new') newCount++;
+          else if (op === 'customised') customisedCount++;
           break;
+        }
         case 'clean':
           if (classification.needsUpdate) {
             await writeUpdated(ctx, entry, relativePath);
@@ -1767,10 +1940,14 @@ async function main() {
             logFileOp(relativePath, 'skipped');
           }
           break;
-        case 'customised':
-          await writeFrameworkNew(ctx, entry, relativePath);
-          customisedCount++;
+        case 'customised': {
+          // 'rebaselined' = false-conflict short-circuit fired: state refreshed,
+          // no .framework-new written — count as an update, not a conflict.
+          const op = await writeFrameworkNew(ctx, entry, relativePath);
+          if (op === 'rebaselined') updatedCount++;
+          else customisedCount++;
           break;
+        }
         case 'rebaseline':
           await applyRebaseline(ctx, entry, relativePath);
           rebaselinedCount++;
@@ -1877,7 +2054,9 @@ module.exports = {
   loadManifest,
   readState,
   writeStateAtomic,
+  writeManagedFileAtomic,
   readFrameworkVersion,
+  compareSemver,
   getSubmoduleCommit,
   checkSubmoduleClean,
   scanForUnresolvedMerges,

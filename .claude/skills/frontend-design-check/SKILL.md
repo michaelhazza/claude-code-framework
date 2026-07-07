@@ -1,6 +1,6 @@
 ---
 name: frontend-design-check
-description: Use BEFORE writing or changing any user-facing UI outside the mockup pipeline — a quick fix, a new form, a page tweak, table controls, or any React component a user will see. The mockup pipeline enforces the design docs automatically; direct UI edits do not, so this skill routes you to them.
+description: Use BEFORE any visual, layout, or UX change to user-facing UI outside the mockup pipeline — a quick fix, a new form, a page tweak, table controls, nav changes, or a new screen. Routes you to the canonical design docs (frontend-design-principles, design-language) that the mockup pipeline enforces automatically and direct UI edits bypass. Sibling: invoke frontend-correctness alongside when the same change touches component state, async data flow, or permission gating.
 ---
 
 # Frontend design check

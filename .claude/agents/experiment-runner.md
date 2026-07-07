@@ -141,3 +141,23 @@ Expected outputs:
 - `tasks/builds/my-slug/experiments.tsv` with one row per iteration.
 - Human-readable summary returned on halt or max_iter reached.
 - `progress.md` entry if strategy-shift threshold (5) is hit.
+
+### Worked example — endpoint P95 profiling
+
+Performance work enters here: any "endpoint X is slow" report becomes a hypothesis of the shape **"endpoint P95 < Xms"** with `direction=lower`. The verify command must print ONE number (the P95 in ms) on stdout — wrap whatever load tool the repo has:
+
+```
+experiment-runner: GET /api/orders P95 < 150ms — suspect the N+1 in orderService.listWithItems
+  verify=npx autocannon -d 10 -c 25 --json http://localhost:3000/api/orders | jq '.latency.p97_5'
+  direction=lower
+  min_delta=3
+  max_iter=15
+  change_budget="one query or function-body change in server/services/orderService.ts per iteration"
+```
+
+Verify-command shape rules for perf runs:
+
+- The app under test must already be running (start it before invoking; the loop never manages the server process).
+- Fix duration/connections across all iterations — a verify command whose load profile drifts between iterations produces incomparable metrics.
+- Use whatever prints the percentile as a bare number: `autocannon ... | jq`, `k6 ... --summary-export | jq`, or the repo's own bench script. If the tool prints a report, pipe through `jq`/`awk` until stdout is one float.
+- Pick `min_delta` above the metric's run-to-run noise (run verify twice unchanged first; if the two readings differ by 5ms, `min_delta=3` is noise-chasing — raise it).

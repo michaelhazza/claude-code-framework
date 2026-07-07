@@ -1,11 +1,11 @@
 ---
 name: ci-gate-integrity
-description: Use when authoring or modifying CI gates, grep-based invariant checks, verification scripts, gate baselines, or GitHub Actions workflows — and when consolidating workflows or migrating a check to a new engine. Gates that cannot fail are the norm, not the exception; every rule here is a way a green gate lied.
+description: Use when authoring or modifying CI gates, GitHub Actions workflows, grep/regex invariant checks, verification scripts, gate baselines, diff-based checks, or required-check configuration — and when consolidating workflows or migrating a check to a new engine. Every rule here is a documented way a green gate lied.
 ---
 
 # CI gate integrity
 
-A gate is only as real as its ability to fail. Every pattern below is a documented way a passing gate concealed a live violation.
+Gates that cannot fail are the norm, not the exception: a gate is only as real as its ability to fail. Every pattern below is a documented way a passing gate concealed a live violation.
 
 ## Prove the gate can fail
 
@@ -18,7 +18,7 @@ Before trusting a new gate green, seed a violation and watch it go red. Addition
 - Gate exit-code semantics depend on WHICH runner invokes the gate: shard-run gates may get baseline env vars and warn-level exit codes, while direct workflow steps fail on any non-zero with no baseline. Local reproduction must replicate the invoking runner's exact contract or bare runs report failures CI never sees (and vice versa).
 - SQL-side gates: `jsonb_typeof` of an absent key is SQL NULL, not an error — a check on an optional key silently passes.
 - Acceptance checks are positive assertions, never absence-of-error: "no failure log line" is indistinguishable from "the code never ran". Grep verification sections for "no error / should not appear" — each is a red flag.
-- Parser failure in a scoring harness is a distinct outcome (`parse_error`), never a neutral passable score.
+- Parser failure in a scoring harness is a distinct outcome (`parse_error`), never a neutral passable score. Judge/rubric threshold-scale agreement for the harness itself: see the llm-integration skill.
 - A gate script with no workflow step invoking it has zero enforcement value — wire it into CI in the same commit that authors it. Registering it in the runner manifest counts as wiring; authoring alone does not.
 
 ## Grep/regex gate pitfalls

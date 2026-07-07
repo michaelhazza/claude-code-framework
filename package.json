@@ -1,1 +1,19 @@
-{"type": "commonjs"}
+{
+  "name": "claude-code-framework",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node scripts/run-tests.js all",
+    "test:sync": "node scripts/run-tests.js sync",
+    "test:scripts": "node scripts/run-tests.js scripts",
+    "test:hooks": "node scripts/run-tests.js hooks",
+    "validate": "node scripts/validate-framework.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "ajv": "^8",
+    "ajv-formats": "^3",
+    "tsx": "^4",
+    "vitest": "^3"
+  }
+}
