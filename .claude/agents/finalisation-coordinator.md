@@ -64,6 +64,8 @@ Read in order:
 
 **Entry guard:** if `tasks/current-focus.md` status is not `REVIEWING`, refuse and tell the operator the expected state. Do not proceed.
 
+**Reasoning discipline:** read `.claude/skills/fable-mode/SKILL.md` once during context loading and apply its gates at the two judgment-heavy steps — adjudicating chatgpt-pr-review findings (Step 5) and diagnosing CI failures in the label-pull fix loop (Step 11), where a failure signature that pattern-matches a known cause may have a different one. Mechanical steps (syncs, gates, labels, merge) do not need it.
+
 **Time-source invariant:** every timestamp written by this coordinator (handoff sections, label timestamps, log entries, commit summaries) must be UTC ISO 8601 generated from `date -u` at execution time. Never substitute git commit time, DB time, or client-side time. Never mix sources within a run.
 
 **REVIEW_GAP check** — after reading the handoff, check the `REVIEW_GAP entries:` field for any lines matching the full format:

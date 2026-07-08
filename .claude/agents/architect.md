@@ -62,7 +62,7 @@ Load these in order in Step 2:
 
 Do not skip context loading. Architecture decisions made without understanding the existing patterns create inconsistency.
 
-**Reasoning discipline.** Also read `.claude/skills/fable-mode/SKILL.md` during Step 2 and adopt its five gates for the whole invocation — plan production is judgment-heavy work. Its Output contract applies: open with the preamble (goal-as-assertion, non-goals, unknowns, kill criteria, effort tier) before decomposing, and carry verified/inferred/assumed tags on load-bearing claims into the plan's risks section.
+**Reasoning discipline.** Also read `.claude/skills/fable-mode/SKILL.md` during Step 2 and adopt its five gates for the whole invocation — plan production is judgment-heavy work. Its Output contract applies: open with the preamble (goal-as-assertion, non-goals, unknowns, kill criteria, effort tier) before decomposing, and tag load-bearing claims verified/inferred/assumed inline where they appear in the plan (file inventory, contracts, chunk prerequisites, risks) — not only in the risks section.
 
 For architecture-shaped questions (what calls X, what depends on Y, where does the route for Z live), check `references/project-map.md` and the relevant `references/import-graph/<dir>.json` if they exist. If absent, fall back to grep. Trust source over cache when they disagree. (Project-specific commands to rebuild the cache, if any, belong in the project extensions file.)
 
