@@ -97,6 +97,8 @@ After the fix is shipped (or if the incident is declared resolved without a code
 
 The agent fills in every field it can from the timeline and available context. Fields it cannot fill are left as `[operator to complete]` — do NOT omit them or leave them blank.
 
+**Reasoning discipline:** before writing the post-mortem, read `.claude/skills/fable-mode/SKILL.md` and apply Gates 2–3: root-cause claims carry verified/inferred/assumed tags (a root cause you did not reproduce or trace this session is inferred, not verified), and each corrective action gets a one-line pre-mortem — how could this fix fail or regress? Do not apply the overlay to Steps 2–4; incident response optimises for speed.
+
 Action items in the post-mortem must also be added to `tasks/todo.md` under `## Action items from incident <YYYY-MM-DD-slug>`. Each action item needs an owner (default: `operator`) and a due date (default: 48 hours from incident open time).
 
 Print a one-paragraph summary of the incident when the post-mortem is complete: SEV level, user-visible impact, root cause, fix summary, and action items count.

@@ -417,6 +417,8 @@ transition.
 not benefit from its own enforcement — the hook is not yet deployed during this
 build. New builds post-v2.13.0 adoption get the markers automatically.
 
+**Reasoning discipline:** invoke the `fable-mode` skill (`.claude/skills/fable-mode/SKILL.md`) before drafting and keep its gates active through Step 6. Gate 1's kill-criteria check folds into the Step 3a duplication result (a hit there means the spec should not be authored); Gate 2's verified/inferred/assumed tags apply to the spec's framing assumptions.
+
 Author the spec using `docs/spec-authoring-checklist.md` as the rubric. Write it to `tasks/builds/{slug}/spec.md` — the canonical spec location for the whole pipeline (feature-coordinator's spec-conformance gate, finalisation-coordinator's auto-resolve table, and this coordinator's Step 3a duplication scan all key on it). Back-compat: repos with a pre-existing dated-specs directory convention (e.g. `docs/**/specs/{YYYY-MM-DD}-{slug}-spec.md`) may keep authoring there, but MUST then also create `tasks/builds/{slug}/spec.md` as a stub that links to the real spec — downstream gates only check the canonical path.
 
 Required sections (checklist appendix is canonical — this is the local summary):

@@ -35,6 +35,7 @@ Before starting, read:
 6. `KNOWLEDGE.md` — past corrections to honour. Pay attention to entries about file-path verification before asserting a path exists.
 7. `tasks/todo.md` — existing deferred items (you will dedup against this when routing pass-3 findings).
 8. `tasks/current-focus.md` — sprint pointer; tells you what's already in flight on other branches.
+9. `.claude/skills/fable-mode/SKILL.md` — reasoning-discipline overlay. Adopt its gates for the audit passes: every pass-1 finding carries a verified/inferred/assumed evidence tag, and claims about file or code state must be verified this session, not recalled.
 
 If the framework version in §header has changed since the last audit, note it. If §2 ({{PROJECT_NAME}} context block) appears stale vs current `package.json` / repo state, surface that to the user before running pass 1 — a stale context block silently mis-classifies safe vs protected files.
 

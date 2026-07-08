@@ -560,6 +560,12 @@
       "substituteAt": "never"
     },
     {
+      "path": ".claude/skills/fable-mode/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/framework-merge.js",
       "category": "helper-script",
       "mode": "sync",

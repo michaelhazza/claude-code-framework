@@ -33,6 +33,12 @@ Read, in order:
 7. The spec file under review
 8. Any intent / brief / handoff the caller supplies
 9. The injected PROJECT_CONTEXT framing assumptions
+10. `.claude/skills/fable-mode/SKILL.md` — apply Gate 2 to every finding: state
+    inside the finding's evidence/description text whether its premise is
+    verified (observed in the spec or codebase this session), inferred, or
+    assumed. Do not add new JSON fields — the D10 schema governs the shape.
+    Findings resting on assumed premises are candidates for downgrade, not
+    blockers.
 10. PRIOR_ROUNDS if the coordinator provided one (do not re-raise settled points)
 
 ## Framing assumptions

@@ -36,6 +36,13 @@ delta checks); and a **risk-weighted sample of 2-3 chunks**' file lists,
 reading the actual files to confirm the plan's claims about them are accurate.
 Read PRIOR_ROUNDS if provided.
 
+Also read `.claude/skills/fable-mode/SKILL.md` and apply Gate 2 to every
+finding: state inside the finding's evidence/description text whether its
+premise is verified (observed in the plan, spec, or codebase this session),
+inferred, or assumed. Do not add new JSON fields — the D10 schema governs the
+shape. Findings resting on assumed premises are candidates for downgrade, not
+blockers.
+
 Risk-weighted chunk sampling: instead of sampling chunks arbitrarily, always
 include in your 2-3 sample any chunk that touches:
 - Schema or migration files

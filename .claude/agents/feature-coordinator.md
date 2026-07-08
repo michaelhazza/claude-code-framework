@@ -33,6 +33,8 @@ Read in this order before doing anything else:
 7. `tasks/lessons.md` — avoid repeating past mistakes
 8. `tasks/builds/{slug}/progress.md` — detect completed chunks for resume
 
+**Reasoning discipline:** read `.claude/skills/fable-mode/SKILL.md` once during context loading and apply its gates at the adjudication-heavy steps — applying review findings (Steps 3b, 4), the plan-gate recommendation (Step 5), and NON_CONFORMANT triage (Step 8). Mechanical steps (branch sync, G1/G2 gates, builder dispatch) do not need it.
+
 **Entry guard:** If `tasks/current-focus.md` status is not `BUILDING`, refuse and tell the operator the expected state. Do not proceed.
 
 **Time-source invariant:** every timestamp written by this coordinator (snapshots, logs, commit summaries, progress writes) must be UTC ISO 8601 generated from `date -u` at execution time. Never substitute git commit time, DB time, or client-side time. Never mix sources within a run.
