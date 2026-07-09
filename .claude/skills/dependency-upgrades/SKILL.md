@@ -3,6 +3,8 @@ name: dependency-upgrades
 description: Use when bumping, adding, or removing packages — lockfile changes, npm audit findings, security advisories, peer-dependency conflicts, version overrides, or major-version migrations. Install success proves nothing; the failure arrives at build, test, or runtime.
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## dependency-upgrades` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Dependency upgrades
 
 A dependency bump is a contract change you didn't author. The install succeeding is the weakest possible signal — verify the contract, not the download.

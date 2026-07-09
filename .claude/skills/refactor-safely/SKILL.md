@@ -3,6 +3,8 @@ name: refactor-safely
 description: Use BEFORE moving, splitting, renaming, extracting, or deleting existing code — file splits, helper extraction, lifting code into an orchestrator, mass find-replace edits, resolving merge conflicts, or acting on "unused code" findings. Structural changes have their own defect classes distinct from new-feature bugs.
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## refactor-safely` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Refactor safely
 
 Structural changes fail differently from new code: the pieces all compile, the tests stay green, and the regression hides in what the move dropped, duplicated, or left behind.

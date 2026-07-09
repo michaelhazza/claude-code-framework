@@ -3,6 +3,8 @@ name: frontend-design-check
 description: Use BEFORE any visual, layout, or UX change to user-facing UI outside the mockup pipeline — a quick fix, a new form, a page tweak, table controls, nav changes, or a new screen. Routes you to the canonical design docs (frontend-design-principles, design-language) that the mockup pipeline enforces automatically and direct UI edits bypass. Sibling: invoke frontend-correctness alongside when the same change touches component state, async data flow, or permission gating.
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## frontend-design-check` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Frontend design check
 
 Direct UI edits bypass the mockup pipeline's enforced design review. Before writing UI:

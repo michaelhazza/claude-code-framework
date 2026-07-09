@@ -3,6 +3,8 @@ name: security-hardening
 description: Use when writing code that touches authentication tokens, OAuth flows, webhooks, outbound HTTP to configurable URLs, URL/path construction from user input, shell command execution, regexes over user-supplied patterns, or security-relevant comparisons. Complements the tenant-isolation skill (which owns multi-tenant data boundaries).
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## security-hardening` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Security hardening
 
 The non-tenant security defect classes reviewers and adversarial passes repeatedly confirmed. Tenant/RLS boundaries live in the tenant-isolation skill.

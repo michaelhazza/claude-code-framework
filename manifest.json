@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.32.1",
+  "frameworkVersion": "2.33.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -45,6 +45,12 @@
     },
     {
       "path": ".claude/hooks/knowledge-append-guard.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/memory-digest.js",
       "category": "hook",
       "mode": "sync",
       "substituteAt": "never"
@@ -195,6 +201,12 @@
     },
     {
       "path": ".claude/context/agent-context.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": ".claude/context/skill-context.md",
       "category": "template",
       "mode": "adopt-only",
       "substituteAt": "adoption"
@@ -374,6 +386,18 @@
       "substituteAt": "never"
     },
     {
+      "path": "references/skill-overlay-convention.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/eval-suite-format.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/review-coordinator/*.ts",
       "category": "review-coordinator",
       "mode": "sync",
@@ -423,6 +447,18 @@
     },
     {
       "path": "scripts/audit-context-packs.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/eval-prompts.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/eval-promptsPure.ts",
       "category": "helper-script",
       "mode": "sync",
       "substituteAt": "never"

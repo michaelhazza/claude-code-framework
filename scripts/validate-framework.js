@@ -109,6 +109,32 @@ function checkFrontmatter() {
   }
 }
 
+// ── 1b. Skill overlay pointer coverage ──────────────────────────────────────
+// Every .claude/skills/*/SKILL.md must carry the canonical skill-overlay
+// pointer line (see references/skill-overlay-convention.md). The stable
+// substring the gate greps for is the literal overlay path. A skill missing
+// it fails validation — this is the enforceable half of the convention;
+// framework-doctor Check 6 is the consumer-side advisory view.
+
+const SKILL_POINTER_SUBSTRING = '.claude/context/skill-context.md';
+
+function checkSkillPointers() {
+  const skillsDir = path.join(REPO_ROOT, '.claude', 'skills');
+  if (!existsSync(skillsDir)) return;
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
+    if (!existsSync(skillFile)) continue; // frontmatter check already reports a missing SKILL.md
+    const body = readFileSync(skillFile, 'utf8');
+    if (!body.includes(SKILL_POINTER_SUBSTRING)) {
+      errors.push(
+        `skill-pointer: ${rel(skillFile)} is missing the skill-overlay pointer line ` +
+          `(expected substring "${SKILL_POINTER_SUBSTRING}"; see references/skill-overlay-convention.md)`,
+      );
+    }
+  }
+}
+
 // ── 2. Schemas compile under ajv ────────────────────────────────────────────
 
 function checkSchemas() {
@@ -312,6 +338,7 @@ function checkBundleHygiene() {
 
 function main() {
   checkFrontmatter();
+  checkSkillPointers();
   checkSchemas();
   checkBundleHygiene();
   const mdCount = checkMarkdownLinks();
