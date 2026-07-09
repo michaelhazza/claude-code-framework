@@ -392,6 +392,12 @@
       "substituteAt": "never"
     },
     {
+      "path": "references/eval-suite-format.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/review-coordinator/*.ts",
       "category": "review-coordinator",
       "mode": "sync",
@@ -441,6 +447,18 @@
     },
     {
       "path": "scripts/audit-context-packs.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/eval-prompts.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/eval-promptsPure.ts",
       "category": "helper-script",
       "mode": "sync",
       "substituteAt": "never"

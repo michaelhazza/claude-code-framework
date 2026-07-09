@@ -31,7 +31,9 @@ Diagnostic sweep over the framework repo or a consuming repo (auto-detected). Ca
 
 8. **Check 7 — Stale un-promoted overlay entries.** Agent-mediated, Node-based. For each dated entry (`### YYYY-MM-DD …`) in `.claude/context/skill-context.md` that lacks a `> promoted in` marker, compute the entry age against the current date and flag entries older than one quarter (~90 days). This is an **awareness finding** (a compounding leak — a durable, generalisable lesson that never drained upstream to the canonical skill), not a hard failure. One row per stale entry: skill section, entry date, age (days). Age is computed by the agent against the current date; no persisted state. See `references/skill-overlay-convention.md` for the drain protocol these two checks watch.
 
-9. **Report.** One table per check, in order, each with a one-line verdict (`OK` or `N findings`). Close with a single summary line: `framework-doctor: N checks, M findings, 0 writes`.
+9. **Check 8 — Eval suite validity.** Agent-mediated, Node-based (same posture as Checks 6–7). For each `eval/*/` directory: parse `config.json` and confirm it names a `promptModule` and a known `provider`; parse every `cases.jsonl` line and confirm the five required keys (`id`, `input`, `expected`, `notes`, `source`) with `expected` carrying a `verdict` of `issue`/`clean`; parse `baseline.json` if present. One row per suite: suite, config valid (bool), cases valid (bool), baseline present (bool). A suite with `cases.jsonl` but no `baseline.json` is an advisory finding (a normal run would exit non-zero until seeded with `--accept`). Skip gracefully when no `eval/` directory exists (most consumers have none). Format spec: `references/eval-suite-format.md`.
+
+10. **Report.** One table per check, in order, each with a one-line verdict (`OK` or `N findings`). Close with a single summary line: `framework-doctor: N checks, M findings, 0 writes`.
 
 ## Rules
 
