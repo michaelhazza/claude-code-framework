@@ -148,14 +148,15 @@ async function importCallable(modulePath: string): Promise<(input: unknown) => u
   return fn as (input: unknown) => unknown;
 }
 
-async function loadNormalizer(config: EvalConfig): Promise<(raw: string) => NormalizeResult> {
-  if (!config.normalizer) return normalizeStrict;
+async function loadNormalizer(config: EvalConfig): Promise<(raw: string) => Promise<NormalizeResult>> {
+  if (!config.normalizer) return async (raw: string) => normalizeStrict(raw);
   const fn = await importCallable(config.normalizer);
   // A custom normalizer is untrusted: validate its output (and catch throws) so
   // an invalid verdict becomes `malformed` rather than a silent scoring miss.
-  return (raw: string) => {
+  // `await` supports both sync and async normalizers.
+  return async (raw: string) => {
     try {
-      return coerceNormalizeResult(fn(raw));
+      return coerceNormalizeResult(await fn(raw));
     } catch (err) {
       return { malformed: `normalizer threw: ${(err as Error).message}` };
     }
@@ -241,7 +242,8 @@ async function main(argv: string[]): Promise<void> {
   for (const c of suite.cases) {
     let raw: string;
     try {
-      const messages = toMessages(promptFn(c.input), c.id);
+      // `await` supports both sync and async prompt modules.
+      const messages = toMessages(await promptFn(c.input), c.id);
       raw = await provider.runPrompt(messages, { model: suite.config.model });
     } catch (err) {
       // Provider / adapter failures surface loudly — never a silent pass. Exit 3
@@ -250,7 +252,7 @@ async function main(argv: string[]): Promise<void> {
       process.stderr.write(`eval-prompts: case "${c.id}" failed: ${(err as Error).message}\n`);
       process.exit(EXIT_PROVIDER);
     }
-    const norm = normalize(raw);
+    const norm = await normalize(raw);
     if ('malformed' in norm) {
       results.push({ id: c.id, expected: c.expected.verdict, actual: null, malformedReason: norm.malformed });
     } else {

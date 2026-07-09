@@ -10,7 +10,7 @@ This file is the **only** place to add project-specific failure modes, anti-patt
 - Keep entries tight and dated. Each entry records a real repo-specific failure the skill should have caught, the anti-pattern that produced it, and the correction.
 - This file is `adopt-only`: the framework deploys it once, then never overwrites it. It is yours to maintain.
 
-## Write protocol (summary)
+### Write protocol (summary)
 
 Full protocol: [`references/skill-overlay-convention.md`](../../references/skill-overlay-convention.md).
 
@@ -18,7 +18,7 @@ Full protocol: [`references/skill-overlay-convention.md`](../../references/skill
 2. **Same-day mirror.** When a lesson is procedural AND clearly skill-shaped (it changes how a specific skill is applied), ALSO append it that day to the matching `## <skill-name>` section here, dated, with a back-reference to the KNOWLEDGE.md date.
 3. **Quarterly drain.** During the `/cleanfiles` sweep, overlay entries that generalise beyond this repo are promoted upstream into the canonical skill (a framework PR). Promoted entries are **marked, not deleted** — the entry gets a `> promoted in vX.Y.Z` prefix and stays for provenance.
 
-## Entry shape
+### Entry shape
 
 Each entry under a `## <skill-name>` section:
 
@@ -32,7 +32,7 @@ Each entry under a `## <skill-name>` section:
 
 ---
 
-## Worked example
+### Worked example
 
 The example below uses a **real skill name** but is wrapped in an HTML comment, so it can never be read as binding project context — delete it or replace it with your real `## <skill-name>` sections.
 

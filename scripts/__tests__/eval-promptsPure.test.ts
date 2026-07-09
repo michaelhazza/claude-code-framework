@@ -32,19 +32,20 @@ test('parseCasesJsonl: parses valid lines and skips blanks', () => {
   const text = [
     '{"id":"a","input":"x","expected":{"verdict":"issue"},"notes":"n","source":"s"}',
     '',
-    '{"id":"b","input":"y","expected":{"verdict":"clean"}}',
+    '{"id":"b","input":"y","expected":{"verdict":"clean"},"notes":"n2","source":"s2"}',
   ].join('\n');
   const { cases, errors } = parseCasesJsonl(text);
   expect(errors).toEqual([]);
   expect(cases.map((c) => c.id)).toEqual(['a', 'b']);
   expect(cases[0].expected.verdict).toBe('issue');
+  expect(cases[0].source).toBe('s');
 });
 
 test('parseCasesJsonl: reports invalid JSON and invalid verdict without throwing', () => {
   const text = [
     '{not json}',
-    '{"id":"b","input":"y","expected":{"verdict":"maybe"}}',
-    '{"id":"c","input":"z","expected":{"verdict":"clean"}}',
+    '{"id":"b","input":"y","expected":{"verdict":"maybe"},"notes":"n","source":"s"}',
+    '{"id":"c","input":"z","expected":{"verdict":"clean"},"notes":"n","source":"s"}',
   ].join('\n');
   const { cases, errors } = parseCasesJsonl(text);
   expect(cases.map((c) => c.id)).toEqual(['c']);
@@ -53,11 +54,18 @@ test('parseCasesJsonl: reports invalid JSON and invalid verdict without throwing
   expect(errors[1]).toMatch(/verdict/);
 });
 
-test('validateCaseObject: rejects missing id, missing input, bad expected', () => {
-  expect(validateCaseObject({ input: 'x', expected: { verdict: 'issue' } }, 'r').error).toMatch(/id/);
-  expect(validateCaseObject({ id: 'a', expected: { verdict: 'issue' } }, 'r').error).toMatch(/input/);
-  expect(validateCaseObject({ id: 'a', input: 'x', expected: {} }, 'r').error).toMatch(/verdict/);
-  expect(validateCaseObject({ id: 'a', input: 'x', expected: { verdict: 'clean' } }, 'r').case?.id).toBe('a');
+test('validateCaseObject: enforces all five required keys + shapes', () => {
+  const good = { id: 'a', input: 'x', expected: { verdict: 'clean' }, notes: 'n', source: 's' };
+  expect(validateCaseObject(good, 'r').case?.id).toBe('a');
+  // missing each required key is rejected
+  expect(validateCaseObject({ ...good, id: undefined }, 'r').error).toMatch(/"id"/);
+  expect(validateCaseObject({ id: 'a', expected: { verdict: 'issue' }, notes: 'n', source: 's' }, 'r').error).toMatch(/input/);
+  expect(validateCaseObject({ id: 'a', input: 'x', notes: 'n', source: 's' }, 'r').error).toMatch(/expected/);
+  expect(validateCaseObject({ id: 'a', input: 'x', expected: {}, notes: 'n', source: 's' }, 'r').error).toMatch(/verdict/);
+  // notes / source are required provenance
+  expect(validateCaseObject({ id: 'a', input: 'x', expected: { verdict: 'clean' }, source: 's' }, 'r').error).toMatch(/notes/);
+  expect(validateCaseObject({ id: 'a', input: 'x', expected: { verdict: 'clean' }, notes: 'n' }, 'r').error).toMatch(/source/);
+  expect(validateCaseObject({ id: 'a', input: 'x', expected: { verdict: 'clean' }, notes: 5, source: 's' }, 'r').error).toMatch(/notes/);
 });
 
 // ── strict normalizer ────────────────────────────────────────────────────────

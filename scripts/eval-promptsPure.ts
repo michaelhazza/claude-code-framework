@@ -30,8 +30,8 @@ export interface EvalCase {
   id: string;
   input: unknown;
   expected: ExpectedShape;
-  notes?: string;
-  source?: string;
+  notes: string;
+  source: string;
 }
 
 export interface Thresholds {
@@ -93,11 +93,13 @@ export function validateCaseObject(obj: unknown, ref: string): { case?: EvalCase
     return { error: `${ref}: case is not a JSON object` };
   }
   const o = obj as Record<string, unknown>;
-  if (typeof o.id !== 'string' || o.id.trim() === '') {
-    return { error: `${ref}: missing non-empty string "id"` };
+  // All five keys are the pinned contract (references/eval-suite-format.md +
+  // framework-doctor Check 8). Enforce presence before shape checks.
+  for (const k of REQUIRED_KEYS) {
+    if (!(k in o)) return { error: `${ref}: missing required key "${k}"` };
   }
-  if (!('input' in o)) {
-    return { error: `${o.id}: missing "input"` };
+  if (typeof o.id !== 'string' || o.id.trim() === '') {
+    return { error: `${ref}: "id" must be a non-empty string` };
   }
   const exp = o.expected;
   if (typeof exp !== 'object' || exp === null || Array.isArray(exp)) {
@@ -107,14 +109,21 @@ export function validateCaseObject(obj: unknown, ref: string): { case?: EvalCase
   if (v !== 'issue' && v !== 'clean') {
     return { error: `${o.id}: "expected.verdict" must be "issue" or "clean"` };
   }
+  // notes / source are provenance — the point of a golden case — and required.
+  if (typeof o.notes !== 'string') {
+    return { error: `${o.id}: "notes" must be a string (provenance is required)` };
+  }
+  if (typeof o.source !== 'string') {
+    return { error: `${o.id}: "source" must be a string (provenance is required)` };
+  }
   const label = (exp as Record<string, unknown>).label;
   return {
     case: {
       id: o.id,
       input: o.input,
       expected: { verdict: v, label: typeof label === 'string' ? label : undefined },
-      notes: typeof o.notes === 'string' ? o.notes : undefined,
-      source: typeof o.source === 'string' ? o.source : undefined,
+      notes: o.notes,
+      source: o.source,
     },
   };
 }

@@ -40,17 +40,17 @@ eval/<suite>/
 
 ### promptModule contract
 
-The module's callable (default export or `module.exports` function) receives one case's `input` and returns one of:
+The module's callable (default export or `module.exports` function) receives one case's `input` and returns (synchronously or as a Promise — the runner `await`s it) one of:
 
 - a `string` — treated as the user message;
 - an object `{ system?, user }` — assembled into system + user messages;
-- a `ResponsesMessage[]` (`{ role, content }[]`) — used as-is.
+- a `ResponsesMessage[]` (`{ role, content }[]`) — used as-is (each entry validated for `role` + string `content`).
 
 Any other shape is a hard error — the adapter never guesses.
 
 ### normalizer contract
 
-`(raw: string) => { verdict: "issue" | "clean", label? } | { malformed: string }`. Omitting `normalizer` uses the **strict default**: the raw output MUST be JSON carrying `verdict: "issue" | "clean"`. Non-JSON output, a non-object, or a missing/invalid verdict marks that case **malformed**, and the run **fails** (non-zero) naming the offending case id. There is NO fuzzy issue-detection fallback: a keyword guess would make the golden-set numbers untrustworthy. Suites whose target prompt does not emit JSON must supply an explicit `normalizer`.
+`(raw: string) => { verdict: "issue" | "clean", label? } | { malformed: string }` (sync or async — the runner `await`s it, and validates the returned shape; a wrong-cased or unknown verdict is coerced to `malformed` rather than trusted). Omitting `normalizer` uses the **strict default**: the raw output MUST be JSON carrying `verdict: "issue" | "clean"`. Non-JSON output, a non-object, or a missing/invalid verdict marks that case **malformed**, and the run **fails** (non-zero) naming the offending case id. There is NO fuzzy issue-detection fallback: a keyword guess would make the golden-set numbers untrustworthy. Suites whose target prompt does not emit JSON must supply an explicit `normalizer`.
 
 ## cases.jsonl
 
