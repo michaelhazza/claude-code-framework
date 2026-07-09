@@ -103,3 +103,39 @@ Four minor nits, all patched, reviewer verdict "spec approved for plan, no new b
 - 2026-07-09: One release (v2.33.0), one PR, three workstreams — operator delegated; batching precedent cited above.
 - 2026-07-09: Venue = framework repo submodule checkout in automation-v1-2nd; branch feat/v2.33.0-compound-learning.
 - 2026-07-09: PAUSED by operator before intent authoring. No commits made; working-tree changes: tasks/current-focus.md (PLANNING lock), this file.
+
+## Phase 2 (BUILD) — complete (2026-07-09, Opus session)
+
+**Plan:** tasks/builds/compound-learning-suite/plan.md (7 chunks). **Branch HEAD at handoff:** see final commit.
+
+**Pipeline-depth decision (recorded per operator "decide how much dev pipeline you need"):**
+- Architect re-derivation folded into plan.md — the ACCEPTED spec's file-inventory lock + phase sequencing IS the decomposition (no new design decisions).
+- Build constructed inline by the grounded Opus session, not dispatched Sonnet builders — exact-contract framework work (manifest ↔ version ↔ CHANGELOG ↔ migration mutual consistency, CI-asserted) with tight interdependencies is safer in one hand. Deviation from feature-coordinator's "dispatch builder" rule (app-repo cost policy) is operator-authorized.
+- Gates run: `npm test` (all suites green) + `npm run validate` (green except the intentional bundle-hygiene build-artifact flag, resolved at finalisation).
+
+**REVIEW_GAP: claude-plan-review + chatgpt-plan-review | task-class: Major | reason: spec externally reviewed 3 rounds (19 findings, all patched) to "approved for plan"; plan is a mechanical decomposition of a locked file inventory with no new design decisions | operator-override: yes-2026-07-09 | remediation: accept — independent code-review pass run post-build instead (higher value for implementation bugs)**
+
+**spec-conformance:** self-verified inline — every File-inventory-lock item built and registered; 6 manifest entries exactly (finding B7 count honored); doc-sync 2 rows (not the mapping doc, finding R2/B6); README hooks 9→10, commands 7→8.
+**adversarial-reviewer:** skipped — diff has no security/tenant/auth/RLS surface (framework infra; per GRADED policy).
+**pr-reviewer:** run (framework-framed, report-only). Verdict: no blocking defects. 6 findings applied (2 should-fix: custom-normalizer output validation, allocUnsafe short-read; 4 consider: exit-code split, dry-run malformed warning, lessons-heading comment, toMessages array validation). Migration/scoring/wiring affirmed correct.
+**dual-reviewer:** skipped — Codex not invoked this session; REVIEW_GAP: dual-reviewer | task-class: Major | reason: not run in autonomous session | operator-override: yes-2026-07-09 | remediation: pr-reviewer + full gates cover; run before merge if desired.
+
+**Test evidence:** memory-digest.test.js 26/26; eval-promptsPure.test.ts 17/17 (vitest); tests/migrations.test.ts v2.33.0 fresh/idempotent/pristine/conflict/absent (5) green; full `npm test` all suites green; `npm run validate` clean except bundle-hygiene.
+
+## Doc Sync gate (framework-repo scope)
+- architecture.md / docs/capabilities.md / docs/integration-reference.md / CLAUDE.md / DEVELOPMENT_GUIDELINES.md / KNOWLEDGE.md: n/a — not present in the framework repo (consumer docs)
+- CONTRIBUTING.md: yes (Adding a skill — pointer-line step)
+- references/skill-overlay-convention.md: yes (new doc, this PR)
+- references/eval-suite-format.md: yes (new doc, this PR)
+- .claude/FRAMEWORK_VERSION + .claude/CHANGELOG.md: yes (bumped 2.32.1→2.33.0 + entry)
+- README.md: yes (hooks 9→10, commands 7→8, What-ships rows) [not a doc-sync registry row but updated in-PR]
+- SECURITY.md: yes (memory-digest per-hook row)
+- docs/doc-sync.md: yes (registered the 2 new reference docs)
+- docs/decisions/: no — checked: no new durable cross-cutting policy; overlay mirrors ADR-0006, eval provider seam is an impl detail; documented in references/ instead
+- architect/feature-coordinator/plan-review + build-orchestration ADR: no — checked declared_files/depends_on/exclusive_resources/computeWaves/wave-loop; no orchestration or chunk-metadata change in this PR
+- docs/frontend-design-principles.md / design-language / mobile-capability / behaviour-manifest: n/a — no UI/mockup change
+- references/test-gate-policy.md: n/a — test-gate posture unchanged
+- references/spec-review-directional-signals.md: n/a — no repeated classifier signal
+- docs/incident-response.md: n/a — no SEV/matrix change
+- docs/context-packs/: n/a — no architecture.md anchor change
+- docs/spec-context.md: n/a — feature pipeline, not a spec-review session
