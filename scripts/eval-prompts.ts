@@ -27,7 +27,10 @@
  *   EVAL_PROMPTS_MODEL    optional model override (default: gpt-5.5)
  *   EVAL_PROMPTS_EFFORT   optional reasoning effort (minimal|low|medium|high|off; default: off)
  *
- * Exit codes: 0 ok · 1 regression / malformed / missing baseline · 2 usage or config error.
+ * Exit codes: 0 ok · 1 regression / malformed / missing baseline · 2 usage or
+ * config error (bad args, invalid config/cases) · 3 provider / runtime failure
+ * (e.g. the model was unreachable) — kept distinct from 2 so a CI wrapper can
+ * tell a retryable network blip from a permanent misconfiguration.
  */
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -39,6 +42,7 @@ import {
   parseCasesJsonl,
   validateConfig,
   normalizeStrict,
+  coerceNormalizeResult,
   evaluate,
   type Baseline,
   type CaseResult,
@@ -61,6 +65,7 @@ try {
 const DEFAULT_MODEL = 'gpt-5.5';
 const EXIT_FAIL = 1;
 const EXIT_USAGE = 2;
+const EXIT_PROVIDER = 3;
 
 // ── provider seam ─────────────────────────────────────────────────────────────
 
@@ -102,6 +107,20 @@ function makeProvider(name: string): EvalProvider {
  */
 export function toMessages(promptOutput: unknown, caseId: string): ResponsesMessage[] {
   if (Array.isArray(promptOutput)) {
+    const ok =
+      promptOutput.length > 0 &&
+      promptOutput.every(
+        (m) =>
+          m &&
+          typeof m === 'object' &&
+          (m.role === 'system' || m.role === 'user' || m.role === 'assistant') &&
+          typeof m.content === 'string',
+      );
+    if (!ok) {
+      throw new Error(
+        `promptModule returned a bad ResponsesMessage[] for case "${caseId}" — each entry needs role (system|user|assistant) + string content`,
+      );
+    }
     return promptOutput as ResponsesMessage[];
   }
   if (typeof promptOutput === 'string') {
@@ -132,7 +151,15 @@ async function importCallable(modulePath: string): Promise<(input: unknown) => u
 async function loadNormalizer(config: EvalConfig): Promise<(raw: string) => NormalizeResult> {
   if (!config.normalizer) return normalizeStrict;
   const fn = await importCallable(config.normalizer);
-  return (raw: string) => fn(raw) as NormalizeResult;
+  // A custom normalizer is untrusted: validate its output (and catch throws) so
+  // an invalid verdict becomes `malformed` rather than a silent scoring miss.
+  return (raw: string) => {
+    try {
+      return coerceNormalizeResult(fn(raw));
+    } catch (err) {
+      return { malformed: `normalizer threw: ${(err as Error).message}` };
+    }
+  };
 }
 
 // ── suite loading ─────────────────────────────────────────────────────────────
@@ -217,8 +244,11 @@ async function main(argv: string[]): Promise<void> {
       const messages = toMessages(promptFn(c.input), c.id);
       raw = await provider.runPrompt(messages, { model: suite.config.model });
     } catch (err) {
-      // Provider / adapter failures surface loudly — never a silent pass.
-      fail(`case "${c.id}" failed: ${(err as Error).message}`);
+      // Provider / adapter failures surface loudly — never a silent pass. Exit 3
+      // (runtime failure), distinct from exit 2 (usage/config) so CI can tell a
+      // retryable network blip from a permanent misconfiguration.
+      process.stderr.write(`eval-prompts: case "${c.id}" failed: ${(err as Error).message}\n`);
+      process.exit(EXIT_PROVIDER);
     }
     const norm = normalize(raw);
     if ('malformed' in norm) {
@@ -255,6 +285,11 @@ async function main(argv: string[]): Promise<void> {
   }
 
   if (dryRun) {
+    if (report.malformed.length > 0) {
+      process.stdout.write(
+        `  dry run — WARNING: ${report.malformed.length} malformed case(s) would fail a real run\n`,
+      );
+    }
     process.stdout.write('  dry run — no baseline comparison\n');
     process.exit(0);
   }

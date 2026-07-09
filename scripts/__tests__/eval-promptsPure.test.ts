@@ -14,6 +14,7 @@ import {
   parseCasesJsonl,
   validateCaseObject,
   normalizeStrict,
+  coerceNormalizeResult,
   validateConfig,
   scoreResults,
   compareToBaseline,
@@ -71,6 +72,24 @@ test('normalizeStrict: marks non-JSON, non-object, and missing/invalid verdict a
   expect('malformed' in normalizeStrict('"just a string"')).toBe(true);
   expect('malformed' in normalizeStrict('{"foo":"bar"}')).toBe(true);
   expect('malformed' in normalizeStrict('{"verdict":"issueish"}')).toBe(true);
+});
+
+// ── coerce (custom normalizer output validation) ─────────────────────────────
+
+test('coerceNormalizeResult: passes through valid verdict + malformed shapes', () => {
+  expect(coerceNormalizeResult({ verdict: 'issue' })).toEqual({ verdict: 'issue', label: undefined });
+  expect(coerceNormalizeResult({ verdict: 'clean', label: 'x' })).toEqual({ verdict: 'clean', label: 'x' });
+  expect(coerceNormalizeResult({ malformed: 'why' })).toEqual({ malformed: 'why' });
+});
+
+test('coerceNormalizeResult: rejects invalid shapes from a custom normalizer', () => {
+  // wrong case, unknown verdict, empty object, non-object, array — all malformed.
+  expect('malformed' in coerceNormalizeResult({ verdict: 'ISSUE' })).toBe(true);
+  expect('malformed' in coerceNormalizeResult({ verdict: 'flag' })).toBe(true);
+  expect('malformed' in coerceNormalizeResult({})).toBe(true);
+  expect('malformed' in coerceNormalizeResult('issue')).toBe(true);
+  expect('malformed' in coerceNormalizeResult(['issue'])).toBe(true);
+  expect('malformed' in coerceNormalizeResult(null)).toBe(true);
 });
 
 // ── config validation ────────────────────────────────────────────────────────

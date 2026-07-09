@@ -169,6 +169,32 @@ export function normalizeStrict(raw: string): NormalizeResult {
   return { verdict: v, label: typeof label === 'string' ? label : undefined };
 }
 
+/**
+ * Validate the return value of ANY normalizer (the strict default OR a
+ * consumer-supplied one) into a trusted NormalizeResult. A custom normalizer is
+ * untrusted code: if it returns a wrong-cased verdict (`"ISSUE"`), an unknown
+ * verdict, a non-object, or a bare `{}`, this coerces it to `malformed` rather
+ * than letting an invalid `verdict` flow into scoring as a silent miss — the
+ * exact "untrustworthy golden-set numbers" failure the strict normalizer exists
+ * to prevent. The I/O runner routes a custom normalizer's output through here.
+ */
+export function coerceNormalizeResult(x: unknown): NormalizeResult {
+  if (x && typeof x === 'object' && !Array.isArray(x)) {
+    const o = x as Record<string, unknown>;
+    if (typeof o.malformed === 'string') return { malformed: o.malformed };
+    if (o.verdict === 'issue' || o.verdict === 'clean') {
+      return { verdict: o.verdict, label: typeof o.label === 'string' ? o.label : undefined };
+    }
+  }
+  let shown: string;
+  try {
+    shown = JSON.stringify(x);
+  } catch {
+    shown = String(x);
+  }
+  return { malformed: `normalizer returned an invalid shape: ${(shown ?? String(x)).slice(0, 120)}` };
+}
+
 // ── config validation ─────────────────────────────────────────────────────────
 
 export function validateConfig(obj: unknown): { config?: EvalConfig; error?: string } {

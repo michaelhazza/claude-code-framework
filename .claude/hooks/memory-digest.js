@@ -68,8 +68,10 @@ function readHead(file, maxBytes) {
     const len = Math.min(size, maxBytes);
     if (len === 0) return '';
     const buf = Buffer.allocUnsafe(len);
-    readSync(fd, buf, 0, len, 0);
-    return buf.toString('utf8');
+    // Decode only the bytes actually read — a short read must never let the
+    // uninitialised tail of an allocUnsafe buffer reach stdout.
+    const n = readSync(fd, buf, 0, len, 0);
+    return buf.toString('utf8', 0, n);
   } finally {
     closeSync(fd);
   }
@@ -88,8 +90,8 @@ function readTail(file, maxBytes) {
     const len = size - start;
     if (len === 0) return { text: '', truncated: false };
     const buf = Buffer.allocUnsafe(len);
-    readSync(fd, buf, 0, len, start);
-    return { text: buf.toString('utf8'), truncated: start > 0 };
+    const n = readSync(fd, buf, 0, len, start);
+    return { text: buf.toString('utf8', 0, n), truncated: start > 0 };
   } finally {
     closeSync(fd);
   }
@@ -120,7 +122,14 @@ function stripLeadingHtmlComments(s) {
   }
 }
 
-/** A real dated lessons/knowledge entry heading vs the format-template decoy. */
+/**
+ * A real dated lessons entry heading vs the format-template decoy at the file
+ * tail. Assumes the documented lessons convention: entries are `### YYYY-MM-DD …`
+ * (digit-first), while the trailing template/archive markers are non-digit
+ * (`### [Date] …`, `### Archived …`). A consumer whose first real entry is not
+ * digit-prefixed would yield an empty lessons block — acceptable (fail-quiet),
+ * and the price of never emitting the boilerplate template to every session.
+ */
 function isDateLikeHeadingText(rest) {
   return /^\d/.test(rest.trim());
 }
