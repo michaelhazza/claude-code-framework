@@ -17,6 +17,7 @@ Hooks registered via `.claude/settings.json` (merged into the consumer's setting
 | `bash-config-guard.js` | PreToolUse (Bash) | Guards shell-based writes to protected config AND KNOWLEDGE.md — all Bash write shapes incl. `>>` appends block with HITL (added 2.30.0) | See file header for its exit-code contract |
 | `framework-merge-reminder.js` | (added 2.30.0) | Reminds about pending `.framework-new` merges | See file header for its exit-code contract |
 | `knowledge-append-guard.js` | PreToolUse (Edit/Write/MultiEdit, added 2.30.0) | Enforces strict append-only on KNOWLEDGE.md: ONLY pure tail appends pass; any other edit (body rewrites included) requires HITL | See file header for its exit-code contract |
+| `memory-digest.js` | SessionStart (added 2.33.0) | Emits a bounded (≤150-line) plain-text digest of `tasks/current-focus.md`, `tasks/lessons.md`, and the tail of `KNOWLEDGE.md` so a session starts with recent context in view. Read-only, local-only, no egress; every read is byte-bounded (KNOWLEDGE 32KB tail); backstopped by a 5s `timeout` | Fail-open — a missing file, unreadable input, or slow filesystem degrades to fewer/no blocks and never blocks session start (exit 0 always) |
 
 Every hook is plain Node with no third-party dependencies, readable in `.claude/hooks/`. The only hook that spawns a subprocess is `code-graph-freshness-check.js`, and only to run the consumer's own code-graph build script if one exists.
 

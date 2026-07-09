@@ -50,6 +50,12 @@
       "substituteAt": "never"
     },
     {
+      "path": ".claude/hooks/memory-digest.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": ".claude/hooks/long-doc-guard.js",
       "category": "hook",
       "mode": "sync",
