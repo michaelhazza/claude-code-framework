@@ -32,11 +32,12 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | Path | Contents |
 |------|----------|
 | `.claude/agents/` | 29 agent definitions (with `{{...}}` placeholders; `_retired/` excluded) |
-| `.claude/commands/` | 7 operator commands: `/claudeupdate` (one-shot framework bump across repos), `/claudemerge` (guided `.framework-new` conflict merge), `/framework-init` (first-time adoption entry point), `/framework-doctor` (framework health diagnosis), `/release` (framework release flow), `/fix-ci-gate-debt` (bounded gate-debt fix loop), `/cleanfiles` (repo-maintenance sweep of accumulating working files) |
+| `.claude/commands/` | 8 operator commands: `/claudeupdate` (one-shot framework bump across repos), `/claudemerge` (guided `.framework-new` conflict merge), `/framework-init` (first-time adoption entry point), `/framework-doctor` (framework health diagnosis), `/release` (framework release flow), `/fix-ci-gate-debt` (bounded gate-debt fix loop), `/cleanfiles` (repo-maintenance sweep of accumulating working files), `/eval-prompts` (golden-set prompt eval runner — catch/false-alarm rate vs a pinned baseline) |
 | `.claude/hooks/` | 10 portable hooks: `long-doc-guard`, `correction-nudge`, `config-protection`, `code-graph-freshness-check`, `spec-creation-grill-nudge`, `phase-lock`, `bash-config-guard`, `framework-merge-reminder`, `knowledge-append-guard`, `memory-digest` |
 | `.claude/skills/` | 20 portable skills: grill-me, zoom-out, fable-mode (reasoning-discipline overlay for judgment-heavy work on any model tier), and 17 distilled-judgment skills (tenant-isolation, postgres-migrations, db-concurrency, wire-it-through, fail-loud, ci-gate-integrity, test-discipline, review-triage, spec-hygiene, frontend-correctness, security-hardening, frontend-design-check, refactor-safely, llm-integration, dependency-upgrades, performance, logging-observability) |
 | `.claude/settings.json` | Hook registration (PreToolUse, UserPromptSubmit, SessionStart) |
 | `.claude/context/agent-context.md` | Fleet-wide project-context template (adopt-only) — the ADR-0006 home for per-repo agent operating notes |
+| `.claude/context/skill-context.md` | Per-skill project-context template (adopt-only) — the home for repo-specific skill failure modes / corrections; paired with the pointer line every SKILL.md carries |
 | `.claude/project-registries.json.template` | Sibling-repo registry template for `cross-repo-scout` (+ worked example) |
 | `.claude/FRAMEWORK_VERSION` | Semver — used to detect drift across repos |
 | `.claude/CHANGELOG.md` | Framework history + upgrade protocol |
@@ -63,6 +64,8 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `references/review-tier-redundancy-audit.md` | Which review tiers overlap and why each survives |
 | `references/local-override-convention.md` | `LOCAL-OVERRIDE` block mechanism for non-agent managed files (deprecated for agents per ADR-0006) |
 | `references/project-extensions-convention.md` | How consumer repos add their own agents/hooks/skills alongside managed ones |
+| `references/skill-overlay-convention.md` | The skill-overlay mechanism: pointer line, `skill-context.md` sidecar, and the KNOWLEDGE→overlay→canonical-skill drain wired into `/cleanfiles` |
+| `references/eval-suite-format.md` | Golden-set eval suite contract (`config.json` / `cases.jsonl` / `baseline.json`, verdict taxonomy, metrics) for `/eval-prompts` |
 | `schemas/` | Review-result JSON Schemas (v2 contract, Ajv-gated) + input-shape schemas (`pr-context`, `prior-rounds` — advisory) + schema CHANGELOG |
 | `scripts/` | Review driver (`chatgpt-review*.ts`), review coordinator library, migration runner, framework merge + validation (`framework-merge.js`, `validate-framework.js`), build-scheduler, mockup capture, code-graph + gates libraries, helper scripts + their tests |
 | `migrations/` | Per-version consumer migrations (run automatically by `/claudeupdate`) + `_helpers.js` + template |

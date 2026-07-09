@@ -30,7 +30,9 @@ const requireCjs = createRequire(__filename);
 const FRAMEWORK_ROOT = path.resolve(__dirname, '../');
 const RUN_MIGRATIONS_SRC = path.join(FRAMEWORK_ROOT, 'scripts', 'run-migrations.js');
 const V2_30_0_SRC = path.join(FRAMEWORK_ROOT, 'migrations', 'v2.30.0.js');
+const V2_33_0_SRC = path.join(FRAMEWORK_ROOT, 'migrations', 'v2.33.0.js');
 const HELPERS_SRC = path.join(FRAMEWORK_ROOT, 'migrations', '_helpers.js');
+const SKILL_CONTEXT_REL = '.claude/context/skill-context.md';
 
 function uuid() { return crypto.randomUUID(); }
 
@@ -400,5 +402,136 @@ test('v2.30.0: runs through run-migrations.js discovery with _helpers resolving 
     assert.ok(!result.stdout.includes('_helpers'), 'underscore-prefixed files must not be discovered');
   } finally {
     rmrf(fw, consumer);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// v2.33.0: adopt the new adopt-only .claude/context/skill-context.md
+// ---------------------------------------------------------------------------
+
+function frameworkSkillContext(): string {
+  return fs.readFileSync(path.join(FRAMEWORK_ROOT, SKILL_CONTEXT_REL), 'utf8');
+}
+
+async function writeConsumerOverlay(consumerRoot: string, content: string): Promise<void> {
+  await fsp.mkdir(path.join(consumerRoot, '.claude', 'context'), { recursive: true });
+  await fsp.writeFile(path.join(consumerRoot, SKILL_CONTEXT_REL), content, 'utf8');
+}
+
+test('v2.33.0: adopts a matching local skill-context.md into state (status applied)', async () => {
+  const { migrate } = requireCjs(V2_33_0_SRC);
+  const consumer = await makeConsumer();
+  try {
+    await writeConsumerOverlay(consumer, frameworkSkillContext());
+
+    const result = await migrate({
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.32.1',
+      toVersion: '2.33.0',
+    });
+    assert.equal(result.status, 'applied');
+
+    const state = await readConsumerState(consumer);
+    assert.ok(state.files[SKILL_CONTEXT_REL], 'overlay must be tracked in state.files');
+    assert.equal(state.files[SKILL_CONTEXT_REL].customisedLocally, false);
+    assert.equal(state.files[SKILL_CONTEXT_REL].lastAppliedFrameworkVersion, '2.33.0');
+  } finally {
+    rmrf(consumer);
+  }
+});
+
+test('v2.33.0: idempotent — re-run after adoption is a no-op (status skipped)', async () => {
+  const { migrate } = requireCjs(V2_33_0_SRC);
+  const consumer = await makeConsumer();
+  try {
+    await writeConsumerOverlay(consumer, frameworkSkillContext());
+    const ctx = {
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.32.1',
+      toVersion: '2.33.0',
+    };
+
+    const first = await migrate(ctx);
+    assert.equal(first.status, 'applied');
+    const stateAfterFirst = await readConsumerState(consumer);
+
+    const second = await migrate(ctx);
+    assert.equal(second.status, 'skipped', 're-run must not re-adopt');
+    const stateAfterSecond = await readConsumerState(consumer);
+    assert.deepEqual(
+      stateAfterSecond.files[SKILL_CONTEXT_REL],
+      stateAfterFirst.files[SKILL_CONTEXT_REL],
+      'state entry must be unchanged on re-run',
+    );
+  } finally {
+    rmrf(consumer);
+  }
+});
+
+test('v2.33.0: pristine consumer (no .framework-state.json) is a no-op (status skipped)', async () => {
+  const { migrate } = requireCjs(V2_33_0_SRC);
+  // makeConsumer(null) creates the repo WITHOUT a state file.
+  const consumer = await makeConsumer(null);
+  try {
+    await writeConsumerOverlay(consumer, frameworkSkillContext());
+    const result = await migrate({
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.32.1',
+      toVersion: '2.33.0',
+    });
+    assert.equal(result.status, 'skipped');
+    assert.equal(
+      fs.existsSync(path.join(consumer, '.claude', '.framework-state.json')),
+      false,
+      'pristine adoption must not create a state file',
+    );
+  } finally {
+    rmrf(consumer);
+  }
+});
+
+test('v2.33.0: a locally-customised skill-context.md is a conflict (non-destructive)', async () => {
+  const { migrate } = requireCjs(V2_33_0_SRC);
+  const consumer = await makeConsumer();
+  try {
+    const customised = frameworkSkillContext() + '\n## my-repo-skill\nlocal note\n';
+    await writeConsumerOverlay(consumer, customised);
+
+    const result = await migrate({
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.32.1',
+      toVersion: '2.33.0',
+    });
+    assert.equal(result.status, 'conflict');
+
+    // Non-destructive: the customised file is left untouched, not adopted.
+    const onDisk = await fsp.readFile(path.join(consumer, SKILL_CONTEXT_REL), 'utf8');
+    assert.equal(onDisk, customised, 'conflict must not overwrite the local file');
+    const state = await readConsumerState(consumer);
+    assert.equal(state.files[SKILL_CONTEXT_REL], undefined, 'conflicted file must not be recorded as adopted');
+  } finally {
+    rmrf(consumer);
+  }
+});
+
+test('v2.33.0: overlay absent locally is a no-op (status skipped)', async () => {
+  const { migrate } = requireCjs(V2_33_0_SRC);
+  const consumer = await makeConsumer();
+  try {
+    const result = await migrate({
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.32.1',
+      toVersion: '2.33.0',
+    });
+    assert.equal(result.status, 'skipped');
+    const state = await readConsumerState(consumer);
+    assert.equal(state.files[SKILL_CONTEXT_REL], undefined);
+  } finally {
+    rmrf(consumer);
   }
 });
