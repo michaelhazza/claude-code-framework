@@ -3,6 +3,8 @@ name: logging-observability
 description: Use when adding logging, metrics, or instrumentation — structured logging, correlation IDs, log levels, lifecycle-event emission, counters, or deciding what to log where. What to emit, at which level, at which point in the code, and what must never be logged.
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## logging-observability` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Logging and observability
 
 A log line is an API for future debugging sessions. Unstructured, mis-levelled, or lying logs are worse than none — they burn the reader's trust exactly when it matters.

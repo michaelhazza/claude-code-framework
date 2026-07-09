@@ -206,6 +206,12 @@
       "substituteAt": "adoption"
     },
     {
+      "path": ".claude/context/skill-context.md",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
       "path": "docs/decisions/0001-*.md",
       "category": "adr",
       "mode": "sync",
@@ -375,6 +381,12 @@
     },
     {
       "path": "references/project-extensions-convention.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/skill-overlay-convention.md",
       "category": "reference",
       "mode": "sync",
       "substituteAt": "never"

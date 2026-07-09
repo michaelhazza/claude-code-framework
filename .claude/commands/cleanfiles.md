@@ -36,6 +36,7 @@ Process only the targets that exist in this repo. Retention windows are defaults
 | 7 | `prototypes/` | Mockups for builds already archived by target 4 | Move alongside the archived build (`tasks/builds/_archive/<slug>/prototypes/`). Keep `_tokens.css` and mockups for unmerged builds. |
 | 8 | `.claude/session-state/` | Per-session mode files older than `sessionStateDays` (default 7) | Delete (they are transient by contract). |
 | 9 | Repo root | Untracked clutter (stray diffs, tmp scripts, one-off exports) | REPORT ONLY — list them with sizes; the operator decides. |
+| 10 | `.claude/context/skill-context.md` | Un-promoted overlay entries that generalise beyond this repo | **Overlay drain (non-destructive, operator-gated).** For each `## <skill-name>` entry NOT already marked `> promoted in`, assess generalisability; propose promotion to the named skill's canonical `SKILL.md` (a framework PR). On operator acceptance: add a `> promoted in vX.Y.Z` prefix line to the overlay entry (mark, never delete — provenance) and append a row to `tasks/knowledge-to-framework-skills-map.md`, **creating that mapping file if it does not exist** (the framework does not ship it). Full protocol: `references/skill-overlay-convention.md`. |
 
 ## Config (optional)
 

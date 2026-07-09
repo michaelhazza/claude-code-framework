@@ -3,6 +3,8 @@ name: performance
 description: Use when investigating or preventing a slow endpoint, query, or page — N+1 patterns, indexing for speed, caching, pagination cost, payload size, bundle size, or memory growth. Measure before optimizing; every change names its metric and baseline.
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## performance` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Performance
 
 Optimisation without a measurement is a guess that costs complexity either way. Name the metric, capture the baseline, change one thing, re-measure.

@@ -31,9 +31,13 @@ This repo is the canonical source for a portable agent fleet, governance docs, h
 ## Adding a skill
 
 1. Create `.claude/skills/<name>/SKILL.md` (directory + SKILL.md, single clear responsibility).
-2. Add a manifest entry — skills are listed **per-skill** in `manifest.json` (`category: "skill"`, `mode: "sync"`, `substituteAt: "never"` unless the skill genuinely needs adoption-time substitution).
-3. Add the skill to the `README.md` What-ships skills row (name + count).
-4. Update `.claude/CHANGELOG.md` under the release version (Added).
+2. **Add the skill-overlay pointer line** immediately after the frontmatter (before the `#` title). Use the pinned wording from `references/skill-overlay-convention.md`, substituting the skill's own name for `<skill-name>`:
+   > **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## <skill-name>` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
+   `scripts/validate-framework.js` fails the build if any `SKILL.md` lacks the stable substring `.claude/context/skill-context.md`, so this is not optional.
+3. Add a manifest entry — skills are listed **per-skill** in `manifest.json` (`category: "skill"`, `mode: "sync"`, `substituteAt: "never"` unless the skill genuinely needs adoption-time substitution).
+4. Add the skill to the `README.md` What-ships skills row (name + count).
+5. Update `.claude/CHANGELOG.md` under the release version (Added).
 
 ## Adding a hook
 

@@ -3,6 +3,8 @@ name: ci-gate-integrity
 description: Use when authoring or modifying CI gates, GitHub Actions workflows, grep/regex invariant checks, verification scripts, gate baselines, diff-based checks, or required-check configuration — and when consolidating workflows or migrating a check to a new engine. Every rule here is a documented way a green gate lied.
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## ci-gate-integrity` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # CI gate integrity
 
 Gates that cannot fail are the norm, not the exception: a gate is only as real as its ability to fail. Every pattern below is a documented way a passing gate concealed a live violation.

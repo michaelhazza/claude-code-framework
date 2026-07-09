@@ -3,6 +3,8 @@ name: fable-mode
 description: Use when starting judgment-heavy work — authoring a brief, spec, implementation plan, or audit; making an architecture, adjudication, or incident-triage decision; or any task where a wrong conclusion is expensive and the executing model is not the strongest tier available. Also use when a caller (agent, coordinator, or operator) says "fable mode".
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## fable-mode` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Fable mode
 
 A reasoning-discipline overlay distilled from frontier-model (Fable-class) working habits. You cannot borrow a stronger model's intelligence, but you can run its process: scope it, ground it, attack it, verify it, then report with calibrated confidence. Five gates, in order. The gates cost a few hundred tokens; a wrong conclusion costs a build cycle.

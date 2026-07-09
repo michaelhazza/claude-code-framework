@@ -3,6 +3,8 @@ name: review-triage
 description: Use when adjudicating reviewer findings — accept, reject, or defer decisions on external or LLM code/spec/plan review output, duplicate re-raises, stale-context claims, and multi-round review loops. Encodes the measured false-positive taxonomy (posture violations, stateless re-raises, hallucinated premises, altitude/scope errors), the verification steps each claim type requires, and the loop-convergence signals; corpus statistics live in the intro paragraph.
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## review-triage` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Review-finding triage
 
 Mined from a full corpus of ~1,900 adjudicated review logs (194 batches, four reviewer families). Calibration: ~80% of findings are accepted by mention volume (5,272 accepted vs 1,305 rejected) — reviewers are worth running, but the rejected fifth is highly patterned and largely mechanically filterable. Four clusters cover roughly two-thirds of FP volume: posture violations ~26%, stateless re-raises ~24%, hallucinated premises ~17%, altitude/scope ~9%. Residuals: convention nits, enforcement-blindness (a guard at a layer the reviewer can't see — over-flagged idempotency was the single largest rejected substantive class), and main-branch debt misattributed to the branch.

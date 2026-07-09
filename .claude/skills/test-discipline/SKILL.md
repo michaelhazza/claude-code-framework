@@ -3,6 +3,8 @@ name: test-discipline
 description: Use when writing or modifying tests, mocks, fixtures, or acceptance criteria; when a test passes suspiciously easily; after reordering calls in code under test; or when deciding what KIND of test a requirement needs (pure unit vs DB-integration vs gate).
 ---
 
+> **Repo-specific addenda:** if `.claude/context/skill-context.md` exists and has a `## test-discipline` section, read it — it carries repo-specific failure modes, anti-patterns, and corrections for this skill.
+
 # Test discipline
 
 Rules for tests that actually prove something, distilled from post-mortems of tests that passed while the feature was broken.
