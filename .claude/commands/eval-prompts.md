@@ -20,6 +20,7 @@ Run a repo-local golden-set eval suite through its target prompt and score it ag
    - **0** — within baseline thresholds (PASS).
    - **1** — a regression beyond `threshold` OR one or more malformed cases OR no baseline yet. Read the `REGRESSION:` / malformed lines on stderr.
    - **2** — usage or config error (bad args, missing/invalid `config.json` or `cases.jsonl`).
+   - **3** — provider / runtime failure (e.g. the model was unreachable). Kept distinct from 2 so a CI wrapper can tell a retryable network blip from a permanent misconfiguration.
 
 3. **Seed or refresh the baseline** (explicit, operator-driven — the only write path):
 
