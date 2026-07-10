@@ -60,7 +60,7 @@ export type AuditContextPacksResult =
 // GFM heading slug algorithm
 // ---------------------------------------------------------------------------
 
-function gfmSlug(heading: string): string {
+export function gfmSlug(heading: string): string {
   // GitHub's heading-anchor slugger preserves underscores in addition to
   // hyphens and alphanumerics — `# State machine (usability_state)` renders
   // to `state-machine-usability_state`, not `state-machine-usabilitystate`.
@@ -147,7 +147,7 @@ function extractDeclaredAnchors(markdown: string): Set<string> {
  * lines inside an indented block do not break it — only a non-blank,
  * less-than-4-space-indent line ends it.
  */
-function buildCodeBlockMask(lines: string[]): boolean[] {
+export function buildCodeBlockMask(lines: string[]): boolean[] {
   const mask: boolean[] = new Array(lines.length).fill(false);
   let inFence = false;
   let fenceChar = '';

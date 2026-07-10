@@ -32,6 +32,25 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.36.0 — 2026-07-10
+
+**Highlights:** context-pack adoption is now self-completing. v2.35.0 activated the pack system but left the per-repo anchor mapping (ADAPT.md Phase 3b) as a manual step — realistically the kind of chore that gets deferred forever, leaving repos paying whole-file context costs indefinitely. This release automates it end to end: a deterministic, idempotent anchor-generator script handles the mechanical half, and a new `/claudeupdate` step 6c2 performs the judgment half (purpose→anchor mapping) automatically, exactly once per repo, on its next ordinary update. The step is fail-safe — mapping trouble never blocks the version bump, and an incomplete mapping stays visible and re-arms on the following update. Operators do nothing beyond running `/claudeupdate` as usual.
+
+**Breaking:** none. Repos without `architecture.md` skip 6c2 silently (packs stay in whole-file fallback); already-mapped repos have no `UNMAPPED` trigger and skip it too.
+
+**Added:**
+- `scripts/generate-architecture-anchors.ts` — idempotent anchor-generation pass for a consuming repo's `architecture.md`: inserts `<a id="<slug>"></a>` before every unanchored `## ` heading, skipping code blocks, using the SAME GFM slug algorithm as `audit-context-packs.ts` (shared import, so generated anchors are exactly what the audit validates and the loader slices on). Collisions with existing anchors or duplicate headings get `-1`, `-2` suffixes. CLI: atomic in-place write, `--dry-run`, exit 1 when `architecture.md` is absent. New manifest entries (helper-script + test, `mode: sync`).
+- `scripts/__tests__/generate-architecture-anchors.test.ts` — ten tests: slugging, idempotency (second pass adds zero), level-1/3 exclusion, code-fence exclusion, collision suffixes, inline-code/link heading slugs, end-to-end coherence with `auditContextPacks`, and CLI contracts (write + idempotent re-run, `--dry-run`, missing-file exit 1).
+- `/claudeupdate` step 6c2 — one-time context-pack adoption per repo. Trigger: `architecture.md` exists AND the audit prints `UNMAPPED` lines. Procedure: run the generator, list purposes and anchors, judgment-map each purpose to the section that actually serves it (read the sections, don't string-match), write `"ARCHITECTURE_ANCHOR:<purpose>": "#<anchor>"` substitutions to `.claude/.framework-state.json`, rebaseline via `sync.js --adopt`, verify with `--strict-unmapped`. Mapping decisions land in the step-9 report and the update commit message.
+
+**Changed:**
+- `scripts/audit-context-packs.ts` — exports `gfmSlug` and `buildCodeBlockMask` for reuse by the generator (no behaviour change).
+- `ADAPT.md` Phase 3b — step 1 now runs the generator script instead of describing a manual anchor-insertion pass; notes that mounted repos self-complete this phase via `/claudeupdate` 6c2.
+- `docs/context-packs/README.md` — migration-tracker step 2 records the automation.
+- `/claudeupdate` step 9 report — gains a `packs:` outcome note (`mapped <N> purposes` / `mapping incomplete — <reason>`) whenever 6c2 ran.
+
+---
+
 ## 2.35.0 — 2026-07-10
 
 **Highlights:** context-pack activation, plus an explicit framework-wins ownership contract for behavioural files in the update flow. The pack system shipped in v2.2.0 as templates and stayed inert in every consumer: the `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholders were never mapped, no agent loaded a pack, and the audit script could not see the placeholders — so it green-lit fully-unmapped packs while every agent paid whole-file context costs on `architecture.md`. This release makes the audit honest, routes anchor mapping through the existing sync substitution engine (no hand-edited packs, no `.framework-new` merge debt), and wires the three highest-volume agents (`builder`, `architect`, `pr-reviewer`) to load pack slices with a fail-safe whole-file fallback. Consumers that have not run ADAPT.md Phase 3b see zero behaviour change; consumers that map their anchors get sliced context loading plus a `context-load:` measurement line from every wired agent. Separately, `/claudeupdate`, `/claudemerge`, and SYNC.md now state and enforce what ADR-0006 established: agents, skills, hooks, and commands are always taken verbatim from the framework — local deltas relocate to `agent-context.md` / `skill-context.md`, never survive in the canonical files.
