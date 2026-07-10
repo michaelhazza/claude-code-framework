@@ -710,7 +710,7 @@ Steps 6 and 10 in particular have historically been bundled into broader "finali
 3. Pattern extraction:
    - Before appending to KNOWLEDGE.md: grep for similar existing entry.
      Similar = same finding_type OR same leading phrase (first ~5 words).
-     Update instead of duplicating if found. Include (seen N times in this review).
+     If found, append a superseding entry naming the one it replaces ("Supersedes: [{date}] {title}") — KNOWLEDGE.md is append-only (the append-guard blocks non-tail edits); /cleanfiles archives superseded entries. Include (seen N times in this review).
    - Systematic gap: same finding category in 2+ rounds → add/update KNOWLEDGE.md
    - [missing-doc] >2 → directly update CLAUDE.md or architecture.md
 4. Structured index: append one JSONL line per finding to
