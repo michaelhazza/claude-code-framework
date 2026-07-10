@@ -32,7 +32,7 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
-## Unreleased — Fable Framework Batch (fable-batch-2026-07)
+## 2.37.0 — 2026-07-11
 
 **Highlights:** six harness meta-upgrades in one batch: a stated harness goal (GOAL.md — operator leverage, with decision test, prescription rule, rule lifecycle, and precedence contract), a full rule-classification ledger over the behavioural corpus with a coverage checker, memory that compounds (knowledge index + index-matched digest recall + append-time dedup advisory + supersede convention + citation/staleness checker), the measurement layer turned on (harness-metrics aggregator + metric definitions + starter eval suite contract exercised consumer-side), an autonomy-ladder registry of every autonomous authority and operator gate, and the wargame skill (risky-operation planning artifact) with its nudge hook.
 
