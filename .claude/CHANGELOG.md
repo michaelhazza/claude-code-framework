@@ -32,6 +32,29 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.35.0 — 2026-07-10
+
+**Highlights:** context-pack activation. The pack system shipped in v2.2.0 as templates and stayed inert in every consumer: the `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholders were never mapped, no agent loaded a pack, and the audit script could not see the placeholders — so it green-lit fully-unmapped packs while every agent paid whole-file context costs on `architecture.md`. This release makes the audit honest, routes anchor mapping through the existing sync substitution engine (no hand-edited packs, no `.framework-new` merge debt), and wires the three highest-volume agents (`builder`, `architect`, `pr-reviewer`) to load pack slices with a fail-safe whole-file fallback. Consumers that have not run ADAPT.md Phase 3b see zero behaviour change; consumers that map their anchors get sliced context loading plus a `context-load:` measurement line from every wired agent.
+
+**Breaking:** none. Audit exit-code semantics are unchanged by default (unmapped placeholders exit 0, advisory), the pure-function result shape is backward-compatible (`unmapped` field present only when non-empty), and agent pack wiring falls back to today's whole-file reads whenever a pack is missing, unmapped, or drifted.
+
+**Added:**
+- `scripts/audit-context-packs.ts` — detects unmapped `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholder tokens (outside code blocks, strict purpose charset so syntax documentation never registers) and prints one `UNMAPPED <pack>:<line> <token>` line per token plus a remediation `NOTE:`. New flags: `--strict-unmapped` (unmapped tokens exit 1 — for repos that completed Phase 3b and want mapping regressions caught) and `--list-anchors` (prints the explicit `<a id>` anchors in `architecture.md` to make mapping mechanical). New export `extractExplicitAnchors`.
+- Pack wiring: `builder` and `architect` slice `architecture.md` via `docs/context-packs/implement.md`; `pr-reviewer` via `docs/context-packs/review.md`. Conditional on the pack existing with zero unmapped placeholders; any anchor miss falls back to the whole-file read. Every wired agent records the mode used as a `context-load:` line (pack + section count, or full-file + reason) — the measurement hook for the before/after token comparison.
+- `scripts/__tests__/audit-context-packs.test.ts` — nine new tests: unmapped-token detection (incl. code-fence and `<purpose>`-syntax-doc exclusions), back-compat result shapes, combined fail+unmapped, `extractExplicitAnchors`, and CLI exit-code contracts for default, `--strict-unmapped`, and `--list-anchors`.
+
+**Changed:**
+- `ADAPT.md` Phase 3b — anchor mapping now goes through `.framework-state.json` → `substitutions` (`"ARCHITECTURE_ANCHOR:<purpose>": "#<real-anchor>"`, then `sync.js --adopt` to rebaseline) instead of hand-editing the pack files, which are `mode: sync` and would accrue `.framework-new` merge debt on every update. Every purpose must map to some anchor (nearest enclosing section if no exact counterpart) — one leftover token keeps the whole pack in fallback mode.
+- `.claude/agents/context-pack-loader.md` — documents the substitution-based mapping route and pins the confirmation-line format (`context-load: <mode> pack. Sources: … Fallbacks: …`) so it doubles as the measurement record.
+- `.claude/agents/validate-setup.md` Step 4 — distinguishes unmapped placeholder tokens (warning: installed-but-not-adopted, consumers fall back safely) from mapped anchors that no longer resolve (failure: packs drifted from `architecture.md`).
+- `.claude/agents/finalisation-coordinator.md` Step 6.0 — documents that `UNMAPPED` advisory lines (exit 0) do not block finalisation; only broken mapped anchors do.
+- `docs/context-packs/README.md` — status block and migration tracker updated: step 4 (wire packs to agents) shipped; step 2 (map at adoption) and step 5 (measure) are per-consumer, with the `context-load:` line as the measurement hook.
+
+**Fixed:**
+- `scripts/audit-context-packs.ts` was blind to `{{ARCHITECTURE_ANCHOR:…}}` tokens: its two reference-extraction forms (markdown links, bare `#anchor` fragments under a source-block heading) matched neither the placeholder syntax nor anything else in an unmapped pack, so `extractPackAnchors` returned zero refs and the audit reported `OK` on packs that had never been adopted. The finalisation gate built on it (Step 6.0) therefore never fired on the actual defect.
+
+---
+
 ## 2.34.0 — 2026-07-10
 
 **Highlights:** divergence-elimination pass driven by the origin project's convergence to framework-canonical docs. Two spec-authoring rules proven in origin-project builds are promoted into the canonical checklist, and the one managed doc that still had no consumer slot (`schemas/CHANGELOG.md`) gains one — so a consumer that keeps its own schemas in `schemas/` can record their history without forking the framework-owned changelog. With this release, every framework-managed doc that consumers routinely extend carries a named `LOCAL-OVERRIDE` slot; repo-specific content belongs inside the slots (or in `agent-context.md` for agent behaviour), never as out-of-slot edits.
