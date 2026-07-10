@@ -120,9 +120,13 @@ Open the file. Replace the `[PLACEHOLDER]` commands in the *Stack template* tabl
 
 ### 3b — `architecture.md` anchors (if architecture.md exists)
 
-Context packs reference `architecture.md` sections via `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholder tokens. Mapping is done through the sync substitution engine — do NOT hand-edit the pack files (packs are `mode: sync`; hand edits accrue `.framework-new` merge debt on every framework update). If the target repo has an `architecture.md`:
+Context packs reference `architecture.md` sections via `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholder tokens. Mapping is done through the sync substitution engine — do NOT hand-edit the pack files (packs are `mode: sync`; hand edits accrue `.framework-new` merge debt on every framework update).
 
-1. Run a one-shot anchor-generation pass: insert `<a id="<kebab-case-slug>"></a>` immediately before every `## ` heading.
+> **Automated as of v2.36.0:** repos that already mount the framework complete this whole phase automatically on their next `/claudeupdate` (step 6c2) — nothing to schedule or remember. The manual steps below remain for first-time adoption through this file.
+
+If the target repo has an `architecture.md`:
+
+1. Run the idempotent anchor generator: `npx tsx .claude-framework/scripts/generate-architecture-anchors.ts` (consumer-local `scripts/` copy works identically after first sync) — inserts `<a id="<kebab-case-slug>"></a>` immediately before every unanchored `## ` heading, using the same slug algorithm the audit validates.
 2. List the unmapped tokens and the available anchors:
    - `npx tsx scripts/audit-context-packs.ts` — prints one `UNMAPPED <pack>:<line> {{ARCHITECTURE_ANCHOR:<purpose>}}` line per token.
    - `npx tsx scripts/audit-context-packs.ts --list-anchors` — prints the explicit anchors declared in `architecture.md`.

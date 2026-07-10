@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.35.0",
+  "frameworkVersion": "2.36.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -454,6 +454,18 @@
     {
       "path": "scripts/eval-prompts.ts",
       "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/generate-architecture-anchors.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/generate-architecture-anchors.test.ts",
+      "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"
     },
