@@ -4,7 +4,7 @@
  * Pure function: validates that every anchor reference in docs/context-packs/*.md
  * resolves to a declared anchor in architecture.md, and detects unmapped
  * `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholder tokens left over when
- * ADAPT.md Phase 3b (anchor mapping via .framework-state.json substitutions)
+ * ADAPT.md Phase 3b (anchor mapping via .claude/.framework-state.json substitutions)
  * has not been run.
  *
  * Run via: npx tsx scripts/audit-context-packs.ts [--strict-unmapped] [--list-anchors]
@@ -425,7 +425,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       if (unmapped.length > 0) {
         process.stdout.write(
           `NOTE: ${unmapped.length} unmapped anchor placeholder(s) — context packs are installed but not adopted. ` +
-            `Map each purpose to a real anchor via .framework-state.json substitutions ` +
+            `Map each purpose to a real anchor via .claude/.framework-state.json substitutions ` +
             `(ADAPT.md Phase 3b; run with --list-anchors to see available anchors), then rebaseline with ` +
             `\`node .claude-framework/sync.js --adopt\`.\n`
         );

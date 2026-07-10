@@ -126,7 +126,7 @@ Context packs reference `architecture.md` sections via `{{ARCHITECTURE_ANCHOR:<p
 2. List the unmapped tokens and the available anchors:
    - `npx tsx scripts/audit-context-packs.ts` — prints one `UNMAPPED <pack>:<line> {{ARCHITECTURE_ANCHOR:<purpose>}}` line per token.
    - `npx tsx scripts/audit-context-packs.ts --list-anchors` — prints the explicit anchors declared in `architecture.md`.
-3. For each distinct purpose, add one substitution entry to `.framework-state.json` → `substitutions`, keeping the leading `#` in the value so the substituted line renders as a `` `#anchor` `` fragment the audit validates:
+3. For each distinct purpose, add one substitution entry to `.claude/.framework-state.json` → `substitutions`, keeping the leading `#` in the value so the substituted line renders as a `` `#anchor` `` fragment the audit validates:
    ```json
    "ARCHITECTURE_ANCHOR:route-conventions": "#route-conventions",
    "ARCHITECTURE_ANCHOR:tenant-isolation": "#row-level-security-rls"
