@@ -92,6 +92,32 @@ This is the one-shot, fully-automated flow as of framework v2.9.0. Earlier versi
      exit 1
    fi
 
+   # 6d2. Behavioural-file divergence guard. Agents, skills, hooks, and commands
+   #      must be VERBATIM framework-canonical after every update — a consumer
+   #      copy that still diverges is silently shadowing framework behaviour.
+   #      Repo-specific behaviour belongs in .claude/context/agent-context.md /
+   #      skill-context.md (read first by every canonical agent at runtime),
+   #      never in the canonical files themselves.
+   BEHAVIOURAL_DIVERGENCE=$(node -e "
+     const s = require('./.claude/.framework-state.json');
+     const hits = Object.entries(s.files || {})
+       .filter(([p, e]) => e.customisedLocally
+         && /^\.claude\/(agents|skills|hooks|commands)\//.test(p)
+         && !/^\.claude\/agents\/extensions\//.test(p))
+       .map(([p]) => p);
+     if (hits.length) console.log(hits.join('\n'));
+   ")
+   if [ -n "$BEHAVIOURAL_DIVERGENCE" ]; then
+     echo "PAUSE: behavioural files diverge from framework-canonical:"
+     echo "$BEHAVIOURAL_DIVERGENCE"
+     echo "Resolution is framework-wins, never keep-local: relocate any repo-specific"
+     echo "content into .claude/context/agent-context.md (agents) or"
+     echo ".claude/context/skill-context.md (skills), restore the canonical file,"
+     echo "then re-run /claudeupdate. See /claudemerge § Behavioural files and"
+     echo "SYNC.md § Ownership contract."
+     exit 1
+   fi
+
    # 6e. Stage everything sync.js + migrations touched (submodule pointer + new
    #     managed files + state.json + any registry/template seeds).
    git add -A
@@ -118,6 +144,12 @@ This is the one-shot, fully-automated flow as of framework v2.9.0. Earlier versi
    - Surface the file list to the operator and suggest `/claudemerge` — it three-way merges the clean cases automatically (LOCAL vs last-applied BASE vs framework INCOMING) and leaves only genuine overlapping edits for hand-resolution.
    - The operator merges (via `/claudemerge` or by hand), deletes any remaining `.framework-new` sibling, then re-runs `/claudeupdate` for that repo.
    - On re-run, any migration that returned `conflict` last time is retried (it is intentionally NOT recorded in `appliedMigrations` until it returns `applied` or `skipped`).
+
+7b. **Behavioural files: framework-canonical always wins.** The entire point of the framework is that every consuming repo runs the SAME agents, skills, hooks, commands, and content triggers — never locally-overridden variants. When a `.framework-new` conflict (or the 6d2 guard) involves `.claude/agents/*.md` (excluding `extensions/`), `.claude/skills/**`, `.claude/hooks/*`, or `.claude/commands/*`:
+   - The resolution is **always** the framework version, verbatim. There is no keep-local option for these paths.
+   - Any repo-specific delta found in them is **relocated**, not preserved in place: agents → the matching `## <agent-name>` section of `.claude/context/agent-context.md`; skills → `.claude/context/skill-context.md`. Both files are adopt-only (never overwritten by sync) and are read FIRST by every canonical agent/skill at runtime (ADR-0006), so the repo-specific behaviour still applies — without ever forking the canonical file.
+   - Hooks and commands have no runtime overlay: a local delta there is proposed upstream (a framework-repo PR) or dropped; the consumer copy still ends byte-identical to canonical.
+   - `/claudemerge` § *Behavioural files* implements this relocation protocol; `validate-setup` flags any residual divergent agent file as a critical finding.
 
 8. **On migration failure (6b throws):**
    - `sync.js` has NOT run yet — the consumer's working tree only has the bumped submodule pointer.
@@ -158,6 +190,7 @@ Columns: Repo; Current sha/version; Target sha/version; Branch; Dirty (working t
 - **Never `--force` past dirty state.** If a repo isn't on `main` or has uncommitted work, skip and report. Don't try to be clever.
 - **One commit per repo.** Submodule bump + migrations + sync.js results land in a single commit (step 6f). No batching across repos.
 - **No auto-resolution of `.framework-new` conflicts.** Customised files survive only because manual review is the merge point. The one-shot pauses on conflict; the operator resolves and re-runs.
+- **Behavioural files are never merged — framework wins, deltas relocate.** For `.claude/agents/` (excluding `extensions/`), `.claude/skills/`, `.claude/hooks/`, and `.claude/commands/`, the operator decision is WHERE the local delta goes (`agent-context.md` / `skill-context.md` / upstream PR), never WHICH side wins. The update is not complete while any behavioural file diverges from canonical (guard 6d2).
 - **Migrations run BEFORE sync.js, both before commit.** Migrations get the post-bump submodule via `frameworkRoot` and can pre-populate state so `sync.js` skips files the consumer already has at framework-equivalent content. See `migrations/README.md § Lifecycle position` for the rationale.
 - **Conflict-status migrations are retried on the next run.** The runner only records a migration as applied when it returns `applied` or `skipped`. A `conflict` result intentionally leaves the migration unrecorded so it re-runs after the operator merges the related `.framework-new` files.
 - **Skip the current working directory** unless the operator passes it explicitly. The session's own repo is usually already in flight; if it's behind, surface it but don't auto-commit there — let the operator decide.

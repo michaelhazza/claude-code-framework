@@ -111,11 +111,13 @@ Then proceed with the walk.
 
 Run `find . -name "*.framework-new"` (or equivalent for the OS) to list any `.framework-new` sibling files. These are framework-updated versions of files that sync detected as locally customised — sync wrote the new framework content beside the target rather than overwriting it.
 
+**Ownership contract — behavioural files always resolve framework-wins.** For `.claude/agents/*.md` (excluding `extensions/`), `.claude/skills/**`, `.claude/hooks/*`, and `.claude/commands/*`, there is no "which side to keep" decision: the framework version is taken **verbatim, every time**. These files define agent, skill, and hook behaviour, and every canonical agent already reads the repo's project context first at runtime (`.claude/context/agent-context.md` for agents, `.claude/context/skill-context.md` for skills — ADR-0006), so repo-specific behaviour belongs in those context files, never in a divergent copy of the canonical file. A local delta found in a behavioural file is **relocated** into the matching `## <name>` section of the appropriate context file (operator confirms the destination), then the framework content overwrites the target. Hooks and commands have no runtime overlay: a local delta there is either proposed upstream as a framework change or dropped — the operator decides which, but the consumer copy still ends byte-identical to canonical. The end state after every sync: all behavioural files byte-identical to framework-canonical, all repo-specific behaviour in the context files. `validate-setup` treats a divergent agent file as a critical finding.
+
 For each `.framework-new` file:
 
 1. Read both the current target file and the `.framework-new` file.
 2. Summarise what changed in the framework version: new lines, removed lines, and the intent of the change.
-3. Suggest which side to keep for each changed section, with a brief reason. Where the framework change is a bug fix or policy clarification, the framework side is usually the right choice. Where the operator customised the file deliberately, the operator's version may be worth preserving.
+3. Suggest a resolution, with a brief reason. **Behavioural files (agents/skills/hooks/commands): framework side always wins — the only decision is where the local delta relocates (see the ownership contract above).** For other managed files (docs, references, templates): where the framework change is a bug fix or policy clarification, the framework side is usually the right choice; where the operator customised deliberately, prefer moving the customisation into the file's `LOCAL-OVERRIDE` slot if it has one, so the next sync doesn't re-flag it.
 4. Ask the operator to confirm the suggested merge.
 5. Apply the merge: write the final content to the target path, then delete the `.framework-new` file.
 6. After each resolution, re-run sync to update the hash:
