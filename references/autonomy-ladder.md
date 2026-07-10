@@ -8,7 +8,7 @@ Risk class: `low` (branch-scoped, checked, revertible) · `medium` (crosses a re
 
 | Authority | Where | Risk | Reversibility | Operator-cost | Notes |
 |---|---|---|---|---|---|
-| Auto-merge to main via `--admin` squash once label applied + CI green | `finalisation-coordinator.md` Step 12 ("No operator pause here", operator-locked 2026-05-26) | **high** — `--admin` bypasses required status checks | revert commit on main | none | Under review: DG-5 (this batch) |
+| Auto-merge to main via `--admin` squash — narrowed: only when G5 passed locally, CI ran green on the labelled HEAD, and the sole post-CI commit is the docs-only prep commit; otherwise required checks must pass | `finalisation-coordinator.md` Step 12.3 (DG-5, operator-locked 2026-07-10) | medium — bypass limited to a provably-redundant re-run | revert commit on main | none | Was high/unconditional before this batch |
 | Label-pull CI fix loop (remove label → fix → re-add) | `finalisation-coordinator.md` Step 11 | medium | branch-scoped | none | Contains CI failures without operator paging |
 | S2/S3 branch sync auto-resolve of known-shape conflicts in append-only artifact files | `finalisation-coordinator.md` Steps 2, 8b | low | git | none | Pauses on code-area conflicts (gate below) |
 | Technical review findings auto-execute per recommendation | `chatgpt-pr-review.md` (operator opted out of approving technical findings) | low–medium | git | none | Boundary is the user-facing carve-out, not severity |

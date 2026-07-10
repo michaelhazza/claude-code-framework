@@ -179,6 +179,108 @@ function check(label, actual, expected, extra) {
   rmSync(proj, { recursive: true, force: true });
 }
 
+// ── 9. Index present + match found → matched block resurfaces an older entry ─
+// The matched entry is OLDER than the newest-6, so it is absent from the
+// recency block and only appears via the index → current-focus match.
+{
+  const proj = makeProj('md-idx-match-');
+  mkdirSync(join(proj, 'references'), { recursive: true });
+  // Line 1 = the old, matchable entry; then 6 newer entries push it out of newest-6.
+  let k = '### 2026-01-02 Widget calibration drift\nWIDGET_DRIFT body about calibration offsets\n\n';
+  for (let i = 1; i <= 6; i++) k += `### 2026-06-0${i} Recent entry ${i}\nrecent body ${i}\n\n`;
+  writeFileSync(join(proj, 'KNOWLEDGE.md'), k);
+  writeFileSync(join(proj, 'tasks', 'current-focus.md'), 'Status: BUILDING\nSlug: widget-calibration-fix\n');
+  writeFileSync(
+    join(proj, 'references', 'knowledge-index.md'),
+    '# knowledge index v1\n# file:line | date | title | keywords\nKNOWLEDGE.md:1 | 2026-01-02 | Widget calibration drift | widget, calibration, drift\n',
+  );
+  const r = runHook(proj);
+  const out = r.stdout || '';
+  check('idx-match: exit 0', r.status, 0, r.stderr);
+  check('idx-match: matched header present', out.includes('index-matched to current focus'), true, out);
+  check('idx-match: resurfaced entry body present', out.includes('WIDGET_DRIFT'), true, out);
+  check('idx-match: file:line label present', out.includes('[KNOWLEDGE.md:1]'), true, out);
+  check('idx-match: recency block still present', out.includes('Recent entry 6'), true, out);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 10. Index present + no keyword match → no matched block ──────────────────
+{
+  const proj = makeProj('md-idx-nomatch-');
+  mkdirSync(join(proj, 'references'), { recursive: true });
+  let k = '### 2026-01-02 Widget calibration drift\nWIDGET_DRIFT body about calibration offsets\n\n';
+  for (let i = 1; i <= 6; i++) k += `### 2026-06-0${i} Recent entry ${i}\nrecent body ${i}\n\n`;
+  writeFileSync(join(proj, 'KNOWLEDGE.md'), k);
+  writeFileSync(join(proj, 'tasks', 'current-focus.md'), 'Status: BUILDING\nSlug: unrelated-config-cleanup\n');
+  writeFileSync(
+    join(proj, 'references', 'knowledge-index.md'),
+    'KNOWLEDGE.md:1 | 2026-01-02 | Widget calibration drift | widget, calibration, drift\n',
+  );
+  const r = runHook(proj);
+  const out = r.stdout || '';
+  check('idx-nomatch: exit 0', r.status, 0, r.stderr);
+  check('idx-nomatch: no matched block', out.includes('index-matched to current focus'), false, out);
+  check('idx-nomatch: old entry not resurfaced', out.includes('WIDGET_DRIFT'), false, out);
+  check('idx-nomatch: recency block still present', out.includes('Recent entry 6'), true, out);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 11. Index absent → behaviour identical to today (recency-only) ───────────
+{
+  const proj = makeProj('md-idx-absent-');
+  writeFileSync(join(proj, 'KNOWLEDGE.md'), '### 2026-07-05 Recent\nRECENT_MARKER body\n');
+  writeFileSync(join(proj, 'tasks', 'current-focus.md'), 'Slug: widget-calibration-fix\n');
+  const r = runHook(proj);
+  const out = r.stdout || '';
+  check('idx-absent: exit 0', r.status, 0, r.stderr);
+  check('idx-absent: no matched block', out.includes('index-matched to current focus'), false, out);
+  check('idx-absent: recency content present', out.includes('RECENT_MARKER'), true, out);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 12. Malformed index → fail-open (no matched block, digest as today) ──────
+{
+  const proj = makeProj('md-idx-malformed-');
+  mkdirSync(join(proj, 'references'), { recursive: true });
+  writeFileSync(join(proj, 'KNOWLEDGE.md'), '### 2026-07-05 Recent\nRECENT_MARKER body\n');
+  writeFileSync(join(proj, 'tasks', 'current-focus.md'), 'Slug: widget-calibration-fix\n');
+  writeFileSync(
+    join(proj, 'references', 'knowledge-index.md'),
+    'this is not a valid index row\nnotaloc | 2026-01-01 | title | widget\njust,some,commas\n',
+  );
+  const r = runHook(proj);
+  const out = r.stdout || '';
+  check('idx-malformed: exit 0', r.status, 0, r.stderr);
+  check('idx-malformed: no matched block', out.includes('index-matched to current focus'), false, out);
+  check('idx-malformed: recency content still present', out.includes('RECENT_MARKER'), true, out);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 13. Global cap respected with an index producing matches → <= 150 lines ──
+{
+  const proj = makeProj('md-idx-cap-');
+  mkdirSync(join(proj, 'references'), { recursive: true });
+  let focus = 'domainmarker calibration\n';
+  for (let i = 1; i <= 120; i++) focus += `focus line ${i}\n`;
+  writeFileSync(join(proj, 'tasks', 'current-focus.md'), focus);
+  let less = '# Lessons Log\n## Lessons\n\n';
+  for (let i = 1; i <= 12; i++) less += `### 2026-05-${String(i).padStart(2, '0')} - L${i}\nlesson ${i} body line one\nlesson ${i} body line two\n\n`;
+  writeFileSync(join(proj, 'tasks', 'lessons.md'), less);
+  // Line 1 = old matchable entry; 12 newer entries drop it from newest-6.
+  let know = '### 2026-01-01 Old matched entry\nMATCHED_OLD body line\n\n';
+  for (let i = 1; i <= 12; i++) know += `### 2026-06-${String(i).padStart(2, '0')}\nknow ${i} body line one\nknow ${i} body line two\n\n`;
+  writeFileSync(join(proj, 'KNOWLEDGE.md'), know);
+  writeFileSync(
+    join(proj, 'references', 'knowledge-index.md'),
+    'KNOWLEDGE.md:1 | 2026-01-01 | Old matched entry | calibration, domainmarker\n',
+  );
+  const r = runHook(proj);
+  const lineCount = (r.stdout || '').replace(/\n$/, '').split('\n').length;
+  check('idx-cap: exit 0', r.status, 0, r.stderr);
+  check('idx-cap: <= 150 lines', lineCount <= 150, true, `got ${lineCount} lines`);
+  rmSync(proj, { recursive: true, force: true });
+}
+
 // ── Report ───────────────────────────────────────────────────────────────────
 
 const totalCases = pass + fails.length;

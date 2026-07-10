@@ -253,7 +253,7 @@ These hunt targets catch a class of bug that diff-focused reviewers systematical
 
 **Class-of-bug discipline**: when a bug has a recognisable pattern (oracle, TOCTOU, race window, audit duplication, unit-conversion mismatch), do NOT stop at the first instance. Sweep the diff for analogous sites; report all sites in ONE finding rather than splitting a class into N findings. A first instance found and a class missed is a Blocking-level review failure. **Include code newly added in the same diff** in the sweep — the canonical miss is an error-masking fix in one consumer while a second consumer added in the same change repeats the original anti-pattern.
 
-**Source**: distilled from a 9-round chatgpt-pr-review parallel-mode loop on a multi-tenant admin/partner console build (May 2026). Each pattern above showed up as a Blocking or Should-fix finding across R1-R7 of that loop; the per-pattern hunt block catches the gap one round earlier.
+Evidence for each pattern is recorded in the rule-classification ledger (references/rule-classification.md).
 
 ---
 

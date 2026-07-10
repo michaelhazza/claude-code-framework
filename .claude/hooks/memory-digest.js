@@ -4,12 +4,20 @@
  *
  * Emits a compact, plain-text digest of the repo's "working memory" so a
  * fresh session starts with recent context already in view: the current
- * focus, the most recent lessons, and the most recent KNOWLEDGE.md entries.
+ * focus, the most recent lessons, the most recent KNOWLEDGE.md entries, and
+ * — when a consumer ships references/knowledge-index.md — a handful of OLDER
+ * KNOWLEDGE.md entries whose keywords match the session's current-focus domain
+ * (index-matched resurfacing), lifting coverage past the newest-N recency window.
  *
  * The digest is BOUNDED and ADVISORY, never authoritative — a hard 150-line
  * global cap plus per-source sub-budgets keep it small, and every read is
  * byte-bounded so the hook stays fast on the always-on SessionStart path even
  * when a consumer's KNOWLEDGE.md is 400KB+ (tail-read only).
+ *
+ * Index-matched resurfacing is strictly additive and fail-open: no index file,
+ * an empty focus, no keyword match, a malformed index, or ANY error in the new
+ * path → the digest emits exactly as it did before (recency-only). It is the
+ * lowest-priority block, trimmed first under the global cap.
  *
  * Load-bearing ordering asymmetry:
  *   - KNOWLEDGE.md is append-only NEWEST-LAST  → read the TAIL.
@@ -53,6 +61,20 @@ const LESSONS_MAX_ENTRIES = 5;
 const LESSONS_MAX_LINES = 40;
 const KNOWLEDGE_MAX_ENTRIES = 6;
 const KNOWLEDGE_MAX_LINES = 55;
+
+// Index-matched resurfacing (references/knowledge-index.md → current-focus domain).
+const INDEX_MAX_BYTES = 262_144; // 256KB head — one compact line per index entry
+const INDEX_MATCH_MAX_ENTRIES = 3; // bounded resurfacing budget beyond the newest-N window
+const MATCHED_SOURCE_MAX_BYTES = 524_288; // 512KB head per source file — byte-bounded, cached per file
+const MATCHED_ENTRY_MAX_LINES = 12; // per resurfaced entry
+const MATCHED_MAX_LINES = 40; // whole matched block sub-budget
+const TOKEN_MIN_LEN = 4; // drop short tokens when matching focus ↔ index keywords
+const FOCUS_STOPWORDS = new Set([
+  'tasks', 'task', 'build', 'builds', 'spec', 'specs', 'current', 'focus', 'status',
+  'phase', 'branch', 'slug', 'main', 'review', 'ready', 'merge', 'todo', 'notes', 'none',
+  'this', 'that', 'with', 'from', 'http', 'https', 'into', 'over', 'under', 'done',
+  'building', 'reviewing', 'blocked', 'pending', 'active', 'session',
+]);
 
 // Global cap + soft time budget.
 const TOTAL_MAX_LINES = 150;
@@ -191,6 +213,111 @@ function buildKnowledge(dir) {
   return block;
 }
 
+// ── index-matched resurfacing ────────────────────────────────────────────────
+
+/** Lowercase, split on non-alphanumerics, drop short/numeric/stopword tokens. */
+function tokenize(text, stopwords) {
+  const set = new Set();
+  for (const tok of String(text).toLowerCase().split(/[^a-z0-9]+/)) {
+    if (tok.length >= TOKEN_MIN_LEN && !/^\d+$/.test(tok) && !stopwords.has(tok)) set.add(tok);
+  }
+  return set;
+}
+
+/**
+ * Parse one index line: `<file>:<line> | <YYYY-MM-DD> | <title> | <keywords>`.
+ * Returns null for malformed lines (fail-quiet — a bad row never breaks the run).
+ */
+function parseIndexLine(line) {
+  const parts = line.split('|').map((s) => s.trim());
+  if (parts.length < 4) return null;
+  const loc = parts[0].match(/^(.+):(\d+)$/);
+  if (!loc) return null;
+  const lineNo = parseInt(loc[2], 10);
+  if (!Number.isInteger(lineNo) || lineNo < 1) return null;
+  const title = parts[2];
+  // Match tokens come from BOTH the title and the comma-separated keyword field.
+  const tokens = new Set([
+    ...tokenize(title, FOCUS_STOPWORDS),
+    ...tokenize(parts[3], FOCUS_STOPWORDS),
+  ]);
+  return { file: loc[1], lineNo, date: parts[1], title, tokens };
+}
+
+/** Entry text starting at lineNo (1-based), stopping at the next `##`/`###` heading. */
+function sliceEntryAtLine(sourceLines, lineNo, maxLines) {
+  const idx = lineNo - 1;
+  if (idx < 0 || idx >= sourceLines.length) return []; // line beyond the read window — skip
+  const out = [];
+  for (let i = idx; i < sourceLines.length && out.length < maxLines; i++) {
+    if (i > idx && /^#{2,3}\s/.test(sourceLines[i])) break;
+    out.push(sourceLines[i]);
+  }
+  return trimBlankEdges(out);
+}
+
+/**
+ * Resurface OLDER KNOWLEDGE.md entries matched to the current-focus domain.
+ * Throws when references/knowledge-index.md is absent (→ safe() returns [],
+ * silent, digest as today). knowledgeLines is the already-built recency block,
+ * used to skip entries the digest is already showing.
+ */
+function buildIndexMatched(dir, knowledgeLines) {
+  const indexRaw = readHead(join(dir, 'references', 'knowledge-index.md'), INDEX_MAX_BYTES);
+  const entries = [];
+  for (const raw of indexRaw.split('\n')) {
+    const line = raw.trim();
+    if (line === '' || line.startsWith('#')) continue; // header/blank lines
+    const parsed = parseIndexLine(line);
+    if (parsed && parsed.tokens.size) entries.push(parsed);
+  }
+  if (entries.length === 0) return [];
+
+  const focusRaw = readHead(join(dir, 'tasks', 'current-focus.md'), FOCUS_MAX_BYTES);
+  const focusTokens = tokenize(focusRaw, FOCUS_STOPWORDS);
+  if (focusTokens.size === 0) return []; // no domain to match against
+
+  const knowledgeText = knowledgeLines.join('\n');
+  const scored = [];
+  for (const e of entries) {
+    if (e.title && knowledgeText.includes(e.title)) continue; // already in the recency block
+    let score = 0;
+    for (const tok of e.tokens) if (focusTokens.has(tok)) score++;
+    if (score > 0) scored.push({ e, score });
+  }
+  if (scored.length === 0) return [];
+  // Best keyword overlap first; newer date breaks ties (dates are YYYY-MM-DD).
+  scored.sort((a, b) => b.score - a.score || b.e.date.localeCompare(a.e.date));
+
+  // One bounded read per source file, reused across every match in that file.
+  const sourceCache = new Map();
+  function sourceLines(file) {
+    if (!sourceCache.has(file)) {
+      let lines = [];
+      try {
+        lines = readHead(join(dir, file), MATCHED_SOURCE_MAX_BYTES).split('\n');
+      } catch {
+        lines = []; // unreadable source — skip its matches
+      }
+      sourceCache.set(file, lines);
+    }
+    return sourceCache.get(file);
+  }
+
+  const out = [];
+  let used = 0;
+  for (const { e } of scored) {
+    if (used >= INDEX_MATCH_MAX_ENTRIES) break;
+    const body = sliceEntryAtLine(sourceLines(e.file), e.lineNo, MATCHED_ENTRY_MAX_LINES);
+    if (body.length === 0) continue;
+    const chunk = [`[${e.file}:${e.lineNo}]`, ...body];
+    if (out.length + chunk.length > MATCHED_MAX_LINES) break;
+    out.push(...chunk);
+    used++;
+  }
+  return out;
+}
+
 // ── assembly ────────────────────────────────────────────────────────────────
 
 /** Run a block builder; on unexpected error, degrade to [] (stderr under DEBUG). */
@@ -220,6 +347,12 @@ try {
   const focus = Date.now() - start <= SOFT_BUDGET_MS ? safe(buildFocus, PROJECT_DIR, 'current-focus') : [];
   const lessons = Date.now() - start <= SOFT_BUDGET_MS ? safe(buildLessons, PROJECT_DIR, 'lessons') : [];
   const knowledge = Date.now() - start <= SOFT_BUDGET_MS ? safe(buildKnowledge, PROJECT_DIR, 'knowledge') : [];
+  // Index-matched resurfacing runs last — it needs the recency block to avoid
+  // re-showing entries, and fails open (safe → []) when the index is absent.
+  const matched =
+    Date.now() - start <= SOFT_BUDGET_MS
+      ? safe((d) => buildIndexMatched(d, knowledge), PROJECT_DIR, 'index-matched')
+      : [];
 
   // Order: [current focus, lessons, knowledge]. dropFrom marks the OLDEST edge
   // for the global-cap trim — knowledge is newest-last (drop the start), lessons
@@ -229,9 +362,11 @@ try {
   if (focus.length) blocks.push({ role: 'focus', header: '— Current focus (tasks/current-focus.md) —', lines: focus, dropFrom: 'end' });
   if (lessons.length) blocks.push({ role: 'lessons', header: '— Recent lessons (tasks/lessons.md) —', lines: lessons, dropFrom: 'end' });
   if (knowledge.length) blocks.push({ role: 'knowledge', header: '— Recent knowledge (KNOWLEDGE.md) —', lines: knowledge, dropFrom: 'start' });
+  if (matched.length) blocks.push({ role: 'matched', header: '— Related knowledge (index-matched to current focus) —', lines: matched, dropFrom: 'end' });
 
-  // Global cap — trim oldest content first; current-focus last.
-  const dropOrder = ['knowledge', 'lessons', 'focus'];
+  // Global cap — trim oldest/lowest-priority content first; current-focus last.
+  // 'matched' is supplementary → trimmed before the recency blocks.
+  const dropOrder = ['matched', 'knowledge', 'lessons', 'focus'];
   while (totalLines(blocks) > TOTAL_MAX_LINES) {
     let dropped = false;
     for (const role of dropOrder) {

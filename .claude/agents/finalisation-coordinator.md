@@ -307,7 +307,7 @@ The sub-agent uses its existing contract:
 - Infer "round-N+1 not requested" from a single-round APPROVED verdict.
 - Auto-close after any number of rounds without an explicit `done` / `finished` / `we're done` / equivalent signal from the operator.
 
-Finalisation triggers ONLY on explicit operator signal. An inferred answer is not a trigger. See KNOWLEDGE.md `[2026-05-09] Correction — chatgpt-pr-review is iterative until operator says done` for the operator correction that locked this.
+Finalisation triggers ONLY on explicit operator signal. An inferred answer is not a trigger. Operator-locked 2026-05-09.
 
 When the sub-agent returns, it has done its own KNOWLEDGE.md updates and doc-sync work as part of its existing finalisation. The coordinator's doc-sync sweep in step 6 is the cross-check that confirms `chatgpt-pr-review` covered everything.
 
@@ -516,7 +516,7 @@ Compose the matching prose body for the same file. Status enum transitions `REVI
 
 ## Step 10 — Write Phase 3 artefacts, commit + push, THEN apply ready-to-merge label
 
-**Order is load-bearing — never invert.** The ready-to-merge label triggers CI. If it is applied before the Phase 3 commit lands on the remote, CI runs against the pre-Phase-3 HEAD, the Phase 3 commit then lands and re-fires CI from scratch, and the first run becomes wasted compute. Operator-locked 2026-05-09 after a real waste-of-resources incident on PR #276 — see KNOWLEDGE.md `[2026-05-09] Correction — finalisation-coordinator must commit Phase 3 BEFORE applying ready-to-merge label`.
+**Order is load-bearing — never invert.** The ready-to-merge label triggers CI. If it is applied before the Phase 3 commit lands on the remote, CI runs against the pre-Phase-3 HEAD, the Phase 3 commit then lands and re-fires CI from scratch, and the first run becomes wasted compute. Operator-locked 2026-05-09.
 
 **Equally load-bearing: the label is applied ONLY after Step 8c (G5) reported green.** The labeled run is the final confirmation of a locally-verified tree, never the first execution of the suite.
 
@@ -609,7 +609,7 @@ If mergeState is CLEAN → Step 12. If BEHIND → run S2 sync (Step 2 contract) 
 1. **Between fix iterations.** After re-adding the ready-to-merge label (iteration step 7), the new CI run takes a few seconds to register on GitHub. Use `ScheduleWakeup(60-90s)` before re-entering `--watch` to avoid racing the registration. Single use per iteration; not a polling loop.
 2. **`gh pr checks --watch` genuinely unavailable.** Older `gh` CLI versions (< 2.32), network-restricted dev environments. Fall back to `ScheduleWakeup(90s)` polling the `gh pr view` JSON below. State the fallback reason in `progress.md` so the operator can confirm.
 
-Any other `ScheduleWakeup` usage during Step 11 is a process violation — the watch IS the wait. Operator-locked 2026-05-27 after PR #430 finalisation where the coordinator stacked a `ScheduleWakeup` on top of an active background `--watch`: the wakeup fired before the watch completed and produced a redundant context reload.
+Any other `ScheduleWakeup` usage during Step 11 is a process violation — the watch IS the wait. Operator-locked 2026-05-27 (double-polling produces redundant context reloads).
 
 ```bash
 gh pr view {N} --json mergeStateStatus,statusCheckRollup -q '{mergeState: .mergeStateStatus, checks: [.statusCheckRollup[] | {name, status, conclusion}]}'
@@ -752,7 +752,7 @@ Set TodoWrite item to `pending` and stop. Do not attempt iteration 6 unless the 
 
 **Trigger:** Step 11 reached the `green` state. Mergeability is `CLEAN`, all required checks SUCCESS.
 
-**No operator pause here.** Once the Trigger conditions are met, Steps 12.1–12.4 run automatically. Do NOT pose an `AskUserQuestion` ("auto-merge now?", "all checks green — proceed?") and do NOT pose any other confirmation prompt. The single operator-controlled decision point in this coordinator is the `ready-to-merge` label at Step 10.3 (per the optional `feedback_ready_to_merge_label.md` operator-memory pattern — the label is opt-in in repos that adopt that memory). Once that label is applied and CI is green, the rest of the merge sequence is automatic: prep-commit current-focus → squash-merge --admin → patch main with squash sha. Operator-locked 2026-05-26 after a real finalisation pass surfaced an unnecessary pre-merge confirmation prompt.
+**No operator pause here.** Once the Trigger conditions are met, Steps 12.1–12.4 run automatically. Do NOT pose an `AskUserQuestion` ("auto-merge now?", "all checks green — proceed?") and do NOT pose any other confirmation prompt. The single operator-controlled decision point in this coordinator is the `ready-to-merge` label at Step 10.3 (per the optional `feedback_ready_to_merge_label.md` operator-memory pattern — the label is opt-in in repos that adopt that memory). Once that label is applied and CI is green, the rest of the merge sequence is automatic: prep-commit current-focus → squash-merge --admin → patch main with squash sha. Operator-locked 2026-05-26.
 
 ### 12.1 — Update current-focus.md on the feature branch (post-merge state)
 
@@ -810,7 +810,13 @@ This is the LAST commit on the feature branch before merge. The squash-commit wi
 gh pr merge {N} --admin --squash --delete-branch
 ```
 
-`--admin` is mandatory because the post-merge-prep commit from 12.2 (a docs-only `tasks/current-focus.md` edit) still triggers the always-on CI jobs on push (the label-gated jobs no longer fire because 12.2 pulled the label). Waiting for those to complete is wasteful — the prep commit changes nothing CI cares about, and the previous commit's CI was already green. `--admin` bypasses the required-status-checks gate and merges immediately. Operator-locked 2026-05-09 after a wasted-CI incident on PR #276.
+`--admin` is permitted here ONLY when ALL three conditions hold (DG-5, operator-locked 2026-07-10):
+
+1. G5 local CI-parity (Step 8c) passed on the identical tree that was pushed at Step 10.2, and
+2. CI ran green on the labelled HEAD during Step 11, and
+3. the ONLY commit after that green CI run is the 12.2 docs-only post-merge-prep commit (`tasks/current-focus.md` / progress writes — nothing CI cares about).
+
+Under those conditions `--admin` skips a redundant full-suite re-run on the prep commit — that is its entire justification. If ANY condition fails (a code commit landed after CI green, G5 was skipped, CI never ran green on the labelled HEAD), do NOT use `--admin`: merge with `gh pr merge {N} --squash --delete-branch` and wait for required checks, or return to Step 11.
 
 `--squash` is the project convention; do not use `--rebase` or `--merge`. The `--delete-branch` flag deletes the feature branch from origin after merge.
 

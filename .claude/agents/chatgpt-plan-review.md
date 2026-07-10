@@ -24,30 +24,13 @@ Read:
 
 ## Mode Detection
 
-Three modes — `manual`, `automated`, `parallel`. **Single source of truth: `references/review-mode-resolution.md`** — the summary below restates it; on any disagreement the reference file wins. Resolution order at session start (no legacy auto-detect):
-
-1. **Explicit operator phrase in the invocation** → wins. Recognised keywords: `automated`, `manual`, `parallel`.
-2. **Session-state file `.claude/session-state/review-mode`** → single-line file containing `manual` / `automated` / `parallel` (whitespace trimmed). Any other value or missing/unreadable file falls through. Written by orchestrators like `bug-fixer` so the choice survives sub-agent dispatches without an env-var session restart.
-3. **`CHATGPT_REVIEW_DEFAULT_MODE` env var** → accept `manual` / `automated` / `parallel`; any other value treated as unset.
-4. **Hard default: `manual`.** Do NOT auto-detect from `OPENAI_API_KEY` presence — silent fall-through to automated burns API tokens without operator intent. The unified contract is: a fresh machine with the key set still defaults to manual unless the operator (or env var or state file) names a different mode.
+**MODE** — `manual` | `automated` | `parallel`. Resolution order, mode meanings (for this agent the operator uploads the PLAN in manual/parallel), resume/persistence, and the never-auto-detect-from-`OPENAI_API_KEY` rule: **read `references/review-mode-resolution.md` § MODE at session start — single source of truth** (hard default `manual`). Record the resolved MODE in the session log header; restore from there on resume.
 
 If MODE resolves to `automated` or `parallel`, load `.env` first (`set -a; [ -f .env ] && . ./.env; set +a` — API keys live in `.env` at the repo root, not necessarily the exported shell), then verify `OPENAI_API_KEY` is set. If still missing, abort with: `error: <mode> mode requires OPENAI_API_KEY (checked shell env and ./.env). Add it to .env at the repo root.` Do NOT silently fall back to manual.
 
-**Parallel mode** runs BOTH the automated OpenAI path AND the manual ChatGPT-web path on the same plan, then renders a side-by-side compare panel before triage. Shared contract: [`docs/review-pipeline/parallel-mode.md`](../../docs/review-pipeline/parallel-mode.md) — loop shape, compare-panel rendering, session-log schema, learning step, failure handling, and the Phase 3 transition criteria live there. Defer to that file for behaviour not spelled out below.
+**Parallel mode** shared contract: [`docs/review-pipeline/parallel-mode.md`](../../docs/review-pipeline/parallel-mode.md) — loop shape, compare-panel rendering, session-log schema, learning step, failure handling, Phase 3 transition criteria. Defer to that file for behaviour not spelled out below.
 
-MODE is recorded in the session log header and restored on resume.
-
-**AUTONOMY** — `attended` (default for interactive sessions) | `unattended`. **MODE (`manual`/`automated`/`parallel`) selects the review TRANSPORT only; it NEVER implies autonomy.** Resolution order: (1) explicit operator phrase (`autonomous`/`unattended` → unattended; `attended`/`interactive` → attended); (2) `.claude/session-state/review-autonomy` single-line file (`attended`/`unattended`); (3) **dispatch context — on a FIRST (non-resumed) run dispatched as a sub-agent with no interactive operator, default `unattended`** (a "wait for input" gate has no operator to satisfy and deadlocks as a premature return-to-caller); (4) default `attended`.
-
-**Persistence + resume (aligns the persistence contract with the resolution contract).** The resolved autonomy is written to the session log header at session start, alongside MODE. **On resume it is restored from the session log and takes precedence over the session-state file (2) and dispatch context (3)** — a resumed session is NEVER re-evaluated from dispatch context, so it cannot silently flip `attended` → `unattended`. If a resumed session's autonomy cannot be restored (a pre-2.17.0 log with no recorded value, or an unreadable session log), **fail closed to `attended`** — never infer `unattended` from dispatch context on resume. Consequently a lost, deleted, or unavailable `.claude/session-state/review-autonomy` file cannot change a resumed session's autonomy mid-review: the session log is the authoritative source on resume, and the safe default applies when it is absent.
-
-When `unattended`, the agent **NEVER blocks waiting for operator input.** Every pausing gate becomes surface-and-continue:
-- **User-facing and technical-escalated findings** are surfaced-but-non-blocking: do NOT auto-apply; record each in the round log, route it to `tasks/todo.md` as a deferred operator decision, and return the full list to the caller. Never await approval.
-- A **directional `NEEDS_DISCUSSION` / `NEEDS_REVISION` fork** does NOT halt the loop. Resolve it conservatively (prefer the plan as-is / the simplest option, mirroring `spec-reviewer` Step 7), record the fork and its conservative resolution in `tasks/todo.md` as a deferred operator decision, and continue. The session verdict must reflect the open items — **never a silent `APPROVED`**.
-- **Termination auto-triggers** on convergence (an `APPROVED` round, or the round cap) WITHOUT an explicit `done`.
-- The **ONLY** hard-stops are genuine tooling failures (non-zero CLI exit, file-write failure, `git push` failure) — surface the exact error and stop.
-
-This aligns the `unattended` contract with the autonomous reviewers (`spec-reviewer`, `claude-plan-review`), which route directional findings to the backlog rather than blocking. `attended` mode is unchanged.
+**AUTONOMY** — `attended` | `unattended`; MODE selects the review TRANSPORT only and NEVER implies autonomy. Resolution order, resume precedence (session log wins over session-state file and dispatch context; unrestorable → **fail closed to `attended`**), and the full `unattended` surface-and-continue semantics (user-facing/escalated findings routed to `tasks/todo.md`, never awaited; directional forks resolved conservatively — prefer the plan as-is — and logged, **never a silent `APPROVED`**; termination auto-triggers on convergence; only genuine tooling failures hard-stop): **read `references/review-mode-resolution.md` § AUTONOMY at session start — single source of truth.** Write the resolved autonomy to the session log header at session start, alongside MODE.
 
 ## On Start
 
@@ -64,7 +47,7 @@ When invoked with `chatgpt-plan-review target=tasks/builds/{slug}/plan.md`:
 5. If a log exists for this slug → resume from the last completed round.
 6. If no log → create `tasks/review-logs/chatgpt-plan-review-{slug}-{YYYY-MM-DDThh-mm-ssZ}.md` with Session Info header (see Log Format below).
 
-**[PARALLEL]** Run BOTH the [AUTOMATED] and [MANUAL] steps below in interleaved order per [`docs/review-pipeline/parallel-mode.md` § Parallel-mode loop](../../docs/review-pipeline/parallel-mode.md). Kick off the CLI in the background — plan mode uses `--file` so input is unambiguous; keep stderr in its own file so JSON capture stays clean: `npx tsx scripts/chatgpt-review.ts --mode plan --file tasks/builds/{slug}/plan.md > <openai-json-file> 2> <openai-stderr-file> &` — print the operator instructions noting both paths are in flight, then wait for the operator paste. When the paste arrives, poll the background CLI silently, then render the compare panel via `renderComparePanel(compareFindingSets(openai, chatgpt))`. **Then run the learning analysis** (parallel-mode.md § Learning analysis — Step 7) before triage — every ChatGPT-only finding is a candidate prompt-improvement proposal for `SYSTEM_PROMPT_PLAN_V2` in `scripts/chatgpt-reviewPure.ts`. Operator may skip with `skip learning`.
+**[PARALLEL]** Run BOTH the [AUTOMATED] and [MANUAL] steps below in interleaved order per [`docs/review-pipeline/parallel-mode.md` § Parallel-mode loop](../../docs/review-pipeline/parallel-mode.md). Kick off the CLI in the background — plan mode uses `--file` so input is unambiguous; keep stderr in its own file so JSON capture stays clean: `npx tsx scripts/chatgpt-review.ts --mode plan --file tasks/builds/{slug}/plan.md > <openai-json-file> 2> <openai-stderr-file> &` — print the operator instructions noting both paths are in flight, then wait for the operator paste. When the paste arrives, poll the background CLI silently, then render the compare panel via `renderComparePanel(compareFindingSets(openai, chatgpt))`. **Then run the learning analysis** (parallel-mode.md § Learning analysis — Step 7) before triage — every ChatGPT-only finding is a candidate prompt-improvement proposal for `SYSTEM_PROMPT_PLAN_V2` in `scripts/chatgpt-reviewPure.ts`. Operator may skip with `skip learning`. Proposals are eval-gated per parallel-mode.md § Per-proposal operator gate (DG-7): with a pinned eval suite for the prompt, a suite-passing proposal auto-applies under the four-key gate; without one (or on suite failure) it surfaces to the operator as before.
 
 **[AUTOMATED]** Run round 1 immediately:
 
@@ -131,7 +114,7 @@ For each round:
    - Severity is `high` or `critical`
    - You are not confident the fix is correct
 
-3. For user-facing findings AND escalated technical findings: print each and wait for operator `yes` / `no` / `defer`.
+3. For user-facing findings AND escalated technical findings: present ALL of them in ONE per-round block (finding, triage, severity, recommendation, rationale each). The operator may reply "approve batch" to take the recommendations verbatim in one reply, naming exceptions inline ("approve batch except 2: no") — DG-8, operator-locked 2026-07-10. Mark [INDIVIDUAL] on any finding that changes permissions, customer-visible pricing/limits, or removes a workflow; a bare "approve batch" does not cover those — re-ask for each unanswered [INDIVIDUAL] item. Per-item `yes` / `no` / `defer` replies still work.
 
 4. Auto-apply approved technical findings to `tasks/builds/{slug}/plan.md`. Log every decision.
 
