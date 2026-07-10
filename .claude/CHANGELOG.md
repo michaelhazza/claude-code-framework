@@ -32,6 +32,17 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.34.0 — 2026-07-10
+
+**Highlights:** divergence-elimination pass driven by the origin project's convergence to framework-canonical docs. Two spec-authoring rules proven in origin-project builds are promoted into the canonical checklist, and the one managed doc that still had no consumer slot (`schemas/CHANGELOG.md`) gains one — so a consumer that keeps its own schemas in `schemas/` can record their history without forking the framework-owned changelog. With this release, every framework-managed doc that consumers routinely extend carries a named `LOCAL-OVERRIDE` slot; repo-specific content belongs inside the slots (or in `agent-context.md` for agent behaviour), never as out-of-slot edits.
+
+**Added:**
+- `docs/spec-authoring-checklist.md` § Section 1.1 — *Primitive↔target cross-check*: specs that lock helper primitives AND name their consumers must include a cross-check table proving every consumer is expressible via the locked primitives (origin example: gates-speedup-cluster v5, 34 inexpressible targets found at implementation time).
+- `docs/spec-authoring-checklist.md` § Section 9.1 — *Risk-register correctness axis*: test-infrastructure specs (global hooks, harness config) must carry BOTH a performance risk AND a correctness risk per risk row (origin example: fix-brittle-ci-tests Learning 4).
+- `schemas/CHANGELOG.md` — `## Consumer-local schema changes` section with a `consumer-entries` LOCAL-OVERRIDE slot.
+
+**Changed:** none beyond the files above. No new managed files, no migration (slot additions flow through normal sync; consumers with customised copies of these docs get a `.framework-new` and should move their local content into the slots — see `references/local-override-convention.md`).
+
 ## 2.33.0 — 2026-07-09
 
 **Highlights:** compound-learning suite — three additive, fail-open capabilities that make lessons and quality compound faster in consuming repos. (A) a SessionStart `memory-digest` hook that surfaces a bounded (≤150-line) plain-text digest of current-focus + recent lessons + the tail of KNOWLEDGE.md so a session starts with recent context in view; (B) a local skill-overlay convention — an adopt-only `.claude/context/skill-context.md` sidecar, a greppable pointer line in all 20 skills, an executable pointer-coverage gate in `validate-framework.js`, a `/cleanfiles` promotion drain, and two `/framework-doctor` checks — so repo-specific skill failure modes have a home and a path back upstream; (C) a `/eval-prompts` golden-set runner (`scripts/eval-prompts*.ts`) that scores a repo-local prompt suite's catch rate + false-alarm rate against a pinned baseline and fails on a regression, so a prompt change lands only if its suite still passes. Externally reviewed across 3 spec rounds before build.

@@ -94,6 +94,16 @@ The "invent new" path is the expensive one. Choosing it without justification is
 
 > Origin-project examples: ClientPulse-GHL, session-1-foundation, skill-analyzer-v2.
 
+### Section 1.1 — Primitive↔target cross-check (when locking helpers and consumers in the same spec)
+
+For any spec that locks a set of helper primitives AND names the target consumers (gates, scripts, services) that will be built on them in the same spec, include a primitive↔target cross-check table showing that every named consumer's logic is expressible via the locked primitives.
+
+**Why this matters.** A real failure: a spec locked four AST-query primitives and named ~33 migration targets in the same chunk. Implementation then found 34 targets whose detection logic the four primitives could not express (call expressions, property accesses, variable declarations, catch clauses, multi-file import graphs). The cross-check table would have surfaced the mismatch at spec-review time, not at chunk-implementation time.
+
+**Format.** Two-column table: primitive → the target consumers that depend on it. Every named target must appear under at least one primitive. Targets that cannot be expressed via the locked primitives are blockers — either add the missing primitive to the spec or remove the target from scope.
+
+> Origin-project example: gates-speedup-cluster (v5).
+
 ---
 
 ## Section 2 — File inventory lock
@@ -326,6 +336,19 @@ If your spec's test plan proposes anything in the `none_for_now` or `defer_until
 "Spec proposes E2E/frontend/API-contract tests against framing" — caught across multiple specs.
 
 > Origin-project examples: onboarding-playbooks, routines-response.
+
+### Section 9.1 — Risk-register correctness axis (test-infrastructure specs)
+
+For specs that propose changes to the test infrastructure itself — global test-runner hooks, global setup files, or harness-wide configuration — the risk register MUST list BOTH a performance risk AND a correctness risk. A spec carrying only one axis is incomplete; reviewers flag it.
+
+Every risk row for a global hook needs two entries:
+
+1. **Performance risk.** E.g. "adding a per-file module reset adds ~Xms per test file; at N files that is Y seconds of suite time."
+2. **Correctness risk.** E.g. "the reset changes what state tests actually share, so tests that silently depended on leaked state may begin passing/failing for a different reason than they assert."
+
+The correctness axis is the one first drafts omit: a harness change that makes the suite faster but changes *what the tests verify* is a regression dressed as an optimisation.
+
+> Origin-project example: fix-brittle-ci-tests (Learning 4).
 
 ---
 
