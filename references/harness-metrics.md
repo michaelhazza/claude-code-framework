@@ -43,7 +43,7 @@ the parser reads the union and tolerates absent fields. Fields the aggregator re
 | `fix-loop-iterations-per-build` | review coordinator | derivable |
 | `rounds-per-build` | review coordinator | derivable |
 | `quarantine-rate` | review coordinator | derivable |
-| `auto-apply-success-rate` | review coordinator | not-derivable (no `acceptance_check_outcome`) |
+| `auto-apply-success-rate` | review coordinator | derivable |
 | `operator-override-rate` | review coordinator | not-derivable (no operator-override record) |
 | `schema-validation-rate` | review coordinator | not-derivable (no `schema_validation_passed`) |
 | `openai-repair-retry-rate` | review coordinator | not-derivable (no `repair_retry_attempted`) |
@@ -101,21 +101,33 @@ key set; the aggregator will emit real values automatically once the field appea
 - **Review action:** above ~2% of all reviewer calls indicates a contract, parser, or prompt
   problem; investigate the failing reviewer's output format.
 
+### `auto-apply-success-rate`
+- **Owner:** review coordinator.
+- **Formula (pinned):**
+  `count(records with acceptance_check_outcome == 'passed') /
+   count(records with acceptance_check_outcome in {'passed','failed'})`.
+- **Source field(s):** `acceptance_check_outcome` (emitted by `applyFindings.ts` on every
+  `logDecision`: `'passed'` when a finding is applied or already applied by the reviewer,
+  `'failed'` when an attempted apply or verification failed and was reverted, `'deferred'`
+  when an apply was never attempted — gate-ineligible, suppressed, or production-DSN).
+- **Row treatment (explicit):**
+  - `'passed'` → counted in numerator and denominator.
+  - `'failed'` → counted in denominator only.
+  - `'deferred'` → excluded from **both** (an apply was never attempted).
+  - missing field (legacy hand-written jsonl rows) → excluded from **both**.
+  - rejected / skipped / any decision without the field → excluded from both.
+- **Empty-corpus rule:** when the denominator is `0` the formula is still live — the metric is
+  emitted with value `null` and the note `no auto-apply attempts in corpus`. It is **not**
+  `not-derivable` (the field exists; the corpus simply has no attempts). The aggregator reports
+  the attempted count (the denominator) alongside the rate in both the markdown and jsonl output.
+- **Review action:** below 90% means the apply gate is admitting unsafe fixes; tighten reviewer
+  `auto_apply_eligible` discipline.
+
 ## Not-derivable metrics (emitted with a marker + reason)
 
 These are §16 launch metrics whose formula the **current** log shape cannot support. The key
 is always emitted so the contract is stable and the gap is visible; the value is `null` with
 a `not-derivable` status and the reason below. Do not fake a value.
-
-### `auto-apply-success-rate`
-- **Owner:** review coordinator.
-- **Formula (target shape):** `count(applied AND acceptance_check_outcome == passed AND
-  lint+typecheck passed) / count(applied)`.
-- **Blocker:** current logs record `decision: applied` but no per-apply
-  `acceptance_check_outcome`, lint, or typecheck result — success cannot be attributed.
-  (The aggregator reports the raw applied count as supporting context.)
-- **Review action when computable:** below 90% means the apply gate is admitting unsafe
-  fixes; tighten reviewer `auto_apply_eligible` discipline.
 
 ### `operator-override-rate`
 - **Owner:** review coordinator.

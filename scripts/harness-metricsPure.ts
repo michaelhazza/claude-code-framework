@@ -37,11 +37,7 @@ export const METRIC_DEFS: MetricDef[] = [
   { key: 'fix-loop-iterations-per-build', derivable: true },
   { key: 'rounds-per-build', derivable: true },
   { key: 'quarantine-rate', derivable: true },
-  {
-    key: 'auto-apply-success-rate',
-    derivable: false,
-    notDerivableReason: 'no acceptance_check_outcome / lint / typecheck result per applied finding in current logs',
-  },
+  { key: 'auto-apply-success-rate', derivable: true },
   {
     key: 'operator-override-rate',
     derivable: false,
@@ -97,6 +93,8 @@ export interface DecisionRecord {
   reviewer: string | null;
   decision: string | null;
   round: number | null;
+  /** 'passed' | 'failed' | 'deferred' per applyFindings.ts; null when absent (legacy rows). */
+  acceptanceCheckOutcome: string | null;
   tsRaw: string | null;
   tsMs: number | null;
 }
@@ -149,7 +147,17 @@ export interface MetricsReport {
 
 // ── slug + timestamp helpers ────────────────────────────────────────────────
 
-const TS_TAIL = /-(\d{4}-\d{2}-\d{2}T[0-9:\-]+Z|\d{4}-\d{2}-\d{2})$/;
+/**
+ * Trailing `-<timestamp>` matcher. Anchored to end-of-name and gated on a real
+ * `YYYY-MM-DD` date prefix so a kebab slug can never be eaten. The optional time
+ * branch requires the `T\d\d` structure, then tolerates every writer form:
+ *   `2026-07-10T13-59-41`   auditLog.ts buildAuditLogPath (hyphenated time, NO Z)
+ *   `2026-07-08T015917Z`    compact HHMMSS (real files on disk)
+ *   `2026-07-08T01:59:17Z`  colon time
+ *   `2026-07-08T14-35-17Z`  dashed time with Z
+ *   `2026-07-08`            date-only (time branch absent)
+ */
+const TS_TAIL = /-(\d{4}-\d{2}-\d{2}(?:T\d{2}[:\-]?\d{2}[:\-]?\d{2}(?:\.\d+)?Z?)?)$/;
 
 /**
  * Extract the build slug from a coordinator-decisions filename. Strips the
@@ -174,7 +182,10 @@ export function extractFileTs(fileName: string): string | null {
 /**
  * Normalize the several observed timestamp shapes to epoch ms, or null.
  * Handles: date-only (2026-07-08), compact time (2026-07-08T015917Z),
- * colon time (2026-07-08T01:59:17Z), dash time (2026-07-08T14-35-17Z).
+ * colon time (2026-07-08T01:59:17Z), dash time (2026-07-08T14-35-17Z), and the
+ * auditLog.ts writer form with no trailing Z (2026-07-10T13-59-41).
+ * A parsed time without a trailing Z is treated as UTC — the reconstructed ISO
+ * string below always appends Z, so all writer forms map to the same instant.
  */
 export function normalizeTimestamp(raw: unknown): number | null {
   if (typeof raw !== 'string') return null;
@@ -258,6 +269,7 @@ export function parseDecisionsFile(fileName: string, content: string): ParsedFil
       reviewer: firstString(o, ['reviewer']),
       decision: firstString(o, ['decision']),
       round: firstNumber(o, ['round', 'iteration']),
+      acceptanceCheckOutcome: firstString(o, ['acceptance_check_outcome']),
       tsRaw,
       tsMs: normalizeTimestamp(tsRaw),
     });
@@ -281,11 +293,6 @@ function norm(d: string | null): string {
 
 export function isRejected(d: string | null): boolean {
   return norm(d) === 'rejected';
-}
-
-export function isApplied(d: string | null): boolean {
-  const n = norm(d);
-  return n === 'applied' || n.startsWith('accepted');
 }
 
 export function isQuarantined(d: string | null): boolean {
@@ -346,27 +353,42 @@ function derivableMetricsFor(records: DecisionRecord[]): Record<string, MetricVa
     };
   }
 
+  // auto-apply-success-rate = passed / (passed + failed).
+  // 'deferred' outcomes (never attempted) and rows missing the field (legacy
+  // hand-written logs) are excluded from BOTH numerator and denominator. When
+  // no attempts exist, the metric is still live — emit null with a no-attempts
+  // note, never 'not-derivable'.
+  const passed = records.filter((r) => r.acceptanceCheckOutcome === 'passed').length;
+  const failed = records.filter((r) => r.acceptanceCheckOutcome === 'failed').length;
+  const attempts = passed + failed;
+  out['auto-apply-success-rate'] =
+    attempts === 0
+      ? { value: null, status: 'no-data', note: 'no auto-apply attempts in corpus' }
+      : {
+          value: passed / attempts,
+          status: 'ok',
+          note: `${passed} passed of ${attempts} auto-apply attempts (denominator = passed + failed; deferred and rows missing acceptance_check_outcome excluded)`,
+        };
+
   return out;
 }
 
-function notDerivableMetrics(records: DecisionRecord[]): Record<string, MetricValue> {
+function notDerivableMetrics(): Record<string, MetricValue> {
   const out: Record<string, MetricValue> = {};
-  const applied = records.filter((r) => isApplied(r.decision)).length;
   for (const def of METRIC_DEFS) {
     if (def.derivable) continue;
-    // auto-apply-success-rate carries the raw applied count as context.
-    const note =
-      def.key === 'auto-apply-success-rate'
-        ? `${def.notDerivableReason}; applied-decision count = ${applied} (context only)`
-        : (def.notDerivableReason ?? 'not derivable from current logs');
-    out[def.key] = { value: null, status: 'not-derivable', note };
+    out[def.key] = {
+      value: null,
+      status: 'not-derivable',
+      note: def.notDerivableReason ?? 'not derivable from current logs',
+    };
   }
   return out;
 }
 
 /** Full metric set (derivable + not-derivable) for a record set. Emits every key. */
 export function computeMetrics(records: DecisionRecord[]): Record<string, MetricValue> {
-  return { ...derivableMetricsFor(records), ...notDerivableMetrics(records) };
+  return { ...derivableMetricsFor(records), ...notDerivableMetrics() };
 }
 
 // ── aggregation ────────────────────────────────────────────────────────────

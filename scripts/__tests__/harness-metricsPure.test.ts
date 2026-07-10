@@ -58,6 +58,39 @@ test('normalizeTimestamp: handles all observed shapes', () => {
   expect(normalizeTimestamp(null)).toBeNull();
 });
 
+test('normalizeTimestamp: auditLog.ts writer form (hyphenated time, no Z) parses as UTC', () => {
+  // buildAuditLogPath: new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)
+  expect(normalizeTimestamp('2026-07-10T13-59-41')).toBe(Date.parse('2026-07-10T13:59:41Z'));
+  // ...and is treated identically to the same instant with a trailing Z.
+  expect(normalizeTimestamp('2026-07-10T13-59-41')).toBe(normalizeTimestamp('2026-07-10T13-59-41Z'));
+});
+
+test('extractSlug/extractFileTs: every real writer filename form yields slug + ts', () => {
+  // auditLog.ts buildAuditLogPath form — hyphenated time, NO trailing Z
+  const noZ = 'coordinator-decisions-demo-2026-07-10T13-59-41.jsonl';
+  expect(extractSlug(noZ)).toBe('demo');
+  expect(extractFileTs(noZ)).toBe('2026-07-10T13-59-41');
+  expect(normalizeTimestamp(extractFileTs(noZ))).toBe(Date.parse('2026-07-10T13:59:41Z'));
+
+  // same form with a trailing Z
+  const withZ = 'coordinator-decisions-demo-2026-07-10T13-59-41Z.jsonl';
+  expect(extractSlug(withZ)).toBe('demo');
+  expect(extractFileTs(withZ)).toBe('2026-07-10T13-59-41Z');
+  expect(normalizeTimestamp(extractFileTs(withZ))).toBe(Date.parse('2026-07-10T13:59:41Z'));
+
+  // date-only
+  const dateOnly = 'coordinator-decisions-demo-2026-07-10.jsonl';
+  expect(extractSlug(dateOnly)).toBe('demo');
+  expect(extractFileTs(dateOnly)).toBe('2026-07-10');
+  expect(normalizeTimestamp(extractFileTs(dateOnly))).toBe(Date.parse('2026-07-10T00:00:00Z'));
+});
+
+test('extractSlug: a kebab slug with no date tail is never eaten by TS_TAIL', () => {
+  expect(extractSlug('coordinator-decisions-instant-answers-ghl-writeback.jsonl')).toBe(
+    'instant-answers-ghl-writeback',
+  );
+});
+
 // ── malformed-line skip + count ───────────────────────────────────────────
 
 test('parseDecisionsFile: skips and counts malformed lines, keeps valid ones', () => {
@@ -127,6 +160,44 @@ test('computeMetrics: no round field → fix-loop and rounds report no-data', ()
   expect(m['rounds-per-build'].status).toBe('no-data');
 });
 
+// ── auto-apply-success-rate (derived from acceptance_check_outcome) ─────────
+
+test('computeMetrics: auto-apply-success-rate = passed / (passed + failed)', () => {
+  const pf = parseDecisionsFile(
+    'coordinator-decisions-aa-2026-07-10T13-59-41.jsonl',
+    [
+      '{"reviewer":"A","decision":"applied","acceptance_check_outcome":"passed"}',
+      '{"reviewer":"A","decision":"already_applied_by_reviewer","acceptance_check_outcome":"passed"}',
+      '{"reviewer":"A","decision":"auto_apply_failed","acceptance_check_outcome":"failed"}',
+      // deferred → excluded from numerator AND denominator
+      '{"reviewer":"A","decision":"overridden_to_surface","acceptance_check_outcome":"deferred"}',
+      // missing field (legacy row) → excluded from both
+      '{"reviewer":"A","decision":"applied"}',
+    ].join('\n'),
+  );
+  const m = computeMetrics(pf.records);
+  // 2 passed / (2 passed + 1 failed) = 3 attempts
+  expect(m['auto-apply-success-rate'].status).toBe('ok');
+  expect(m['auto-apply-success-rate'].value).toBeCloseTo(2 / 3, 10);
+  // denominator (attempt count) reported in the note
+  expect(m['auto-apply-success-rate'].note).toContain('2 passed of 3 auto-apply attempts');
+});
+
+test('computeMetrics: auto-apply-success-rate with zero attempts → null + no-attempts note', () => {
+  const pf = parseDecisionsFile(
+    'coordinator-decisions-aa0-2026-07-10.jsonl',
+    [
+      // only deferred and missing-field rows: no attempt was ever made
+      '{"reviewer":"A","decision":"overridden_to_surface","acceptance_check_outcome":"deferred"}',
+      '{"reviewer":"A","decision":"applied"}',
+    ].join('\n'),
+  );
+  const m = computeMetrics(pf.records);
+  expect(m['auto-apply-success-rate'].value).toBeNull();
+  expect(m['auto-apply-success-rate'].status).toBe('no-data');
+  expect(m['auto-apply-success-rate'].note).toBe('no auto-apply attempts in corpus');
+});
+
 // ── not-derivable markers + all keys present ──────────────────────────────
 
 test('computeMetrics: every METRIC_KEY is present; not-derivable ones are marked', () => {
@@ -138,9 +209,10 @@ test('computeMetrics: every METRIC_KEY is present; not-derivable ones are marked
   for (const key of METRIC_KEYS) {
     expect(m).toHaveProperty(key);
   }
-  expect(m['auto-apply-success-rate'].status).toBe('not-derivable');
-  // auto-apply carries applied-count context
-  expect(m['auto-apply-success-rate'].note).toContain('applied-decision count = 1');
+  // auto-apply-success-rate is now derivable; this fixture has no
+  // acceptance_check_outcome field, so it reports no-data (null), not not-derivable.
+  expect(m['auto-apply-success-rate'].status).toBe('no-data');
+  expect(m['auto-apply-success-rate'].value).toBeNull();
   expect(m['operator-override-rate'].status).toBe('not-derivable');
   expect(m['schema-validation-rate'].status).toBe('not-derivable');
   expect(m['suppression-false-negative-rate'].status).toBe('not-derivable');
@@ -191,6 +263,24 @@ test('aggregate: two files same slug merge into one build block', () => {
   ];
   const report = aggregate(files);
   expect(report.header.slugs).toEqual(['same']);
+  expect(report.builds).toHaveLength(1);
+  expect(report.builds[0].fileCount).toBe(2);
+  expect(report.builds[0].recordCount).toBe(2);
+});
+
+test('aggregate: two runs of one build (auditLog.ts + date-only ts) collapse to ONE build block', () => {
+  // Regression for the leak where an un-parsed timestamp fell into the slug,
+  // splitting repeated runs of the same build into distinct builds.
+  const files = [
+    pf('coordinator-decisions-demo-2026-07-10T13-59-41.jsonl', [
+      '{"ts":"2026-07-10T13-59-41","reviewer":"A","decision":"applied","round":1}',
+    ]),
+    pf('coordinator-decisions-demo-2026-07-11.jsonl', [
+      '{"ts":"2026-07-11","reviewer":"A","decision":"rejected","round":1}',
+    ]),
+  ];
+  const report = aggregate(files);
+  expect(report.header.slugs).toEqual(['demo']);
   expect(report.builds).toHaveLength(1);
   expect(report.builds[0].fileCount).toBe(2);
   expect(report.builds[0].recordCount).toBe(2);

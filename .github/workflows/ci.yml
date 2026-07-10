@@ -41,6 +41,9 @@ jobs:
       - name: Framework validation (frontmatter, schemas, markdown links)
         run: npm run validate
 
+      - name: Rule-classification ledger coverage (file + heading + anchor + ladder keywords)
+        run: node scripts/check-rule-ledger.js
+
       - name: Manifest / settings JSON validity
         run: |
           node -e "JSON.parse(require('fs').readFileSync('manifest.json','utf8')); console.log('manifest ok')"
