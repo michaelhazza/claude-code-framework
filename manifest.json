@@ -678,6 +678,120 @@
       "category": "review-script",
       "mode": "sync",
       "substituteAt": "never"
+    },
+    {
+      "path": "GOAL.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/rule-classification.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/harness-metrics.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/autonomy-ladder.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/wargame/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/wargame/references/wargame-template.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/wargame/references/executor-contract.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/wargame/references/success-criteria.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/wargame-nudge.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/wargame-nudge.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/generate-knowledge-index.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/generate-knowledge-indexPure.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/generate-knowledge-indexPure.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/knowledge-citations.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/knowledge-citationsPure.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/knowledge-citationsPure.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/harness-metrics.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/harness-metricsPure.ts",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/harness-metricsPure.test.ts",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
     }
   ],
   "removedFiles": [

@@ -44,6 +44,7 @@ A reasoning-discipline overlay distilled from frontier-model (Fable-class) worki
 - Generate one competing alternative and state concretely why it loses. The alternative must be one a competent engineer would actually propose; state what it would win on as well as why it loses — an alternative with no upside is a strawman. If you cannot say why it loses, you have not scoped enough to choose.
 - Hunt hidden coupling: what else reads, writes, or depends on the thing you will change? Name the consumers.
 - Find the fast-exit paths: where could an executor (or you) declare success without the outcome actually holding? Restructure so those paths fail loudly instead.
+- For a risky multi-step operational mission executed outside this session (or by a cheaper model), escalate the pre-mortem to a full wargame artifact; see the wargame skill.
 
 ## Gate 4 — Verify before declaring done
 

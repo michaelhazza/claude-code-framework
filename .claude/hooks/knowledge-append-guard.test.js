@@ -230,6 +230,67 @@ for (const [label, input, expectedExit] of CASES) {
   rmSync(SENTINEL, { force: true });
 }
 
+// ── Dedup advisory (F8): non-blocking, fires on a likely duplicate ──────────
+{
+  // Appended entry title shares ≥2 significant tokens with the line-3 entry
+  // ("Correction — always source .env before key checks").
+  const dup = runHook(
+    payload('Edit', {
+      file_path: KNOWLEDGE,
+      old_string: '',
+      new_string: '\n### [2026-07-08] Correction — source .env before checking keys\nBody about sourcing.\n',
+    }),
+  );
+  check('dedup: duplicate append still exits 0 (advisory never blocks)', dup.status, 0, dup.stderr);
+  check('dedup: advisory warning fired', /advisory/.test(dup.stderr || ''), true, dup.stderr);
+  check('dedup: advisory cites the existing entry file:line', /KNOWLEDGE\.md:3/.test(dup.stderr || ''), true, dup.stderr);
+  check('dedup: advisory names the existing title', /Correction — always source \.env/.test(dup.stderr || ''), true, dup.stderr);
+}
+
+// Non-duplicate append → no advisory, exit 0.
+{
+  const fresh = runHook(
+    payload('Edit', {
+      file_path: KNOWLEDGE,
+      old_string: '',
+      new_string: '\n### [2026-07-09] Observability — structured log levels\nBody.\n',
+    }),
+  );
+  check('dedup: non-duplicate append exits 0', fresh.status, 0, fresh.stderr);
+  check('dedup: non-duplicate append fires no advisory', /advisory/.test(fresh.stderr || ''), false, fresh.stderr);
+}
+
+// Advisory fail-open: an append with no parseable entry heading → allowed, silent.
+{
+  const noHeading = runHook(
+    payload('Edit', {
+      file_path: KNOWLEDGE,
+      old_string: '',
+      new_string: '\nJust a trailing note with no heading line at all.\n',
+    }),
+  );
+  check('dedup: no-heading append exits 0 (fail-open advisory)', noHeading.status, 0, noHeading.stderr);
+  check('dedup: no-heading append fires no advisory', /advisory/.test(noHeading.stderr || ''), false, noHeading.stderr);
+}
+
+// A blocked rewrite is not an append → no dedup advisory, block path unchanged.
+{
+  const blockedRewrite = runHook(
+    payload('Edit', {
+      file_path: KNOWLEDGE,
+      old_string: 'Details about env sourcing.',
+      new_string: 'Details about .env sourcing.',
+    }),
+  );
+  check('dedup: blocked rewrite still exits 2 (block path unchanged)', blockedRewrite.status, 2, blockedRewrite.stderr);
+  check(
+    'dedup: blocked rewrite emits HITL, not a dedup advisory',
+    /HITL-APPROVAL-REQUIRED/.test(blockedRewrite.stderr || '') && !/knowledge-append-guard: advisory/.test(blockedRewrite.stderr || ''),
+    true,
+    blockedRewrite.stderr,
+  );
+}
+
 // ── Cleanup + report ───────────────────────────────────────────────────────
 
 rmSync(PROJ, { recursive: true, force: true });

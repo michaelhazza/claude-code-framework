@@ -148,6 +148,7 @@ If `cross-repo-scout` is in your profile and the project has sibling repos worth
 
 If `CLAUDE.md` already exists in the target, append these sections (verbatim is fine — they're framework-level):
 
+- `## Harness goal` — pointer to `GOAL.md` (the stated objective — operator leverage — that every rule, gate, and agent answers to; includes the decision test for adding or removing harness machinery).
 - `## Local Dev Agent Fleet` — table listing the agents in the chosen profile.
 - `### Test gates are CI-only` — pointer to `references/test-gate-policy.md`.
 - `### Architecture decisions (ADRs)` — pointer to `docs/decisions/`.
@@ -156,6 +157,12 @@ If `CLAUDE.md` already exists in the target, append these sections (verbatim is 
 - `### Framework version` — pointer to `.claude/FRAMEWORK_VERSION`.
 
 If `CLAUDE.md` does NOT exist, create a minimal scaffold containing those sections + a header naming the project. Expand as project conventions develop.
+
+**KNOWLEDGE.md preamble conventions (seed into the consumer's KNOWLEDGE.md preamble if one exists; otherwise into the CLAUDE.md self-improvement section):**
+
+- **Append-only + supersede:** never edit an existing entry (the append-guard hook blocks non-tail edits). To update one, append a superseding entry that names the entry it replaces (`Supersedes: [{date}] {title}`); `/cleanfiles` archives superseded entries.
+- **Store boundary:** corrections and durable gotchas → `KNOWLEDGE.md`; session-scoped process lessons → `tasks/lessons.md`.
+- **Index freshness:** if the repo generates `references/knowledge-index.md` (`scripts/generate-knowledge-index.ts`), regenerate it in the same commit as any KNOWLEDGE.md change.
 
 In both cases, do NOT duplicate canonical content (route conventions, schema rules) — those belong in `architecture.md`. CLAUDE.md is the entry point + governance pointer.
 

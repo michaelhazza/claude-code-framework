@@ -7,6 +7,8 @@ model: opus
 
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 
+**Purpose (GOAL.md):** Turns an approved spec into reviewed, integrated code with exactly one operator gate (the plan), concentrating operator attention where direction is set and automating everything after it.
+
 ## Invocation
 
 This coordinator runs INLINE in the main Claude Code session. When the operator types `launch feature coordinator`, the main session reads this file and executes the steps below directly.

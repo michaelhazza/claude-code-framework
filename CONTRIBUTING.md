@@ -43,7 +43,7 @@ This repo is the canonical source for a portable agent fleet, governance docs, h
 
 1. Create `.claude/hooks/<name>.js` and a sibling `<name>.test.js`. Follow the established exit-code contract: `0` = allow, `2` = block with stderr fed back to Claude, and **fail-open on hook bugs** (a hook crash must never block legitimate work) unless the hook is explicitly a safety guard that must fail closed — document the choice in the file header.
 2. Register it in `.claude/settings.json` under the right event (PreToolUse / UserPromptSubmit / SessionStart). Consumers receive this via `settings-merge` mode.
-3. Hooks are covered by the manifest globs `.claude/hooks/*.{js,sh}` — verify your extension is covered; add an entry if not.
+3. Hooks are listed **per-file** in `manifest.json` (`category: "hook"`, `mode: "sync"`) — add an entry for the hook AND its `.test.js` sibling; a hook file absent from the manifest ships dead, and an unlisted test never reaches consumers.
 4. Run `npm run test:hooks`; update `README.md` hook row and `.claude/CHANGELOG.md`.
 
 ## Adding a command
