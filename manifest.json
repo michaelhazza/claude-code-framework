@@ -792,6 +792,66 @@
       "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/memory-digest.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/knowledge-append-guard.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/config-protection.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/phase-lock.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/spec-creation-grill-nudge.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/bash-config-guard.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/code-graph-freshness-check.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/correction-nudge.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/framework-merge-reminder.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/long-doc-guard.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
     }
   ],
   "removedFiles": [
