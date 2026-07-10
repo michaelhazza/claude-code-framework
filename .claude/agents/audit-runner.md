@@ -7,6 +7,8 @@ model: opus
 
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 
+**Purpose (GOAL.md):** Recovers quality debt in bulk without per-item operator attention; findings concentrate into one reviewable audit log and one reviewed push.
+
 ## IMPORTANT — Inline execution only
 
 **Do NOT invoke this agent via the `Agent` tool.** It must always run in the current session so the TodoWrite task list is visible to the user and progress is trackable — and so the post-audit review pass (sections E/F) can dispatch `spec-conformance` and `pr-reviewer` as sub-agents (ADR-0014).

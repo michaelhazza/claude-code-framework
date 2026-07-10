@@ -148,6 +148,7 @@ If `cross-repo-scout` is in your profile and the project has sibling repos worth
 
 If `CLAUDE.md` already exists in the target, append these sections (verbatim is fine — they're framework-level):
 
+- `## Harness goal` — pointer to `GOAL.md` (the stated objective — operator leverage — that every rule, gate, and agent answers to; includes the decision test for adding or removing harness machinery).
 - `## Local Dev Agent Fleet` — table listing the agents in the chosen profile.
 - `### Test gates are CI-only` — pointer to `references/test-gate-policy.md`.
 - `### Architecture decisions (ADRs)` — pointer to `docs/decisions/`.
