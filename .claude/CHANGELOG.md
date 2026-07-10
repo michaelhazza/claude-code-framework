@@ -32,6 +32,14 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## Unreleased — Fable Framework Batch (fable-batch-2026-07)
+
+**Highlights:** six harness meta-upgrades in one batch: a stated harness goal (GOAL.md — operator leverage, with decision test, prescription rule, rule lifecycle, and precedence contract), a full rule-classification ledger over the behavioural corpus with a coverage checker, memory that compounds (knowledge index + index-matched digest recall + append-time dedup advisory + supersede convention + citation/staleness checker), the measurement layer turned on (harness-metrics aggregator + metric definitions + starter eval suite contract exercised consumer-side), an autonomy-ladder registry of every autonomous authority and operator gate, and the wargame skill (risky-operation planning artifact) with its nudge hook.
+
+**Added:** GOAL.md; references/rule-classification.md; references/harness-metrics.md; references/autonomy-ladder.md; .claude/skills/wargame/ (SKILL.md + 3 references — first multi-file skill); .claude/hooks/wargame-nudge.js + wargame-nudge.test.js; scripts/generate-knowledge-index(Pure).ts, scripts/knowledge-citations(Pure).ts, scripts/harness-metrics(Pure).ts + Vitest tests; scripts/check-rule-ledger.js (framework-only tooling).
+
+**Changed:** purpose lines tracing to GOAL.md in 17 coordinator/reviewer agent files; ADAPT.md Phase 4 gains the GOAL.md pointer section; finalisation-coordinator Step 7 supersede convention (replaces update-instead-of-duplicating) + knowledge-index regeneration ownership + Step 7a reads harness-metrics reports; .claude/hooks/memory-digest.js index-matched recall + knowledge-append-guard.js dedup advisory (with expanded tests); README What-ships counts (21 skills, 11 hooks); CONTRIBUTING hook-manifest correction (per-file entries, not globs); .claude/settings.json wargame-nudge UserPromptSubmit registration.
+
 ## 2.36.0 — 2026-07-10
 
 **Highlights:** context-pack adoption is now self-completing. v2.35.0 activated the pack system but left the per-repo anchor mapping (ADAPT.md Phase 3b) as a manual step — realistically the kind of chore that gets deferred forever, leaving repos paying whole-file context costs indefinitely. This release automates it end to end: a deterministic, idempotent anchor-generator script handles the mechanical half, and a new `/claudeupdate` step 6c2 performs the judgment half (purpose→anchor mapping) automatically, exactly once per repo, on its next ordinary update. The step is fail-safe — mapping trouble never blocks the version bump, and an incomplete mapping stays visible and re-arms on the following update. Operators do nothing beyond running `/claudeupdate` as usual.
