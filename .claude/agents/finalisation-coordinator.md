@@ -328,6 +328,8 @@ fi
 
 On non-zero exit: print each output line (format `<pack>:<line> <anchor>`) and **BLOCK finalisation**. The operator must either fix the broken anchors in `architecture.md` or `docs/context-packs/*.md`, or document a `REVIEW_GAP` for this gate, before proceeding to Step 6.1. Do NOT advance to Step 7 with a failing audit. If neither path exists the check is a no-op.
 
+`UNMAPPED <pack>:<line> {{ARCHITECTURE_ANCHOR:<purpose>}}` lines with exit 0 are advisory, not blocking: the packs were never adopted (ADAPT.md Phase 3b), so pack-wired agents are falling back to whole-file reads. Relay the script's `NOTE:` line to the operator once, then continue.
+
 Run the doc-sync sweep across the full feature change-set per `docs/doc-sync.md`. This is the cross-check of the work `chatgpt-pr-review` did — both should agree, but `finalisation-coordinator` is the system of record.
 
 **Mandatory per-doc procedure.** For each registered doc, follow the **Investigation procedure** in `docs/doc-sync.md` — read the doc, derive candidate-stale-reference set from the branch diff, grep the doc for each candidate, fix any stale references in this same pass, then record the verdict per **Verdict rule** in the same file. A `no` verdict that does not cite either the grep terms checked or the specific reason the update trigger does not apply is treated as missing — and missing verdicts block finalisation.

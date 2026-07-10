@@ -120,11 +120,21 @@ Open the file. Replace the `[PLACEHOLDER]` commands in the *Stack template* tabl
 
 ### 3b — `architecture.md` anchors (if architecture.md exists)
 
-Context packs reference `architecture.md` sections via `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholder tokens. If the target repo has an `architecture.md`:
+Context packs reference `architecture.md` sections via `{{ARCHITECTURE_ANCHOR:<purpose>}}` placeholder tokens. Mapping is done through the sync substitution engine — do NOT hand-edit the pack files (packs are `mode: sync`; hand edits accrue `.framework-new` merge debt on every framework update). If the target repo has an `architecture.md`:
 
 1. Run a one-shot anchor-generation pass: insert `<a id="<kebab-case-slug>"></a>` immediately before every `## ` heading.
-2. Open `docs/context-packs/*.md` and replace each `{{ARCHITECTURE_ANCHOR:<purpose>}}` token with the real anchor that serves that purpose in the target's `architecture.md` (delete lines whose purpose has no counterpart).
-3. If the target has no `architecture.md`, skip this step. The packs will fall back to whole-file reads (with warnings printed by `context-pack-loader`).
+2. List the unmapped tokens and the available anchors:
+   - `npx tsx scripts/audit-context-packs.ts` — prints one `UNMAPPED <pack>:<line> {{ARCHITECTURE_ANCHOR:<purpose>}}` line per token.
+   - `npx tsx scripts/audit-context-packs.ts --list-anchors` — prints the explicit anchors declared in `architecture.md`.
+3. For each distinct purpose, add one substitution entry to `.claude/.framework-state.json` → `substitutions`, keeping the leading `#` in the value so the substituted line renders as a `` `#anchor` `` fragment the audit validates:
+   ```json
+   "ARCHITECTURE_ANCHOR:route-conventions": "#route-conventions",
+   "ARCHITECTURE_ANCHOR:tenant-isolation": "#row-level-security-rls"
+   ```
+   Every purpose must map to SOME anchor. If no section serves the purpose exactly, map to the nearest enclosing section's anchor, or add an anchor at the closest relevant heading — do not leave a token unmapped, because one leftover token keeps the whole pack in whole-file-fallback mode for pack-wired agents.
+4. Rebaseline so the new substitutions are applied to the managed pack files: `node .claude-framework/sync.js --adopt`.
+5. Verify: `npx tsx scripts/audit-context-packs.ts --strict-unmapped` exits 0 with no `UNMAPPED` lines. From then on, run the audit with `--strict-unmapped` in this repo so a future framework update that introduces a new purpose token is caught instead of silently reverting agents to whole-file reads.
+6. If the target has no `architecture.md`, skip this step. The packs will fall back to whole-file reads (with warnings printed by `context-pack-loader`, and `UNMAPPED` advisories from the audit script).
 
 ### 3c — Sibling-repo registry (only if the project has sibling repos)
 
