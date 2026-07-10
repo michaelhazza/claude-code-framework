@@ -21,9 +21,12 @@ Resolution order — first hit wins:
 3. **`CHATGPT_REVIEW_DEFAULT_MODE` env var** — accept `manual` / `automated` /
    `parallel`; any other value is treated as unset.
 4. **Evidence-flip rung (DORMANT until the DG-4 criterion is met).** If
-   `.claude/session-state/review-mode-flip` exists containing the single line
-   `automated`, the default becomes `automated` instead of `manual`. That file
-   may ONLY be created by the operator, after the pinned flip criterion holds:
+   `.claude/review-mode-flip` exists containing the single line `automated`,
+   the default becomes `automated` instead of `manual`. The file lives at
+   `.claude/review-mode-flip` — deliberately NOT under `.claude/session-state/`,
+   which `/cleanfiles` treats as transient and deletes; the flip is a durable
+   default, not a per-session mode. That file may ONLY be created by the
+   operator, after the pinned flip criterion holds:
    **automated-tier catch-rate ≥ 90% of manual-tier on the repo's pinned eval
    suite AND ≤ 1 false positive per review, sustained across 3 consecutive
    measured framework-consuming builds each with a complete harness-metrics
