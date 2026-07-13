@@ -49,6 +49,16 @@ Near-automatic rejects (cite the rule, backlog residual value): production-harde
 - **Out of scope.** Real-but-out-of-scope findings get a backlog entry with the finding text; findings on untracked/local files are rejected outright.
 - **Altitude errors.** "Insufficient detail" against a document that deliberately defers that detail to a later phase is not a defect unless a contract-level ambiguity is shown. Mockup demo numbers are illustrative, not contracts; when an acceptance clause encodes intent via a proxy and the artifact meets the stated purpose, prefer the intent reading and flag the proxy for amendment. Reject scope-expansion redesigns and one-specific-mechanism demands when the chosen mechanism satisfies the invariant.
 
+## Briefing the reviewer (the adjudicator's own failure modes)
+
+The taxonomy above catches the reviewer's errors; these catch yours.
+
+- **Withhold the claim.** Pass the reviewer the artifact plus its contract (what it must satisfy), never your conclusion or the reasoning that produced it — hand over conclusions and you get back validation of your conclusions. Context injection (framing docs, decision ledgers, do-not-raise lists) is fine; "I believe this is correct because…" is not.
+- **Contract-misread precedes classification.** Before triaging any finding, check whether YOUR brief to the reviewer was the bug — a missing constraint, a stale artifact version, an unstated posture. If adding one line to the brief would have prevented the finding, fix the brief and re-run; classifying the finding first buries the brief defect and it recurs every round.
+- **Doubt-theater signal.** Two or more consecutive rounds where the reviewer returns substantive findings and you classify zero as actionable means one of two things: the loop is validating itself (your rejections have stopped engaging with substance), or the reviewer's context is stale. Either way, stop the loop — re-examine your last three rejections against the artifact before running another round.
+
+> Briefing rules adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) `doubt-driven-development` at commit `98967c4` (MIT licensed).
+
 ## Running the loop
 
 - From round 2 onward: include the full current artifact (not a code-only diff), a "decisions made so far" block, and prior-round rationale. Pin the artifact version; in manual paste workflows verify the uploaded file is the intended one.

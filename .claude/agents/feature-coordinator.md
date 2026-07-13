@@ -239,6 +239,7 @@ Present the finalised plan to the operator verbatim:
 - `revise` + feedback → send feedback back to architect (counts against the 3-round cap), then re-run chatgpt-plan-review (Step 4) and plan-gate (Step 5)
 - `abort` → write `phase_status: PHASE_2_ABORTED` to `tasks/builds/{slug}/handoff.md`, set `tasks/current-focus.md` status to `NONE`, mark all remaining TodoWrite items as completed, and exit. See abort write order in the Failure paths section.
 - Anything else → ask the operator to clarify; do not infer intent. Do not proceed without an explicit reply.
+- Hedged approval is NOT approval — "looks reasonable", "I guess that works", "sounds good" do not authorize the build; they signal an unvoiced concern. Only an explicit go-ahead (`proceed` / `yes` / `approved`) starts the chunk loop. On a hedge, ask a sharpened question that surfaces the concern (e.g. "which chunk boundary looks off?") instead of proceeding.
 
 ## Step 6 — Per-chunk loop
 

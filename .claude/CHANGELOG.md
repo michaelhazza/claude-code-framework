@@ -32,6 +32,14 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.39.0 — 2026-07-13
+
+**Highlights:** external-catalogue adoption batch, tier 2 of 2 (source: addyosmani/agent-skills, MIT, commit 98967c4): reviewer-briefing discipline (withhold the claim, contract-misread precedence, doubt-theater stop signal), a supply-chain install-script gate, a new producer-side deprecation skill (22nd skill — sunset decisions, Churn Rule, zombie-code trigger, removal protocol), structural review heuristics for pr-reviewer, and a 10-fragment rule sweep across coordinators, skills, and checklists.
+
+**Added:** .claude/skills/deprecation/ (SKILL.md; manifest entry; routing eval case; README count 22); CONTRIBUTING "Adding a skill" steps 6-7 (routing eval case + ledger registration).
+
+**Changed:** .claude/skills/review-triage (new § Briefing the reviewer — claim-withholding, contract-misread-first, doubt-theater signal); .claude/skills/dependency-upgrades (new § Install scripts and supply chain — scripts-off-by-default gate, per-manager policy verification, installation-boundary rule, typosquat review; description names install-script policy); .claude/agents/pr-reviewer.md (new § Structural review heuristics — propose-the-move catalogue, relocated-vs-reduced complexity test, file-total-size signal, lead-with-leverage); fragment sweep: feature-coordinator (hedged approval is not approval at the plan gate), builder (DID NOT TOUCH verdict line), docs/spec-authoring-checklist.md (flag owner/expiry at creation; ASSUMPTIONS block; Always/Ask-first/Never boundaries tier), test-discipline (blind repro-test subagent), security-hardening (SSRF DNS-rebinding TOCTOU pin), performance (symptom-routed measurement picker, metric-honesty rule, CI-gated budgets, named CWV thresholds), architect (chunk split signals: "and" in title, 8+ files, >3 acceptance bullets), ci-gate-integrity (validator-owned exemption allowlists fail loud on self-declared exemptions), refactor-safely (Rule of 500 — codemod over hand edits), fable-mode Gate 4 (anti-reassurance rerun rule). Rule-classification ledger: 9 new rows.
+
 ## 2.38.0 — 2026-07-13
 
 **Highlights:** external-catalogue adoption batch, tier 1 of 2 (source: addyosmani/agent-skills, MIT, audited 2026-07-13): a deterministic skill-routing eval harness protecting the 21-skill catalogue from silent trigger drift, a metrics/alerting layer for logging-observability, an accessibility baseline (first a11y coverage in the framework — checklist doc + mockup-reviewer gating axis + frontend-design-check step), grill-me interview mechanics (confidence protocol, hollow-yes gate, de-sophistication probe, stop conditions), and untrusted-content-channel rules extending injection defence beyond LLM output to error text, CI logs, browser content, and CLI-piped artifacts.

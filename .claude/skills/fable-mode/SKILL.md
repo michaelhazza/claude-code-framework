@@ -51,6 +51,7 @@ A reasoning-discipline overlay distilled from frontier-model (Fable-class) worki
 - Claims of completion require proof produced this session: run the check, diff expected vs actual, show the output.
 - Weight verification by blast radius: the claims and paths where a wrong conclusion costs most get checked first and hardest. Sample the riskiest chunks, not arbitrary ones.
 - A green check is only evidence if you know what it actually gates. "Tests pass" means nothing if no test exercises the change.
+- Re-running an already-green command with no intervening change is reassurance, not verification — it adds zero information. Spend the run verifying the NEXT claim instead.
 - State explicitly what was NOT verified and why. An honest gap beats an implied guarantee. Any load-bearing claim left unverified downgrades the stated confidence of the conclusion it supports — say the downgrade, don't just list the gap.
 - If success is only checkable by human judgment (taste, UX, tone), say so and stop short of claiming success — route it to a human instead.
 

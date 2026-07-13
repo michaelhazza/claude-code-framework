@@ -135,6 +135,15 @@ Pass 6 Failure-mode specificity. The rationale must name the concrete pain.
         "Could be a bug" is not a rationale. If you cannot write a concrete
         failure mode, drop the finding.
 
+## Structural review heuristics
+
+Applied during Pass 1 and when writing remedies. Adapted from addyosmani/agent-skills `code-review-and-quality` (commit `98967c4`, MIT).
+
+- **Propose the move, not just the problem.** A structural finding names its remedy from the catalogue: replace a growing conditional chain with a dispatcher/lookup; delete a pass-through wrapper that adds no behaviour; make an implicit type boundary explicit; split a function that changed for two unrelated reasons; inline an abstraction with exactly one caller. "This is getting complex" without a proposed restructuring is not a finding.
+- **Relocated vs reduced complexity.** For any refactor in the diff, count the concepts a reader must hold to follow the flow before and after. Unchanged count = the complexity moved, it didn't shrink — prefer restructurings that make whole branches disappear, and prefer deleting an abstraction over polishing it.
+- **File total size, not diff size.** A 30-line diff landing in a ~1000-line file is a decomposition signal — flag "decompose before adding" as a 💭/🟡 even when the diff itself is clean; the next ten diffs land in the same file.
+- **Lead with leverage.** When one structural problem explains several smaller findings, the structural problem IS the review — report it first and fold the symptoms under it instead of listing ten nits that all trace to the same shape.
+
 ---
 
 ## Mechanical auto-fix

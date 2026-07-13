@@ -83,6 +83,8 @@ The "invent new" path is the expensive one. Choosing it without justification is
 | A new prompt partition or cache tier | the prompt assembly in `your project's prompt-assembly service` | which partition the new content genuinely belongs in |
 | A new feature flag | `docs/spec-context.md` (`feature_flags: only_for_behaviour_modes`) | whether this is a *behaviour mode* (shadow vs active, dev vs prod) or a rollout gate (the latter is directional and almost always wrong here) |
 
+If the spec does introduce a feature flag, name the flag's **owner** and its **cleanup/expiry date** in the spec at creation. A flag without an expiry becomes permanent debt — nobody owns removing it, and every future reader pays the branching cost.
+
 ### Reference
 
 - `docs/spec-context.md` → `accepted_primitives` block. Any primitive listed there is the preferred extension point for its category.
@@ -291,6 +293,8 @@ After completing Sections 1–7, do one final read-through focused on contradict
 - Does every "single source of truth" claim survive? Grep for the claimed source — is it actually written to by every path the spec describes? Is it filtered out anywhere?
 - Do non-functional claims (cache efficiency, latency budgets, cost budgets) match the execution model in Section 5?
 - Does every phrase using "must", "guarantees", "idempotent", "source of truth" have a backing mechanism named? Load-bearing claims without a mechanism are the most expensive finding class to fix in review.
+- Does the spec carry a numbered **ASSUMPTIONS** block stating "correct now or these stand"? Enumerating the assumptions the spec rests on lets the reviewer and operator falsify them at review time instead of mid-build.
+- Where operator judgment is load-bearing, does the spec carry a **Boundaries** tier — Always do / Ask first / Never do? The ask-first tier is the operator-approval surface; without it every ambiguous call defaults to silent implementer judgment.
 
 ### Numeric-count reconciliation pass
 
@@ -571,6 +575,7 @@ Before invoking `spec-reviewer` on a draft spec, answer yes to all of the follow
 
 - [ ] **[Section 0]** Every cited deferred item verified as still open (or annotated as `verified closed by <commit>`)
 - [ ] Every new primitive has a "why not reuse" paragraph
+- [ ] **[Section 1]** Every new feature flag names its owner and cleanup/expiry date
 - [ ] Every new file / column / migration / endpoint is in the file inventory
 - [ ] Every data shape crossing a boundary has a Contracts entry with an example
 - [ ] Every contract that writes to multiple representations declares the source-of-truth precedence
@@ -580,6 +585,7 @@ Before invoking `spec-reviewer` on a draft spec, answer yes to all of the follow
 - [ ] Phase dependency graph has no backward references, no orphaned deferrals, no phase-boundary contradictions
 - [ ] `## Deferred Items` section exists (even if "None.")
 - [ ] Self-consistency pass complete: Goals ↔ Implementation match; every load-bearing claim has a named mechanism
+- [ ] **[Section 8]** Numbered ASSUMPTIONS block present ("correct now or these stand"); Boundaries tier (Always do / Ask first / Never do) present where operator judgment is load-bearing
 - [ ] Numeric-count reconciliation grep run; every count of tables / migrations / jobs / files matches the file inventory
 - [ ] Testing plan consistent with `docs/spec-context.md`
 - [ ] **[Section 10]** Every externally-triggered write has an idempotency posture, retry classification, and concurrency guard declared
