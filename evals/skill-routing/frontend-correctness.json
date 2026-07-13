@@ -1,0 +1,23 @@
+{
+  "skill": "frontend-correctness",
+  "top_k": 3,
+  "positive": [
+    "my modal keeps stale form state when I reopen it",
+    "two fetches race and the older response overwrites the newer one in the component",
+    "the polling hook keeps firing after the drawer unmounts",
+    "permission gating in this React component briefly shows admin buttons to viewer users",
+    "when I reopen the edit popup, the form state still shows the previous record's values",
+    "the SSE consumer drops events while the component re-renders"
+  ],
+  "negative": [
+    {
+      "prompt": "visual tweak to the settings page: new form layout, spacing, and a nav change",
+      "owner": "frontend-design-check"
+    },
+    {
+      "prompt": "the page loads slowly and the client bundle size doubled since the last release",
+      "owner": "performance"
+    },
+    "write a SQL migration for the orders table"
+  ]
+}

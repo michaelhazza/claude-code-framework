@@ -1,0 +1,19 @@
+{
+  "skill": "grill-me",
+  "top_k": 3,
+  "positive": [
+    "grill me on this design before I write the spec",
+    "interview me one question at a time until we reach shared understanding of the plan",
+    "walk down each branch of my design tree and resolve the dependencies between decisions one by one",
+    "ask me hard questions about this plan until you're sure we agree on every decision, and suggest a recommended answer each time",
+    "stress-test my thinking on this design by questioning me relentlessly"
+  ],
+  "negative": [
+    {
+      "prompt": "war game this credential rotation: produce a decision tree with expected observations, failure branches, and abort conditions for an executor",
+      "owner": "wargame"
+    },
+    "add pagination to the invoices API",
+    "convert these PNG icons to SVG"
+  ]
+}

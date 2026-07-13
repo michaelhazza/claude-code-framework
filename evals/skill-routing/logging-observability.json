@@ -1,0 +1,20 @@
+{
+  "skill": "logging-observability",
+  "top_k": 3,
+  "positive": [
+    "adding structured logging with correlation IDs to the webhook handler",
+    "what log level should this retry event be, info or warn?",
+    "we need counters and lifecycle-event emission for the sync job so we can see progress",
+    "which fields must never be logged? I'm worried about tokens ending up in the logs",
+    "I can't trace a request across services, want to add an ID that follows it through the logs",
+    "deciding what to log where when adding instrumentation to the import pipeline"
+  ],
+  "negative": [
+    {
+      "prompt": "this catch block swallows the error and silently returns a default when the lookup fails, should it fail loudly instead?",
+      "owner": "fail-loud"
+    },
+    "design the onboarding email sequence",
+    "upgrade Node to the latest LTS"
+  ]
+}

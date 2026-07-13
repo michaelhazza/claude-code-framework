@@ -1,0 +1,20 @@
+{
+  "skill": "security-hardening",
+  "top_k": 3,
+  "positive": [
+    "handling OAuth tokens and the refresh flow, what do I need to get right?",
+    "verifying webhook signatures, is a plain === comparison safe for secrets?",
+    "building outbound HTTP to a customer-configurable URL and worried about SSRF",
+    "constructing a file path from user input for the download endpoint",
+    "we shell out to a command with a user-supplied filename in the arguments",
+    "users can supply their own regex patterns for search, can someone hang the server with one?"
+  ],
+  "negative": [
+    {
+      "prompt": "make sure org A can never read org B's rows: RLS policy and tenant scoping for the new table",
+      "owner": "tenant-isolation"
+    },
+    "improve the empty-state illustration on the inbox page",
+    "split this long function into smaller helpers"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "skill": "ci-gate-integrity",
+  "top_k": 3,
+  "positive": [
+    "I'm adding a new grep-based invariant check to our verification script, what should I watch out for?",
+    "Our GitHub Actions workflow went green but the check it was supposed to run never actually executed",
+    "I want to consolidate three CI workflows into one and migrate the lint check to a different engine",
+    "Need to update the gate baseline after the diff-based check started flagging pre-existing code",
+    "The pipeline says everything passed but I'm pretty sure the gate silently skipped every file it was meant to check",
+    "Which checks should be marked required in the branch protection configuration for this repo?"
+  ],
+  "negative": [
+    {
+      "prompt": "npm audit is flagging a critical security advisory in one of our packages, need to bump it and sort the lockfile",
+      "owner": "dependency-upgrades"
+    },
+    {
+      "prompt": "my new unit test passes suspiciously easily, I think the mock makes it impossible to fail",
+      "owner": "test-discipline"
+    },
+    "write a blog post announcing our new release"
+  ]
+}

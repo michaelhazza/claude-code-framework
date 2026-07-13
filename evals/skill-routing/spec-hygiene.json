@@ -1,0 +1,22 @@
+{
+  "skill": "spec-hygiene",
+  "top_k": 3,
+  "positive": [
+    "authoring the spec for the billing rework, how do I keep the sections self-consistent?",
+    "applying review findings to the implementation plan without contradicting the other sections",
+    "verify the implementation against its spec, the recurring implementation-vs-spec gaps keep slipping through",
+    "the spec references files and services that don't actually exist in the codebase, grounding problem",
+    "my design document says one thing in the data-model section and something different in the API section"
+  ],
+  "negative": [
+    {
+      "prompt": "I added the new table, service, and route but want to confirm the field flows end-to-end across the serialization boundary before calling it done",
+      "owner": "wire-it-through"
+    },
+    {
+      "prompt": "about to do a mass find-replace rename and split a big file into modules, what breaks?",
+      "owner": "refactor-safely"
+    },
+    "profile the slow dashboard query"
+  ]
+}

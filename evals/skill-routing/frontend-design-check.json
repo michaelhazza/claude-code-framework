@@ -1,0 +1,19 @@
+{
+  "skill": "frontend-design-check",
+  "top_k": 3,
+  "positive": [
+    "quick fix to the nav: adding a menu item and rearranging the table controls",
+    "before I add this new form to the settings page, which design docs should I follow?",
+    "making a small visual and layout change to a user-facing page outside the mockup pipeline",
+    "adding a new screen for invoice history and I want it consistent with the design language",
+    "I'm changing how the page looks: moving buttons around and updating the visible copy"
+  ],
+  "negative": [
+    {
+      "prompt": "the form's state resets while typing because the hook re-renders and the fetch races the modal open",
+      "owner": "frontend-correctness"
+    },
+    "rotate the production database credentials",
+    "tune the slow report query"
+  ]
+}

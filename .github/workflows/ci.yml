@@ -41,6 +41,9 @@ jobs:
       - name: Framework validation (frontmatter, schemas, markdown links)
         run: npm run validate
 
+      - name: Skill-routing evals
+        run: npm run eval:routing
+
       - name: Rule-classification ledger coverage (file + heading + anchor + ladder keywords)
         run: node scripts/check-rule-ledger.js
 

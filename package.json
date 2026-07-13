@@ -7,7 +7,8 @@
     "test:sync": "node scripts/run-tests.js sync",
     "test:scripts": "node scripts/run-tests.js scripts",
     "test:hooks": "node scripts/run-tests.js hooks",
-    "validate": "node scripts/validate-framework.js"
+    "validate": "node scripts/validate-framework.js",
+    "eval:routing": "tsx scripts/skill-routing-evals.ts"
   },
   "devDependencies": {
     "@types/node": "^22",

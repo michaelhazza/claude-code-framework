@@ -1,0 +1,23 @@
+{
+  "skill": "wargame",
+  "top_k": 3,
+  "positive": [
+    "planning a credential rotation across prod, build me a battle plan with abort conditions",
+    "we're cutting over to a new email provider next week, what could go wrong at each step?",
+    "pre-mortem this bulk rename across 400 files before a cheaper session executes it",
+    "tomorrow's deploy has no undo, map the failure branches and counter-moves first",
+    "big risky data migration coming up: I want a step-by-step plan with expected observations after each step and clear abort conditions",
+    "decommissioning the old worker fleet, make the plan executable by a cheaper model"
+  ],
+  "negative": [
+    {
+      "prompt": "I'm authoring an audit adjudication and a wrong conclusion is expensive, the executing model is not the strongest tier available",
+      "owner": "fable-mode"
+    },
+    {
+      "prompt": "grill me one question at a time about my design until we reach shared understanding",
+      "owner": "grill-me"
+    },
+    "fix the failing lint rule in this file"
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.37.0",
+  "frameworkVersion": "2.38.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -282,6 +282,12 @@
       "category": "reference",
       "mode": "sync",
       "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/accessibility-checklist.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
     },
     {
       "path": "references/test-gate-policy.md",

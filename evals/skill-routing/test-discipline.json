@@ -1,0 +1,19 @@
+{
+  "skill": "test-discipline",
+  "top_k": 3,
+  "positive": [
+    "this test passes suspiciously easily, I think the mock returns success no matter what",
+    "should this requirement be a pure unit test or a DB-integration test?",
+    "I reordered the calls in the code under test and not a single test failed",
+    "writing fixtures and acceptance criteria for the new sync feature",
+    "my tests all still pass even after I deliberately broke the function they cover"
+  ],
+  "negative": [
+    {
+      "prompt": "the required check in GitHub Actions went green but the gate never actually ran the verification script",
+      "owner": "ci-gate-integrity"
+    },
+    "write the release announcement for v2",
+    "compress the hero images on the landing page"
+  ]
+}

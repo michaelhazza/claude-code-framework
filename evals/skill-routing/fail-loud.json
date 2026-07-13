@@ -1,0 +1,20 @@
+{
+  "skill": "fail-loud",
+  "top_k": 3,
+  "positive": [
+    "this catch block just swallows the exception and the fallback returns a default when the lookup fails, is that ok?",
+    "should this endpoint return 4xx or 5xx when the external provider is down?",
+    "we have a fire-and-forget call to the email service and I'm worried failures just vanish",
+    "the permission check itself errored, what should a cannot-verify outcome do: allow, deny, or blow up?",
+    "the job reports success but the record never actually got written durably",
+    "deciding between retry and dead-letter for messages the handler can't process"
+  ],
+  "negative": [
+    {
+      "prompt": "what log level should this lifecycle event be emitted at, and how do I attach a correlation ID to it?",
+      "owner": "logging-observability"
+    },
+    "add a dark-mode toggle to the settings screen",
+    "summarise last quarter's sales numbers"
+  ]
+}

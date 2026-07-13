@@ -1,0 +1,20 @@
+{
+  "skill": "wire-it-through",
+  "top_k": 3,
+  "positive": [
+    "added a new service and route, how do I verify it's wired end-to-end before calling it done?",
+    "the component exists, compiles, and is tested but I'm not sure anything actually calls it",
+    "adding a field that crosses the client-server serialization boundary, where can it get dropped?",
+    "new enum value added to the schema, which other layers need to handle it?",
+    "I built the whole feature and it compiles, but clicking the button does nothing, I think the new component is never called",
+    "registering a new background job, want to confirm the event actually reaches it"
+  ],
+  "negative": [
+    {
+      "prompt": "editing the implementation plan: the data-model section contradicts the API section, need the spec self-consistent",
+      "owner": "spec-hygiene"
+    },
+    "reduce the Docker image size",
+    "translate the app into French"
+  ]
+}

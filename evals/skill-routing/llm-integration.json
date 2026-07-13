@@ -1,0 +1,20 @@
+{
+  "skill": "llm-integration",
+  "top_k": 3,
+  "positive": [
+    "building a feature that calls the model and parses its JSON output into downstream logic",
+    "how do I harden prompt assembly when user-supplied text gets interpolated into the prompt?",
+    "my judge harness scores model output, what happens when the model returns malformed responses?",
+    "adding embeddings to the retrieval pipeline for semantic search",
+    "our AI drafting feature sometimes returns garbage output and the downstream logic just trusts whatever the model says",
+    "designing an agent tool loop where the model's output decides which tool runs next"
+  ],
+  "negative": [
+    {
+      "prompt": "the reviewer re-raised a finding from round 1 that we already fixed, do I accept, reject, or defer it?",
+      "owner": "review-triage"
+    },
+    "set up the nightly Postgres backup cron",
+    "align the footer columns on mobile"
+  ]
+}

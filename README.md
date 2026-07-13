@@ -49,6 +49,7 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `docs/frontend-design-examples.md` | Origin-project worked examples (operator deletes or replaces) |
 | `docs/design-language-template.md` | Visual-identity scaffold (type, colour tokens, spacing, motion, craft bar) — pair of the design-principles doc |
 | `docs/mobile-capability-principles.md` | Mobile shape and behaviour rules — read alongside the design principles for every UI artifact |
+| `docs/accessibility-checklist.md` | WCAG 2.1 AA baseline for operator-facing UI — consumed by `frontend-design-check` and mockup-reviewer Axis 3.5 |
 | `docs/behaviour-manifest-template.md` | Per-screen interaction-contract checklist for UI builds (adopt-only) |
 | `docs/doc-sync.md` | Doc-sync sweep contract (registry of reference docs to keep current) |
 | `docs/incident-response.md` | SEV matrix, on-call expectations, timeline-log format, post-mortem template (paired with `incident-commander` agent) |
@@ -67,7 +68,7 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `references/skill-overlay-convention.md` | The skill-overlay mechanism: pointer line, `skill-context.md` sidecar, and the KNOWLEDGE→overlay→canonical-skill drain wired into `/cleanfiles` |
 | `references/eval-suite-format.md` | Golden-set eval suite contract (`config.json` / `cases.jsonl` / `baseline.json`, verdict taxonomy, metrics) for `/eval-prompts` |
 | `schemas/` | Review-result JSON Schemas (v2 contract, Ajv-gated) + input-shape schemas (`pr-context`, `prior-rounds` — advisory) + schema CHANGELOG |
-| `scripts/` | Review driver (`chatgpt-review*.ts`), review coordinator library, migration runner, framework merge + validation (`framework-merge.js`, `validate-framework.js`), build-scheduler, mockup capture, code-graph + gates libraries, helper scripts + their tests |
+| `scripts/` | Review driver (`chatgpt-review*.ts`), review coordinator library, migration runner, framework merge + validation (`framework-merge.js`, `validate-framework.js`), build-scheduler, mockup capture, code-graph + gates libraries, skill-routing evals (`skill-routing-evals*.ts` + `evals/skill-routing/` cases — framework CI only), helper scripts + their tests |
 | `migrations/` | Per-version consumer migrations (run automatically by `/claudeupdate`) + `_helpers.js` + template |
 | `context/` | Reviewer `PROJECT_CONTEXT` injection templates (distinct from `.claude/context/agent-context.md`) |
 | `tasks/` | Empty scaffolding (current-focus, todo, ideas, bugs, lessons, runbooks/, review-logs/, builds/_example/) |

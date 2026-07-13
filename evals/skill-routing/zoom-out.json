@@ -1,0 +1,19 @@
+{
+  "skill": "zoom-out",
+  "top_k": 3,
+  "positive": [
+    "I'm about to write code in the billing domain but haven't read any of it this session, map it first",
+    "zoom out and give me a higher-level map of the modules involved here",
+    "before proposing architecture for the scheduling area, show me the relevant modules and their callers in the project's own vocabulary",
+    "I don't know this domain of the code yet, give me the lay of the land, a map of the modules and callers, before I change anything",
+    "about to recommend changes in a domain I haven't explored yet, want the module map first"
+  ],
+  "negative": [
+    {
+      "prompt": "interview me one question at a time to stress-test my design decisions until we agree",
+      "owner": "grill-me"
+    },
+    "update the copy on the marketing homepage",
+    "bump the eslint version and regenerate the lockfile"
+  ]
+}

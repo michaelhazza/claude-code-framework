@@ -32,6 +32,14 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.38.0 — 2026-07-13
+
+**Highlights:** external-catalogue adoption batch, tier 1 of 2 (source: addyosmani/agent-skills, MIT, audited 2026-07-13): a deterministic skill-routing eval harness protecting the 21-skill catalogue from silent trigger drift, a metrics/alerting layer for logging-observability, an accessibility baseline (first a11y coverage in the framework — checklist doc + mockup-reviewer gating axis + frontend-design-check step), grill-me interview mechanics (confidence protocol, hollow-yes gate, de-sophistication probe, stop conditions), and untrusted-content-channel rules extending injection defence beyond LLM output to error text, CI logs, browser content, and CLI-piped artifacts.
+
+**Added:** scripts/skill-routing-evals.ts + skill-routing-evalsPure.ts + Vitest test + evals/skill-routing/ (21 routing case files + README; framework CI only, not consumer-shipped) + `npm run eval:routing` + CI step; docs/accessibility-checklist.md (manifest: reference, sync).
+
+**Changed:** .claude/skills/logging-observability (instrument-to-a-question, RED/USE + cardinality, symptom-based two-severity alerting + test-fire rule, telemetry-verification gate; description now names alerts/metric labels); .claude/skills/grill-me (confidence protocol, hollow-yes gate, de-sophistication probe, stop conditions incl. mandatory Out-of-scope restate line and non-interactive guard); .claude/skills/security-hardening (new § Untrusted content channels beyond the request; description extended); .claude/skills/frontend-design-check (step 4: accessibility baseline); .claude/agents/mockup-reviewer.md (new Axis 3.5 — accessibility baseline, gating; reads accessibility-checklist); .claude/agents/dual-reviewer.md (untrusted-channel rule for CODEX_OUTPUT); README What-ships (accessibility row, scripts row); package.json (`eval:routing` script, operator-approved 2026-07-13).
+
 ## 2.37.0 — 2026-07-11
 
 **Highlights:** six harness meta-upgrades in one batch: a stated harness goal (GOAL.md — operator leverage, with decision test, prescription rule, rule lifecycle, and precedence contract), a full rule-classification ledger over the behavioural corpus with a coverage checker, memory that compounds (knowledge index + index-matched digest recall + append-time dedup advisory + supersede convention + citation/staleness checker), the measurement layer turned on (harness-metrics aggregator + metric definitions + starter eval suite contract exercised consumer-side), an autonomy-ladder registry of every autonomous authority and operator gate, and the wargame skill (risky-operation planning artifact) with its nudge hook.
