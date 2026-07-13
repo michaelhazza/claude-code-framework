@@ -151,6 +151,7 @@ What was implemented: [one paragraph]
 Plan gap (if any): [description]
 G1 attempts (per check): {lint: N, targeted tests: N}
 Notes for caller: [out-of-scope observations — dead code, smells, drift; do NOT fix in this chunk; route to tasks/todo.md]
+DID NOT TOUCH (intentionally): [adjacent issues noticed but deliberately left alone — scope-discipline evidence the coordinator can audit; an empty list is fine, an absent line is not]
 ```
 
 ## Hard rules

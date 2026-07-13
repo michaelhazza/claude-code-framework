@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.38.0",
+  "frameworkVersion": "2.39.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -76,6 +76,12 @@
     {
       "path": ".claude/hooks/package.json",
       "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/skills/deprecation/SKILL.md",
+      "category": "skill",
       "mode": "sync",
       "substituteAt": "never"
     },

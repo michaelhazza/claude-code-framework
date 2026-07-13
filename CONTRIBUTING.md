@@ -38,6 +38,8 @@ This repo is the canonical source for a portable agent fleet, governance docs, h
 3. Add a manifest entry — skills are listed **per-skill** in `manifest.json` (`category: "skill"`, `mode: "sync"`, `substituteAt: "never"` unless the skill genuinely needs adoption-time substitution).
 4. Add the skill to the `README.md` What-ships skills row (name + count).
 5. Update `.claude/CHANGELOG.md` under the release version (Added).
+6. Ship a routing eval case at `evals/skill-routing/<name>.json` (format: `evals/skill-routing/README.md`) and confirm `npm run eval:routing` passes — CI runs it, and a skill without a case only warns, so an uncovered description drifts silently.
+7. Register every SKILL.md heading in `references/rule-classification.md` (CI's `check-rule-ledger.js` fails on unregistered headings).
 
 ## Adding a hook
 

@@ -14,11 +14,11 @@ Generated 2026-07-10T11:43:22.783Z by the Fable Framework Batch (WS2, F4). Class
 
 | class | rows |
 |---|---|
-| durable-invariant | 111 |
-| process-contract | 561 |
-| model-workaround | 65 |
+| durable-invariant | 113 |
+| process-contract | 566 |
+| model-workaround | 67 |
 | residue | 0 |
-| no-rules markers | 63 |
+| no-rules markers | 64 |
 
 Residue found this pass is handled as kill-list items (decision gate DG-2) rather than ledger rows — see the batch's decision-list.md; the ledger is re-tagged at P3 for approved kills.
 
@@ -420,6 +420,7 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/pr-reviewer.md#should-fix-non-blocking-but-expected-to-be-addressed-in-pr-unless-explicitly-deferred` | directives under this heading | process-contract |  |
 | `.claude/agents/pr-reviewer.md#consider-taste-future-proofing-nice-to-have` | — | no-rules | |
 | `.claude/agents/pr-reviewer.md#process-multi-pass-discipline` | directives under this heading | model-workaround | evidence-or-drop passes; assumption: the model asserts or classifies without verifying against the artifact; sunset: re-evaluate when eval evidence shows verification-free reliability |
+| `.claude/agents/pr-reviewer.md#structural-review-heuristics` | directives under this heading | process-contract |  |
 | `.claude/agents/pr-reviewer.md#mechanical-auto-fix` | directives under this heading | durable-invariant | security carve-out (risk_domain set) never auto-fixed — durable; apply-then-verify mechanics are PC |
 | `.claude/agents/pr-reviewer.md#files-not-read` | directives under this heading | process-contract |  |
 | `.claude/agents/pr-reviewer.md#duplicate-round-policy` | directives under this heading | process-contract |  |
@@ -562,6 +563,14 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/skills/ci-gate-integrity/SKILL.md#baselines-and-consolidation` | directives under this heading | durable-invariant |  |
 | `.claude/skills/ci-gate-integrity/SKILL.md#actionsrunner-specifics-github-actions` | directives under this heading | durable-invariant |  |
 | `.claude/skills/ci-gate-integrity/SKILL.md#metrics-and-detector-gates` | directives under this heading | durable-invariant |  |
+| `.claude/skills/dependency-upgrades/SKILL.md#install-scripts-and-supply-chain` | directives under this heading | durable-invariant | security floor: install scripts are arbitrary code execution |
+| `.claude/skills/deprecation/SKILL.md#deprecation-producer-side` | — | no-rules | |
+| `.claude/skills/deprecation/SKILL.md#the-deprecation-decision` | directives under this heading | process-contract |  |
+| `.claude/skills/deprecation/SKILL.md#advisory-vs-compulsory` | directives under this heading | process-contract |  |
+| `.claude/skills/deprecation/SKILL.md#migration-mechanics` | directives under this heading | process-contract |  |
+| `.claude/skills/deprecation/SKILL.md#removal-protocol` | directives under this heading | durable-invariant | zero-usage evidence before deletion |
+| `.claude/skills/deprecation/SKILL.md#zombie-code` | directives under this heading | process-contract |  |
+| `.claude/skills/review-triage/SKILL.md#briefing-the-reviewer-the-adjudicators-own-failure-modes` | directives under this heading | model-workaround | assumption: reviewers given the author's conclusion validate it instead of testing it, and adjudicators under-engage after repeated rejects; sunset: re-evaluate when eval evidence shows claim-robust reviewing |
 | `.claude/skills/db-concurrency/SKILL.md#database-concurrency-and-idempotency` | — | no-rules | |
 | `.claude/skills/db-concurrency/SKILL.md#upserts-and-idempotency-keys` | directives under this heading | durable-invariant |  |
 | `.claude/skills/db-concurrency/SKILL.md#state-transitions` | directives under this heading | durable-invariant |  |
