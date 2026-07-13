@@ -1,0 +1,18 @@
+{
+  "skill": "deprecation",
+  "top_k": 3,
+  "positive": [
+    "we're sunsetting the old reporting module, how do we retire it safely without breaking the teams that use it",
+    "plan the removal of the legacy v1 export API and the migration of its consumers to v2",
+    "this internal service has had no commits in a year but other systems still call it and nobody owns it, what do we do",
+    "should we keep maintaining the old widget system alongside the new one or deprecate it",
+    "we want to announce end-of-life for a feature, do we set a hard removal deadline or make it advisory",
+    "check that no consumers still depend on the old API before we remove the retired feature for good"
+  ],
+  "negative": [
+    "add a new analytics feature to the dashboard",
+    { "prompt": "rename a database column without downtime using expand and contract phases", "owner": "postgres-migrations" },
+    { "prompt": "the library we depend on deprecated its old API, migrate our call sites after the major version bump", "owner": "dependency-upgrades" },
+    { "prompt": "delete this unused helper function that the dead-code scanner flagged", "owner": "refactor-safely" }
+  ]
+}

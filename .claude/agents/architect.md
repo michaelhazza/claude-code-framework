@@ -128,6 +128,11 @@ Split into chunks a developer can implement independently. Each chunk:
 
 Name chunks descriptively: "Add subtask wakeup service", not "Step 3".
 
+Split signals — any one of these means the chunk is too big:
+- "and" in a chunk title usually means two chunks — split it.
+- A chunk touching 8+ files is too large to build reliably — refuse and decompose.
+- More than 3 acceptance bullets on one chunk is a split signal.
+
 ### Cross-repo prior art for each approach (added in v2.13.0)
 
 For each candidate approach (typically 2-3), dispatch `cross-repo-scout` with the approach's defining concept as the query:
