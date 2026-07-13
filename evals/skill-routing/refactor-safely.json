@@ -1,0 +1,20 @@
+{
+  "skill": "refactor-safely",
+  "top_k": 3,
+  "positive": [
+    "splitting this 2000-line file into modules, what should I check before and after?",
+    "extracting a helper and lifting the shared code into an orchestrator",
+    "about to do a mass find-replace rename across the whole repo",
+    "knip flagged this component as unused code, is it safe to delete?",
+    "resolving a gnarly merge conflict in the services layer",
+    "moving a bunch of functions into a new file without changing any behaviour"
+  ],
+  "negative": [
+    {
+      "prompt": "verify the implementation against its spec, the conformance gaps between sections keep slipping through",
+      "owner": "spec-hygiene"
+    },
+    "add a new endpoint for invoice export",
+    "pick a colour palette for the analytics charts"
+  ]
+}

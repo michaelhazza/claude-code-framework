@@ -1,0 +1,23 @@
+{
+  "skill": "fable-mode",
+  "top_k": 3,
+  "positive": [
+    "I'm about to author the implementation plan for the billing rework and a wrong conclusion here is expensive",
+    "starting an audit adjudication decision, should the strongest model tier be doing this instead of the current one?",
+    "fable mode",
+    "I need to make an architecture decision but this session is running on a cheaper model tier",
+    "this is a big judgment call and I'm on the smaller model, how do I make sure the best brain does the thinking?",
+    "incident-triage decision incoming, the coordinator says the executing model is not the strongest available"
+  ],
+  "negative": [
+    {
+      "prompt": "pre-mortem this infrastructure migration: build the decision tree with failure branches, counter-moves, and abort conditions",
+      "owner": "wargame"
+    },
+    {
+      "prompt": "interview me relentlessly, one question at a time, until we reach shared understanding of this design",
+      "owner": "grill-me"
+    },
+    "fix this typo in the README"
+  ]
+}

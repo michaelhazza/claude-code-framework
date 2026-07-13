@@ -23,4 +23,6 @@ The five hard rules, one line each (full rationale in the doc):
 
 Also check the mobile shape: no page-level horizontal overflow at 375px, no hover-only interactions, no fixed-width modals wider than the smallest target viewport.
 
+4. **Run the accessibility baseline** (`docs/accessibility-checklist.md`) on the changed surface: semantic buttons/links (never div-as-button), labels on every input, `aria-label` on icon-only buttons, visible focus, contrast, and no colour-only states. The mockup pipeline audits this automatically (mockup-reviewer Axis 3.5); direct edits get it only here.
+
 For engineering pitfalls in the same change (modal state, async races, permission gating), use the `frontend-correctness` skill.

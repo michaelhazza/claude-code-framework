@@ -1,0 +1,19 @@
+{
+  "skill": "dependency-upgrades",
+  "top_k": 3,
+  "positive": [
+    "bumping React from 17 to 18, what should I check beyond the install succeeding?",
+    "npm audit reports a critical advisory, need to patch the affected package",
+    "I hit a peer-dependency conflict after adding a new library, should I use a version override?",
+    "the lockfile changed massively after I removed a package, is that safe to commit?",
+    "we're upgrading a library to a new major version and I'm worried something breaks at runtime even though it installed fine"
+  ],
+  "negative": [
+    {
+      "prompt": "add a new required check to the GitHub Actions workflow and update the gate baseline",
+      "owner": "ci-gate-integrity"
+    },
+    "rename this variable everywhere in the file",
+    "draft the quarterly investor update"
+  ]
+}

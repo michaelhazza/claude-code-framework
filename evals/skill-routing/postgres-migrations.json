@@ -1,0 +1,23 @@
+{
+  "skill": "postgres-migrations",
+  "top_k": 3,
+  "positive": [
+    "writing a migration that adds a CHECK constraint and a partial unique index",
+    "my migration fails on existing data when I add a NOT NULL column",
+    "Postgres rejected my unique index as non-immutable, what happened?",
+    "need to backfill the renamed column and then add the foreign key",
+    "adding a new enum value plus a timestamp-with-timezone column in the same schema change",
+    "changing the database table structure: adding a column with a default and worried about the old rows"
+  ],
+  "negative": [
+    {
+      "prompt": "two webhook retries race and both insert, how do I make the write idempotent with a dedupe key?",
+      "owner": "db-concurrency"
+    },
+    {
+      "prompt": "the background job's tenant-scoped query mysteriously returns zero rows for every org",
+      "owner": "tenant-isolation"
+    },
+    "restyle the login page hero section"
+  ]
+}

@@ -14,9 +14,9 @@ Generated 2026-07-10T11:43:22.783Z by the Fable Framework Batch (WS2, F4). Class
 
 | class | rows |
 |---|---|
-| durable-invariant | 107 |
-| process-contract | 557 |
-| model-workaround | 64 |
+| durable-invariant | 111 |
+| process-contract | 561 |
+| model-workaround | 65 |
 | residue | 0 |
 | no-rules markers | 63 |
 
@@ -399,6 +399,7 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/mockup-reviewer.md#axis-15-cross-cutting-ui-safety` | directives under this heading | process-contract |  |
 | `.claude/agents/mockup-reviewer.md#axis-2-simplicity-operator-overload` | directives under this heading | process-contract |  |
 | `.claude/agents/mockup-reviewer.md#axis-3-mobile-capability` | directives under this heading | process-contract |  |
+| `.claude/agents/mockup-reviewer.md#axis-35-accessibility-baseline` | directives under this heading | process-contract |  |
 | `.claude/agents/mockup-reviewer.md#axis-4-behaviour-completeness` | directives under this heading | process-contract |  |
 | `.claude/agents/mockup-reviewer.md#axis-5-visual-craft` | directives under this heading | process-contract |  |
 | `.claude/agents/mockup-reviewer.md#review-output` | directives under this heading | process-contract |  |
@@ -599,18 +600,25 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/skills/frontend-correctness/SKILL.md#data-handling` | directives under this heading | durable-invariant |  |
 | `.claude/skills/frontend-design-check/SKILL.md#frontend-design-check` | directives under this heading | model-workaround | routing patch: forces the doc-read the mockup pipeline does automatically; assumption: description-based skill/doc triggering is unreliable; sunset: re-evaluate when triggering proves reliable on the WS4 eval suite |
 | `.claude/skills/grill-me/SKILL.md#grill-me` | directives under this heading | process-contract |  |
+| `.claude/skills/grill-me/SKILL.md#confidence-protocol` | directives under this heading | process-contract |  |
+| `.claude/skills/grill-me/SKILL.md#hollow-yes-gate` | directives under this heading | model-workaround | assumption: the model accepts hedged/polite agreement as confirmation; sunset: re-evaluate when eval evidence shows hollow-yes detection without the explicit taxonomy |
+| `.claude/skills/grill-me/SKILL.md#de-sophistication-probe` | directives under this heading | process-contract |  |
+| `.claude/skills/grill-me/SKILL.md#stop-conditions` | directives under this heading | process-contract |  |
 | `.claude/skills/llm-integration/SKILL.md#llm-integration-engineering` | — | no-rules | |
 | `.claude/skills/llm-integration/SKILL.md#trust-and-verification` | directives under this heading | durable-invariant |  |
 | `.claude/skills/llm-integration/SKILL.md#prompt-assembly` | directives under this heading | durable-invariant |  |
 | `.claude/skills/llm-integration/SKILL.md#operational-shape` | directives under this heading | durable-invariant |  |
 | `.claude/skills/llm-integration/SKILL.md#llm-as-reviewer` | directives under this heading | durable-invariant |  |
 | `.claude/skills/logging-observability/SKILL.md#logging-and-observability` | — | no-rules | |
+| `.claude/skills/logging-observability/SKILL.md#instrument-to-a-question` | directives under this heading | durable-invariant |  |
 | `.claude/skills/logging-observability/SKILL.md#structure` | directives under this heading | durable-invariant |  |
 | `.claude/skills/logging-observability/SKILL.md#levels` | directives under this heading | durable-invariant |  |
 | `.claude/skills/logging-observability/SKILL.md#what-never-to-log` | directives under this heading | durable-invariant |  |
 | `.claude/skills/logging-observability/SKILL.md#placement` | directives under this heading | durable-invariant |  |
 | `.claude/skills/logging-observability/SKILL.md#metrics-and-events` | directives under this heading | durable-invariant |  |
 | `.claude/skills/logging-observability/SKILL.md#tests` | directives under this heading | durable-invariant |  |
+| `.claude/skills/logging-observability/SKILL.md#alerting` | directives under this heading | durable-invariant |  |
+| `.claude/skills/logging-observability/SKILL.md#verify-the-telemetry-itself` | directives under this heading | durable-invariant |  |
 | `.claude/skills/performance/SKILL.md#performance` | — | no-rules | |
 | `.claude/skills/performance/SKILL.md#measure-first` | directives under this heading | durable-invariant |  |
 | `.claude/skills/performance/SKILL.md#database` | directives under this heading | durable-invariant |  |
@@ -642,6 +650,7 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/skills/security-hardening/SKILL.md#webhookoauth-ingress` | directives under this heading | durable-invariant |  |
 | `.claude/skills/security-hardening/SKILL.md#outbound-requests-ssrf-family` | directives under this heading | durable-invariant |  |
 | `.claude/skills/security-hardening/SKILL.md#injection-surfaces` | directives under this heading | durable-invariant |  |
+| `.claude/skills/security-hardening/SKILL.md#untrusted-content-channels-beyond-the-request` | directives under this heading | durable-invariant | security floor: injection defence for non-LLM channels (error text, CI logs, browser content, CLI-piped artifacts) |
 | `.claude/skills/security-hardening/SKILL.md#authorization-shape` | directives under this heading | durable-invariant |  |
 | `.claude/skills/spec-hygiene/SKILL.md#spec-and-plan-hygiene` | — | no-rules | |
 | `.claude/skills/spec-hygiene/SKILL.md#ground-every-claim-in-the-real-tree` | directives under this heading | durable-invariant |  |

@@ -1,0 +1,20 @@
+{
+  "skill": "performance",
+  "top_k": 3,
+  "positive": [
+    "this endpoint takes four seconds, I suspect an N+1 query pattern",
+    "the dashboard page is slow because pagination pulls ten thousand rows into one payload",
+    "should I add an index to speed up this lookup, and how do I measure the baseline first?",
+    "the client bundle size doubled after the last release",
+    "memory keeps growing in the worker until it gets OOM-killed",
+    "customers say the reports screen has gotten really slow lately"
+  ],
+  "negative": [
+    {
+      "prompt": "webhook retries race each other and the upsert inserts duplicate rows, I need an idempotency key",
+      "owner": "db-concurrency"
+    },
+    "update the marketing copy on the pricing page",
+    "rotate the API signing secret"
+  ]
+}

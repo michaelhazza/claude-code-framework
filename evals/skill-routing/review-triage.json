@@ -1,0 +1,20 @@
+{
+  "skill": "review-triage",
+  "top_k": 3,
+  "positive": [
+    "adjudicating the ChatGPT PR review findings, which do I accept, reject, or defer?",
+    "the reviewer re-raised the exact finding from round 1 that we already fixed",
+    "the external review claims the function never validates input but the premise looks hallucinated",
+    "we're on round 4 of the review loop, how do I tell whether it's converging?",
+    "the AI reviewer flagged twelve issues and I think half are false positives, how do I decide which are real?",
+    "this spec review finding is about stale context from an earlier draft, should it be rejected?"
+  ],
+  "negative": [
+    {
+      "prompt": "building a scoring harness that calls the model, assembles the prompt, and parses its output into the pipeline",
+      "owner": "llm-integration"
+    },
+    "bump lodash to the latest version",
+    "add a favicon to the site"
+  ]
+}

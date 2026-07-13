@@ -1,0 +1,20 @@
+{
+  "skill": "tenant-isolation",
+  "top_k": 3,
+  "positive": [
+    "my tenant-scoped query mysteriously returns zero rows",
+    "adding a new tenant table, need the RLS policy and org scoping right",
+    "the background job runs without a tenant context, how do queue workers get the org scope?",
+    "the webhook payload carries an org identifier, can I trust it for scoping the write?",
+    "one customer briefly saw another tenant's data in their list view",
+    "a cron script updates tenant data but the UPDATE affects zero rows in production"
+  ],
+  "negative": [
+    {
+      "prompt": "storing OAuth access tokens and validating webhook signatures with a timing-safe comparison",
+      "owner": "security-hardening"
+    },
+    "make the chart animate when it loads",
+    "bump the TypeScript version in package.json"
+  ]
+}
