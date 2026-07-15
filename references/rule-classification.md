@@ -15,7 +15,7 @@ Generated 2026-07-10T11:43:22.783Z by the Fable Framework Batch (WS2, F4). Class
 | class | rows |
 |---|---|
 | durable-invariant | 113 |
-| process-contract | 566 |
+| process-contract | 572 |
 | model-workaround | 67 |
 | residue | 0 |
 | no-rules markers | 64 |
@@ -602,6 +602,12 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/skills/fail-loud/SKILL.md#catch-blocks` | directives under this heading | durable-invariant |  |
 | `.claude/skills/fail-loud/SKILL.md#error-translation-and-status-codes` | directives under this heading | durable-invariant |  |
 | `.claude/skills/fail-loud/SKILL.md#observability-of-failure` | directives under this heading | durable-invariant |  |
+| `.claude/skills/feature-register/SKILL.md#feature-register-row` | directives under this heading | process-contract |  |
+| `.claude/skills/feature-register/SKILL.md#invocation` | directives under this heading | process-contract |  |
+| `.claude/skills/feature-register/SKILL.md#field-contract-fixed-order-one-dot-point-per-line` | directives under this heading | process-contract |  |
+| `.claude/skills/feature-register/SKILL.md#current-build-resolution-no-argument` | directives under this heading | process-contract |  |
+| `.claude/skills/feature-register/SKILL.md#output-format` | directives under this heading | process-contract |  |
+| `.claude/skills/feature-register/SKILL.md#boundaries` | directives under this heading | process-contract |  |
 | `.claude/skills/frontend-correctness/SKILL.md#frontend-correctness-react` | — | no-rules | |
 | `.claude/skills/frontend-correctness/SKILL.md#component-state-lifecycle` | directives under this heading | durable-invariant |  |
 | `.claude/skills/frontend-correctness/SKILL.md#async-races` | directives under this heading | durable-invariant |  |

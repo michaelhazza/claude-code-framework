@@ -740,6 +740,12 @@
       "substituteAt": "never"
     },
     {
+      "path": ".claude/skills/feature-register/SKILL.md",
+      "category": "skill",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": ".claude/hooks/wargame-nudge.js",
       "category": "hook",
       "mode": "sync",

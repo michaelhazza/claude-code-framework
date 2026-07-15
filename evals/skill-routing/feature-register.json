@@ -1,0 +1,26 @@
+{
+  "skill": "feature-register",
+  "top_k": 3,
+  "positive": [
+    "give me the feature register row for this build",
+    "feature info for the sheet: name, one sentence description, branch, and the brief, spec and plan paths",
+    "output the register entry for this feature so I can paste it into the google sheet",
+    "what's the register row for the current build, dot points one per line",
+    "feature register for all builds, newest first"
+  ],
+  "negative": [
+    "add pagination to the invoices API",
+    {
+      "prompt": "grill me on this design before I write the spec",
+      "owner": "grill-me"
+    },
+    {
+      "prompt": "zoom out and map the modules and callers before we touch the billing domain",
+      "owner": "zoom-out"
+    },
+    {
+      "prompt": "wire the new stripe webhook handler end to end so it's actually called",
+      "owner": "wire-it-through"
+    }
+  ]
+}
