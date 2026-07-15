@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.41.0 — 2026-07-16
+
+**Highlights:** launch-readiness coverage batch (source: consumer audit-runner coverage review 2026-07-15 — a gap analysis of the audit framework + skills against an external production-readiness checklist found 3 unchecked concern classes and 6 partial ones). The audit-framework template's generic modules gain account-lifecycle security, extended secret sweeps, HTTPS/session-cookie enforcement, environment separation, payment live-mode readiness, response-payload sizing, auth-flow critical paths, off-screen human alerting, backup/restore-drill verification, and a migration-discipline sweep, plus a Pre-launch audit mode; `performance` gains write-time pagination and background-job rules; `postgres-migrations` gains the FK-covering-index rule. No new modules, headings, or scoring axes (template Scope Guard respected).
+
+**Changed:** docs/codebase-audit-framework-template.md (Module A: client-bundle + git-history secret sweeps, rate-limiter surface enumeration + public-route sweep, account lifecycle incl. email-verification-required, bot/fake-account protection, password-reset token hygiene + brute-force lockout, HTTPS + session-cookie flags, environment separation, payment live-mode readiness; Module B: response-payload projection bullet; Module C: auth flows named as critical paths; Module E: off-screen human alert sink, backup/restore drill, migration-discipline sweep; §9: Pre-launch Audit mode row); .claude/skills/performance/SKILL.md (Database: every list query carries LIMIT/pagination at write time; Hot paths: expensive or slow work runs as a background job, never inside an HTTP request handler); .claude/skills/postgres-migrations/SKILL.md (Indexes: every new FK column ships with a covering index in the same migration or a one-line recorded reason). No migration: content-only changes deployed by `sync.js` (template is adopt-only — existing adopters apply the new checks to their calibrated copy manually; skills sync automatically).
+
 ## 2.40.0 — 2026-07-15
 
 **Highlights:** new `feature-register` skill — a paste-ready register entry for a build (feature name, one-sentence description, branch, brief/spec/plan paths as a six-line dot-point block) for operators tracking features in a spreadsheet. Sourced from `tasks/builds/<slug>/` with a deterministic current-build resolution order (branch match → current-focus pointer → most recent build dir) and an `all` mode for backfilling a register. Read-only by contract.
