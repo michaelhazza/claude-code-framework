@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.40.0 — 2026-07-15
+
+**Highlights:** new `feature-register` skill — a paste-ready register entry for a build (feature name, one-sentence description, branch, brief/spec/plan paths as a six-line dot-point block) for operators tracking features in a spreadsheet. Sourced from `tasks/builds/<slug>/` with a deterministic current-build resolution order (branch match → current-focus pointer → most recent build dir) and an `all` mode for backfilling a register. Read-only by contract.
+
+**Added:** .claude/skills/feature-register/ (SKILL.md; manifest entry; routing eval case `evals/skill-routing/feature-register.json`; README count 23; rule-ledger rows for all six headings). No migration: pure additive file, deployed by `sync.js` automatically.
+
 ## 2.39.0 — 2026-07-13
 
 **Highlights:** external-catalogue adoption batch, tier 2 of 2 (source: addyosmani/agent-skills, MIT, commit 98967c4): reviewer-briefing discipline (withhold the claim, contract-misread precedence, doubt-theater stop signal), a supply-chain install-script gate, a new producer-side deprecation skill (22nd skill — sunset decisions, Churn Rule, zombie-code trigger, removal protocol), structural review heuristics for pr-reviewer, and a 10-fragment rule sweep across coordinators, skills, and checklists.
