@@ -207,10 +207,16 @@ Generic application security (repo-specific data-isolation concerns belong in a 
 
 - Authentication and authorisation enforced at every API boundary, not just top-level routes.
 - All user inputs validated through schemas before use; no raw request-body access.
-- No hardcoded secrets, credentials, or tokens in source; cross-check the env manifest.
+- No hardcoded secrets, credentials, or tokens in source; cross-check the env manifest. Extend the sweep to the two surfaces a source grep misses: (a) **the built client bundle** — scan build output for provider-shaped key patterns and for values of env vars documented as server-side only (any public-prefixed env var ships to the browser, so no secret may carry that prefix); (b) **git history** — run a gitleaks-style history scan (or confirm the hosting provider's secret scanning is enabled) so a key removed from HEAD but present in history is still surfaced.
 - Sensitive data (passwords, tokens, PII) excluded from all logging and tracing.
-- Rate limiting on authentication and high-value endpoints.
+- Rate limiting on authentication and high-value endpoints. The limiter surface is often plural (per-endpoint limiters, inbound/webhook limiters, email limiters) — enumerate every limiter, then sweep: list every unauthenticated/public route and confirm each carries a limiter or a documented exemption.
+- Account lifecycle: self-serve signup requires email verification before the account becomes active, and unverified accounts cannot authenticate. If no verification step exists, that is a `high` finding — not an N/A.
+- Bot and fake-account protection on every unauthenticated write surface (signup, invite-accept, public form submissions): durable rate limits plus at least one anti-automation defence (honeypot field, CAPTCHA-class challenge, or velocity / disposable-email heuristics). Abuse arrives with attention, not with launch — audit this before it is needed.
+- Password-reset token hygiene: reset tokens single-use, expiring, stored hashed; forgot-password responses do not enumerate users; all sessions invalidated on password reset. Login has brute-force resistance (lockout or escalating backoff) beyond the request rate limit.
 - Explicit, restrictive CORS; security headers present; no `eval()`-class execution on untrusted input.
+- HTTPS enforced end-to-end on the production domain: HTTP→HTTPS redirect, no plaintext serving, proxy-forwarded protocol headers handled correctly behind the TLS-terminating platform. Header presence (HSTS) alone does not prove TLS enforcement. Session cookies carry `Secure`, `HttpOnly`, and `SameSite`.
+- Environment separation: development/staging/production use separate databases and separate provider credentials; deploy configs and per-environment secret sets checked for drift against the env manifest; dev-only toggles and stubs fail closed in production builds.
+- Payment surfaces launch-ready (when the product takes payments): test/live provider-key separation — live keys never present in dev/staging, test keys never in production, key mode matches environment — and a documented live-mode verification step for every customer-facing payment path. Provider test mode passing is not evidence the live flow works.
 - Parameterised queries only — flag any raw SQL string interpolation.
 - Webhook signature verification on every inbound provider; OAuth state validated on every callback.
 
@@ -220,6 +226,7 @@ Generic application security (repo-specific data-isolation concerns belong in a 
 
 - No N+1 query patterns (flag awaited queries inside loops); indexes on foreign keys and commonly filtered columns.
 - No unbounded list queries — everything paginates or limits; long-running work in background jobs, not request handlers.
+- Response payloads sized to what the client renders — list endpoints return projections, not full rows; flag blob-typed columns or `SELECT *` shapes on list routes.
 - No synchronous blocking in async paths; frontend bundle size within budget.
 
 **Do not introduce proactively.** Caching, memoisation, batching, or new indexes only for a real, measured problem. Premature optimisation creates more debt than it removes.
@@ -227,6 +234,7 @@ Generic application security (repo-specific data-isolation concerns belong in a 
 ### Module C — Test Coverage
 
 - Critical business logic has *named* coverage — a test, a gate, or a documented `wont-test` rationale per critical path.
+- Auth flows are named critical paths: login/logout/session expiry, password reset (token single-use + expiry, post-reset session invalidation), lockout / rate-limit behaviour on repeated failures — plus signup → verification → first-login once email verification ships.
 - Happy path plus at least one error path per public route; permission-sensitive paths have isolation coverage.
 - Tests not so heavily mocked they cannot catch real regressions; no order-dependent tests; no unpinned time/randomness.
 - Record a coverage assessment per audit (e.g. `gates only` → `comprehensive`) — it calibrates Rule 9 trust.
@@ -242,6 +250,9 @@ Generic application security (repo-specific data-isolation concerns belong in a 
 - Structured, parseable logging; health checks return meaningful status, not just HTTP 200.
 - Key operations emit traces/metrics; errors carry enough context to diagnose without a debugger (tenant/run/job identifiers).
 - No secrets or PII in logs; graceful shutdown implemented; queue depth and retry/dead-letter rates observable.
+- At least one alert sink reaches a human off-screen (email / Slack / pager / push) — an on-screen-only sink (an admin-UI panel) does not satisfy this. Critical failure classes (dead-letter accumulation, error-rate spikes, cost/limit breaker trips, security-sourced incidents) route to that sink.
+- Production database backup posture verified: automated backups / PITR enabled with a stated retention window, a restore runbook exists, and a restore drill has actually been performed and dated. An untested backup is a hope, not a recovery plan.
+- Migration-discipline sweep: schema changes travel as ordered, committed migration files — no runtime DDL outside the migrations directory; ORM schema and migrations have not drifted (codegen produces zero diff); any migration-sequencing gate is wired into CI, and its absence from CI is itself a finding.
 - **Preservation reminder:** Rule 12 applies — never remove existing telemetry without verifying nothing consumes it.
 
 ### Module F — Dependency and Supply Chain Risk
@@ -286,6 +297,7 @@ If your repo has no subsystem warranting a dedicated module yet, leave this sect
 | Mode | Scope | When | What runs |
 |---|---|---|---|
 | **Full Audit** | Whole codebase | Quarterly, pre-major-release, post-incident health check | All Layer 1 areas + selected Layer 2 modules (always the §8 repo-specific ones) |
+| **Pre-launch Audit** | Launch-readiness surface | Before the first customer-facing launch | Modules A, B, C, E, F plus the §8 repo-specific modules, with emphasis on the launch-readiness checks: account lifecycle (email verification, bot protection, reset-token hygiene), HTTPS + session cookies, environment separation, payment live-mode readiness, backup/restore drill, off-screen human alerting |
 | **Targeted Audit** | A named set of areas or modules | A specific concern is on the table (e.g. "a type-strengthening pass") | One or more Layer 1 areas, or one or more Layer 2 modules |
 | **Hotspot Audit** | A single subsystem | A subsystem feels gnarly or recently shipped a defect | The relevant Layer 2 module(s) plus only the Layer 1 areas needed for that subsystem |
 
