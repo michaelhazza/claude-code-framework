@@ -64,6 +64,16 @@ This repo is the canonical source for a portable agent fleet, governance docs, h
 
 - `npm test` runs everything (sync engine tests in `tests/`, script tests, hook tests). Targeted: `npm run test:sync`, `npm run test:scripts`, `npm run test:hooks`. `npm run validate` runs the framework validator.
 - **New sync-engine features need coverage in `tests/`** (the e2e adopt/sync/merge suites) — sync.js writes into other people's repos; untested paths are not acceptable.
+- **Named critical paths.** These are the flows whose failure corrupts a consumer's repo; each keeps a passing suite, and a PR that touches one without touching its suite states why in the PR body:
+  | Critical path | Suite |
+  |---|---|
+  | Adoption writes (`sync.js` adopt) | `tests/e2e-adopt.test.ts`, `tests/e2e-adopt-invariants.test.ts` |
+  | Sync writes + hardening | `tests/e2e-sync.test.ts`, `tests/sync-hardening.test.ts` |
+  | Three-way merge / conflict handling | `tests/e2e-merge.test.ts` |
+  | Settings merge | `tests/settings-merge.test.ts` |
+  | Substitution writes | `tests/substitute-write.test.ts` |
+  | Consumer migrations | `tests/migrations.test.ts` + the `migrations/README.md` harness |
+  | Hook exit-code contract (fail-open default) | per-hook `.test.js` siblings under `.claude/hooks/` |
 - **New migrations need coverage under the migrations harness** (see `migrations/README.md`): migrations must be idempotent, non-destructive on conflict, and return `{ status, notes }` — test all three.
 - New pure helper scripts get a Vitest test in `scripts/__tests__/`.
 
@@ -80,5 +90,5 @@ Use the `/release` command (`.claude/commands/release.md`) — it walks the vers
 - One concern per PR; keep the diff reviewable.
 - Update `manifest.json`, `README.md` What-ships, and `.claude/CHANGELOG.md` **in the same PR** as the files they describe — doc drift across repos is expensive.
 - No repo-specific content in canonical files (ADR-0006). If a consumer needs different behaviour, that's either project context (`agent-context.md`), a `LOCAL-OVERRIDE` slot in a non-agent doc, or a framework change — never a fork of a managed file.
-- Never commit secrets; scripts read keys (e.g. `OPENAI_API_KEY`) from the consumer's environment only.
+- Never commit secrets; scripts read keys (e.g. `OPENAI_API_KEY`) from the consumer's environment only. CI enforces this: `node scripts/check-secrets.js` sweeps every tracked file for provider-shaped tokens, and GitHub secret scanning + push protection are enabled on the repo. Exemptions are exact-instance entries (`{path, sha256, reason}`) in `scripts/check-secrets-allowlist.json` — never pattern- or directory-level, and stale entries fail the gate.
 - PRs that change reviewer output shapes must update `schemas/` and `schemas/CHANGELOG.md` in lockstep with the TypeScript types and prompts.

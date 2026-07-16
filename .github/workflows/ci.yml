@@ -47,6 +47,12 @@ jobs:
       - name: Rule-classification ledger coverage (file + heading + anchor + ladder keywords)
         run: node scripts/check-rule-ledger.js
 
+      # Working-tree layer of the secret posture; GitHub secret scanning +
+      # push protection (enabled on the repo) cover history and future pushes.
+      # Exemptions: exact-instance entries in scripts/check-secrets-allowlist.json.
+      - name: Secret sweep (provider-shaped tokens in tracked files)
+        run: node scripts/check-secrets.js
+
       - name: Manifest / settings JSON validity
         run: |
           node -e "JSON.parse(require('fs').readFileSync('manifest.json','utf8')); console.log('manifest ok')"
