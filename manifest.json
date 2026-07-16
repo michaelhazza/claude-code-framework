@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.41.0",
+  "frameworkVersion": "2.42.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -484,6 +484,18 @@
     {
       "path": "scripts/eval-promptsPure.ts",
       "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/check-secrets.js",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/check-secrets.test.ts",
+      "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"
     },

@@ -3,14 +3,17 @@
 /**
  * check-secrets.js — provider-shaped secret sweep over tracked files.
  *
- * Framework-only tooling (NOT a managed/synced file — do not add to manifest.json).
- * Plain node, zero dependencies.
+ * Framework-synced managed file (manifest category: helper-script). Plain
+ * node, zero dependencies. Runs two ways:
+ *   - framework repo CI: `node scripts/check-secrets.js` (direct step)
+ *   - consumer repos: via the gates wrapper `scripts/gates/verify-no-secrets.sh`
  *
- * Division of labour: GitHub secret scanning + push protection (enabled on the
- * repo, 2026-07-16) covers full git HISTORY and blocks future pushes at the
- * platform layer. This gate covers the WORKING TREE on every CI run, so a
- * token that slips past the platform (new provider format, fork PR, offline
- * mirror) still fails the build before merge.
+ * Layered posture: enable the hosting provider's secret scanning + push
+ * protection to cover full git HISTORY and block future pushes at the
+ * platform layer (done for the framework repo 2026-07-16). This gate covers
+ * the WORKING TREE on every CI run, so a token that slips past the platform
+ * (new provider format, fork PR, offline mirror) still fails the build
+ * before merge.
  *
  * Contract:
  *   - Scans every `git ls-files` path (tracked + staged). Zero files scanned
@@ -18,7 +21,10 @@
  *   - Patterns are provider-shaped (AWS, GitHub, OpenAI/Anthropic, Stripe,
  *     Slack, Google, private-key blocks) — deliberately NOT generic entropy
  *     heuristics, which drown the signal in kebab-case-heavy repos like this.
- *   - Exemptions live ONLY in scripts/check-secrets-allowlist.json, one exact
+ *   - Exemptions live ONLY in the allowlist JSON (default
+ *     scripts/check-secrets-allowlist.json; override with the
+ *     CHECK_SECRETS_ALLOWLIST env var — the gates wrapper points it at
+ *     scripts/gates/.baselines/secrets-allowlist.json), one exact
  *     instance per entry: { path, sha256, reason }. Category-level or
  *     pattern-level exemptions are rejected (exit 2). An allowlist entry that
  *     suppresses nothing this run is stale and FAILS the gate (exit 1) —
@@ -40,7 +46,7 @@ const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const ALLOWLIST_REL = 'scripts/check-secrets-allowlist.json';
+const DEFAULT_ALLOWLIST_REL = 'scripts/check-secrets-allowlist.json';
 const NUL = String.fromCharCode(0);
 
 // Extensions never scanned (binary assets). Everything else is sniffed for a
@@ -177,12 +183,13 @@ function main() {
   }
 
   let allowlist = [];
-  const allowlistAbs = path.join(REPO_ROOT, ALLOWLIST_REL);
+  const allowlistRel = process.env.CHECK_SECRETS_ALLOWLIST || DEFAULT_ALLOWLIST_REL;
+  const allowlistAbs = path.resolve(REPO_ROOT, allowlistRel);
   if (fs.existsSync(allowlistAbs)) {
     try {
       allowlist = JSON.parse(fs.readFileSync(allowlistAbs, 'utf8'));
     } catch (err) {
-      console.error(`check-secrets: malformed allowlist ${ALLOWLIST_REL}: ${err.message}`);
+      console.error(`check-secrets: malformed allowlist ${allowlistRel}: ${err.message}`);
       process.exit(2);
     }
   }
@@ -212,7 +219,7 @@ function main() {
   if (result.status === 'findings') {
     console.error(
       `check-secrets: FAIL — ${result.findings.length} finding(s), ${result.staleEntries.length} stale allowlist entr(ies). ` +
-      `To exempt a genuine placeholder, add an exact-instance entry {path, sha256, reason} to ${ALLOWLIST_REL}.`
+      `To exempt a genuine placeholder, add an exact-instance entry {path, sha256, reason} to ${allowlistRel}.`
     );
     process.exit(1);
   }
