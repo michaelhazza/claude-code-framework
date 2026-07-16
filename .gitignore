@@ -9,3 +9,12 @@ node_modules/
 .chatgpt-diffs/
 
 *.framework-new
+
+# Session-generated code-intelligence artifacts, produced by
+# .claude/hooks/code-graph-freshness-check.js at session start (and by the
+# dev-server watcher). Consumer-repo files per
+# scripts/validate-framework-allowlist.json — never framework sources.
+references/.code-graph-cache.json
+references/.watcher.pid
+references/import-graph/
+references/project-map.md

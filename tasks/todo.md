@@ -45,3 +45,31 @@ Active backlog. Items captured here are queued for work; resolved items move to 
 - [x] [origin:launch-readiness-audit:2026-07-16] [status:resolved] Candidate: ship a portable secret-sweep gate in `scripts/gates/` for consumers
   - Why: template Module A (L210) tells consumers to run a gitleaks-style scan; a portable `verify-no-secrets` gate in the shipped gates library would standardise it like the other verify-gates. Product decision — new shipped surface, needs manifest entry + release.
   - Resolved 2026-07-16: operator approved; shipped as v2.42.0 (PR #45, tag pushed, consumer notification dispatched). `scripts/gates/verify-no-secrets.sh` wraps the now-managed `scripts/check-secrets.js` (single scanner source, 26-test suite ships too); wrapper proven green + red at all three failure classes before release.
+
+## Deferred from AI-setup audit — 2026-07-16
+
+Source: clean-my-ai-harness read-only audit + approved apply run (report: `../claude-code-framework-ai-setup-review/YOUR-AI-SETUP.html`, `WHAT-CHANGED.md`). Applied changes live in that packet's records; items below are the NOT-yet-actioned remainder.
+
+- [x] [origin:setup-audit:2026-07-16] [status:resolved] Probation comparison: validate-setup agent vs /framework-doctor command overlap
+  - Resolved 2026-07-16: both run read-only on the same settled tree. Finding sets were DISJOINT — validate-setup uniquely caught doc-sync coverage-table gaps, unmapped context-pack anchors (expected on the producer repo), and a stale agent-name hint comment; framework-doctor uniquely caught 2 dangling agent citations and 3 manifest omissions. Verdict per the probation plan: KEEP BOTH deliberately (complementary coverage, different invocation contexts). Caveat worth a future look: validate-setup Step 3 (agent referenced-file integrity) reported PASS where framework-doctor Check 2 found two dangling unconditional citations — its reference walk is shallower than the doctor's.
+- [x] [origin:setup-audit:2026-07-16] [status:resolved] regression-scribe cites `docs/incidents/_template.md` unconditionally; nothing ships or scaffolds it
+  - Why: framework-doctor Check 2 (LOW): `.claude/agents/regression-scribe.md:84` reads the template with no missing-file fallback; ADAPT.md and docs/incident-response.md never mention it. First nightly-rail run in any repo would hit a missing file.
+  - Resolved 2026-07-16: both citations made conditional ("when the repo ships one") with an inline fallback — the agent's five post-mortem section bullets are declared to BE the template, so a missing file never blocks the nightly rail.
+- [x] [origin:setup-audit:2026-07-16] [status:resolved] pr-reviewer cites `scripts/verify-test-quality.sh` unconditionally; script not shipped
+  - Why: framework-doctor Check 2 (LOW): `.claude/agents/pr-reviewer.md:103` names an origin-project gate script without an "if present" qualifier.
+  - Resolved 2026-07-16: qualified as "rejected where the project ships a test-quality gate", keeping the convention statement unconditional.
+- [x] [origin:setup-audit:2026-07-16] [status:resolved] Three `scripts/__tests__/*.test.ts` files unmanaged in manifest while their sources ship
+  - Why: framework-doctor Check 3 (LOW x3): eval-promptsPure.test.ts, applyFindingsPure.test.ts, review-mode-flip-consistency.test.ts match no manifest glob — consumers get the sources but not their tests. Likely omissions (flip-consistency may be framework-only; decide per file).
+  - Resolved 2026-07-16: all three added to the manifest (applyFindingsPure + review-mode-flip-consistency as review-script-test; eval-promptsPure as helper-script-test). Flip-consistency ships deliberately: both files it reads are themselves synced, so the invariant holds identically in consumers.
+- [x] [origin:setup-audit:2026-07-16] [status:resolved] doc-sync.md coverage table missing 14 shipped docs; integration-reference.md absent from consumerFiles allowlist
+  - Why: validate-setup Step 7 (WARN x2): 9 references/*.md + 5 docs/*.md absent from the table, so the doc-sync sweep never routes updates to them. framework-doctor INFO: chatgpt-pr/spec-review name `docs/integration-reference.md` (consumer doc) but it is not in `scripts/validate-framework-allowlist.json` consumerFiles.
+  - Resolved 2026-07-16: 14 rows added with per-doc update triggers; `docs/integration-reference.md` added to consumerFiles.
+- [x] [origin:setup-audit:2026-07-16] [status:resolved] agent-context.md "valid agent names" hint comment omits regression-scribe
+  - Why: validate-setup (WARN): comment-only staleness at `.claude/context/agent-context.md:32-38`; not mechanically enforced but misleads authors.
+  - Resolved 2026-07-16: regression-scribe added to the hint list (generating the list stays a nice-to-have).
+- [x] [origin:setup-audit:2026-07-16] [status:resolved] Framework release: reword fable-mode trigger for strongest-tier sessions
+  - Why: audit model-recommendation 1 — the skill description keyed on "the executing model is not the strongest tier available", which read never-applies once sessions can run Fable 5; the five-gate process stays valuable at any tier.
+  - Resolved 2026-07-16: description + when-to-use reworded to any-tier ("the gates are the discipline, not a substitute for capability"); skill-routing evals green (202 checks, 0 warnings); host re-registered the new description live. Rolls into the next versioned release.
+- [x] [origin:setup-audit:2026-07-16] [status:resolved] Framework release: update the agent retirement convention (subfolder does not unload)
+  - Why: audit model-recommendation 2 — the host registers `.claude/agents/**` recursively, so `_retired/` alone leaves agents live. Proven this session: renaming to `.md.retired` de-registered reality-checker (host dropped it from the live agent list mid-session).
+  - Resolved 2026-07-16: CONTRIBUTING gains § Retiring an agent (five steps; the `.md.retired` extension rename named as the load-bearing step); deprecation SKILL extended to match and its dangling "CONTRIBUTING § agent lifecycle" pointer fixed to the new section. Rolls into the next versioned release.

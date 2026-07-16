@@ -33,6 +33,20 @@ Enforced at finalisation by `chatgpt-pr-review` (step 6), `chatgpt-spec-review` 
 | `docs/incident-response.md` | When the SEV classification matrix, on-call rotation, timeline-log format, post-mortem template, or escalation paths change. |
 | `.claude/FRAMEWORK_VERSION` + `.claude/CHANGELOG.md` | Every framework-level change ships with a version bump and changelog entry. Repo-specific changes (your own architecture.md edits, your own agent additions) DO NOT bump the framework version — that tracks the agent-fleet/conventions layer only. |
 | `architect.md`, `feature-coordinator.md`, plan-review agents (`claude-plan-review.md`, `chatgpt-plan-review.md`), and the build-orchestration ADR | When the build-loop orchestration or chunk-metadata format changes (new fields in `declared_files`/`depends_on`/`exclusive_resources`, new scheduling rules, new wave-loop invariants). All four surfaces describe the same contract from different roles; a change to one must propagate to the others. |
+| `docs/agent-selection.md` | When an entry point is added, retired, or re-scoped (agent, command, or pipeline phase), or when the size/urgency routing guidance changes. |
+| `docs/capabilities-template.md` | When the capability-registration contract changes shape (Asset Register row fields, Editorial Rules, verdict strings) — keep in lockstep with the `docs/capabilities.md` row above. |
+| `docs/accessibility-checklist.md` | When the accessibility baseline changes (new checklist row, changed severity, or a mockup-reviewer Axis 3.5 rule added/removed). Keep the checklist and `mockup-reviewer.md` in lockstep. |
+| `docs/spec-authoring-checklist.md` | When spec-coordinator's authoring contract changes (new required spec section, changed acceptance-criteria rules, grill-me integration points). |
+| `docs/codebase-audit-framework-template.md` | When audit-runner's operating model changes (pass structure, Full/Targeted/Hotspot modes, log format, deferred-item routing). Keep in lockstep with `audit-runner.md`. |
+| `references/autonomy-ladder.md` | When any agent's autonomy rung changes (what it may auto-apply, auto-fix, auto-merge) or a new rung/carve-out is defined. Keep in lockstep with the coordinator prose and `references/rule-classification.md`. |
+| `references/harness-metrics.md` | When the measured harness-metric set changes (new metric, changed definition or source query, retired metric). Keep in lockstep with `scripts/harness-metricsPure.ts`. |
+| `references/iteration-caps.md` | When any bounded loop's cap changes (spec-reviewer 5, dual-reviewer 3, review D5 caps, CI label-pull loop) or a new bounded loop is introduced. |
+| `references/local-override-convention.md` | When the `LOCAL-OVERRIDE` marker mechanism changes (marker syntax, sync preservation rules, the ADR-0006 agent-file exclusion). |
+| `references/project-extensions-convention.md` | When the convention for repo-local agents/skills/commands living alongside the synced framework changes. |
+| `references/review-mode-resolution.md` | When the review-mode ladder changes (operator phrase, session-state file, durable flip file, env var, hard default). Keep in lockstep with the three `chatgpt-*` agents and `scripts/__tests__/review-mode-flip-consistency.test.ts`. |
+| `references/review-tier-redundancy-audit.md` | When a review tier is added or retired, or when a redundancy audit re-runs — record methodology and findings here (the 2.21.0 reality-checker retirement is the precedent). |
+| `references/rule-classification.md` | When a behavioural rule is added, moved, or retired anywhere in the fleet — the ledger's coverage contract is enforced by `scripts/check-rule-ledger.js`; update the row in the same commit as the rule. |
+| `references/verification-commands.md` | When a verify/gate command's name, scope, or exit contract changes, or a new gate ships in `scripts/gates/`. |
 
 ---
 
