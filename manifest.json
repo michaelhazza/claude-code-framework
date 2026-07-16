@@ -374,6 +374,18 @@
       "substituteAt": "never"
     },
     {
+      "path": "scripts/__tests__/applyFindingsPure.test.ts",
+      "category": "review-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/review-mode-flip-consistency.test.ts",
+      "category": "review-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/__tests__/local-override-smoke.js",
       "category": "sync-test",
       "mode": "sync",
@@ -484,6 +496,12 @@
     {
       "path": "scripts/eval-promptsPure.ts",
       "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/__tests__/eval-promptsPure.test.ts",
+      "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"
     },

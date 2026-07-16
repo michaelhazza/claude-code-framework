@@ -6,6 +6,7 @@
     "architecture.md",
     "DEVELOPMENT_GUIDELINES.md",
     "docs/capabilities.md",
+  "docs/integration-reference.md",
     "docs/codebase-audit-framework.md",
     "docs/testing-conventions.md",
     "docs/env-manifest.json",

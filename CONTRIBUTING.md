@@ -28,6 +28,16 @@ This repo is the canonical source for a portable agent fleet, governance docs, h
 5. Add the agent to the profile lists in `README.md` / `ADAPT.md` § 12 if it belongs to MINIMAL/STANDARD/FULL, and to the fleet table consumers copy into their CLAUDE.md.
 6. If other agents invoke it, update their caller sections; if it's invoked inline (coordinator-style), say so explicitly — inline-vs-dispatched is a hard behavioural contract.
 
+## Retiring an agent
+
+Never delete. Retirement is a five-step move, and the extension rename in step 2 is the step that actually unloads it:
+
+1. Move the file to `.claude/agents/_retired/`, renamed `<name>-<retirement-date>.md`.
+2. **Rename the extension to `.md.retired`.** Claude Code registers `.claude/agents/**` recursively, so `_retired/` alone does NOT remove the agent from the live session router — a non-`.md` extension does. (Proven 2026-07-16: reality-checker sat retired-but-live for weeks until the rename de-registered it mid-session.)
+3. Add retirement frontmatter: `retired: <date>`, `retired_in_framework_version`, `superseded_by` (or `none`), `retired_reason`, plus a do-not-invoke banner above the preserved original body.
+4. Add a `removedFiles` entry in `manifest.json` for the OLD active path (`action: "warn-only"`) so consumer syncs surface the removal.
+5. Sweep callers and lists: any agent that invoked it, `README.md` / `ADAPT.md` profile lists, the agent-name hint comment in `.claude/context/agent-context.md`, and the changelog entry for the release that ships the retirement.
+
 ## Adding a skill
 
 1. Create `.claude/skills/<name>/SKILL.md` (directory + SKILL.md, single clear responsibility).

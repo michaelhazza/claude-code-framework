@@ -34,6 +34,6 @@ chatgpt-plan-review · chatgpt-pr-review · chatgpt-spec-review · claude-plan-r
 claude-spec-review · codebase-explainer · context-pack-loader · cross-repo-scout ·
 dual-reviewer · experiment-runner · feature-coordinator · finalisation-coordinator ·
 hotfix · incident-commander · mockup-coordinator · mockup-designer · mockup-reviewer ·
-pr-reviewer · spec-conformance · spec-coordinator · spec-reviewer ·
+pr-reviewer · regression-scribe · spec-conformance · spec-coordinator · spec-reviewer ·
 triage-agent · validate-setup
 -->
