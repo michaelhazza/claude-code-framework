@@ -69,6 +69,19 @@ Generic guard-wiring assertions: named grep patterns must be present in named fi
 
 Config missing entirely = skip (exit 0, opt-in gate). Config present but empty, referenced file missing, or pattern absent = fail (exit 1).
 
+### verify-no-secrets.sh
+
+Provider-shaped secret sweep over tracked files (AWS, GitHub classic + fine-grained, OpenAI/Anthropic, Stripe secret/restricted, Slack, Google, private-key blocks). Thin wrapper over the framework-synced `scripts/check-secrets.js` (Node stdlib, unit-tested upstream in `scripts/__tests__/check-secrets.test.ts`); fails closed when Node or the scanner is missing. Deliberately provider-patterned rather than entropy-based — entropy scanners drown the signal in kebab-case-heavy repos. Findings print a redacted preview plus the sha256 fingerprint (never the token); copy the fingerprint into an allowlist entry to exempt a genuine placeholder.
+
+| Knob | Default | Meaning |
+|---|---|---|
+| `SECRETS_ROOT` | `$(pwd)` | Repo root; must contain `scripts/check-secrets.js` |
+| `SECRETS_ALLOWLIST` | `scripts/gates/.baselines/secrets-allowlist.json` | Exact-instance entries `[{path, sha256, reason}]`. Glob paths / missing reasons / missing fingerprints are config errors; an entry that suppresses nothing FAILS the gate (stale); missing file = empty allowlist (scanning always runs) |
+
+Pair with the hosting provider's secret scanning + push protection (git history + future pushes); this gate covers the working tree on every run.
+
+Exit: `0` clean, `1` findings or stale allowlist entries, `2` misconfiguration (fail closed — treat any non-zero as red).
+
 ## Wiring into consumer CI
 
 Gates are **CI-only** — never run locally as a "quick sanity check" (see `references/test-gate-policy.md`; the finalisation G5 gate is the single sanctioned local exception). Typical GitHub Actions step:
@@ -81,6 +94,7 @@ Gates are **CI-only** — never run locally as a "quick sanity check" (see `refe
     bash scripts/gates/verify-duplicate-blocks.sh
     bash scripts/gates/verify-no-orphan-react-component.sh
     bash scripts/gates/verify-protected-block-names.sh
+    bash scripts/gates/verify-no-secrets.sh
 ```
 
 Notes:

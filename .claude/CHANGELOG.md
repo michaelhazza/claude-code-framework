@@ -32,6 +32,13 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.42.0 — 2026-07-16
+
+**Highlights:** consumer-facing secret-sweep gate (source: launch-readiness coverage audit 2026-07-16, deferred item 4). `scripts/gates/verify-no-secrets.sh` joins the verify-gates library as a thin fail-closed wrapper over the now-framework-synced `scripts/check-secrets.js` scanner: 8 provider-shaped pattern families (AWS, GitHub classic + fine-grained PAT, OpenAI/Anthropic, Stripe secret/restricted, Slack, Google, private-key blocks), proof-of-life on zero files scanned, redacted findings with sha256 fingerprints, and an exact-instance allowlist (`{path, sha256, reason}`) where glob paths are config errors and stale entries fail the gate.
+
+**Added:** scripts/gates/verify-no-secrets.sh (covered by the existing `scripts/gates/*.sh` manifest glob); scripts/check-secrets.js + scripts/__tests__/check-secrets.test.ts promoted from framework-only tooling to managed files (categories helper-script / helper-script-test) so consumers receive the scanner and its 26-test suite.
+**Changed:** scripts/gates/README.md (verify-no-secrets section + wiring example); scripts/check-secrets.js allowlist path now overridable via `CHECK_SECRETS_ALLOWLIST` (the gate wrapper points it at `scripts/gates/.baselines/secrets-allowlist.json`, keeping consumer baselines in consumer state per the gates convention); docs/codebase-audit-framework-template.md Module A secrets bullet now points at the shipped gate for the tracked-file layer (template is adopt-only — existing adopters add the pointer to their calibrated copy manually). No migration: new files deploy via `sync.js`; wiring the gate into consumer CI is a consumer-side step documented in the gates README.
+
 ## 2.41.0 — 2026-07-16
 
 **Highlights:** launch-readiness coverage batch (source: consumer audit-runner coverage review 2026-07-15 — a gap analysis of the audit framework + skills against an external production-readiness checklist found 3 unchecked concern classes and 6 partial ones). The audit-framework template's generic modules gain account-lifecycle security, extended secret sweeps, HTTPS/session-cookie enforcement, environment separation, payment live-mode readiness, response-payload sizing, auth-flow critical paths, off-screen human alerting, backup/restore-drill verification, and a migration-discipline sweep, plus a Pre-launch audit mode; `performance` gains write-time pagination and background-job rules; `postgres-migrations` gains the FK-covering-index rule. No new modules, headings, or scoring axes (template Scope Guard respected).
