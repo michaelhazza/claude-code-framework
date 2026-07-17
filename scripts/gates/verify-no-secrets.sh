@@ -4,13 +4,13 @@
 #
 # Invariant: no provider-shaped secret (AWS, GitHub, OpenAI/Anthropic, Stripe,
 # Slack, Google, private-key blocks) appears in any tracked file. The scan
-# logic lives in the framework-synced scripts/check-secrets.js (Node stdlib,
+# logic lives in the framework-synced scripts/check-secrets.cjs (Node stdlib,
 # unit-tested upstream in scripts/__tests__/check-secrets.test.ts); this
 # wrapper adapts it to the gates contract and fails closed when the
 # toolchain or the scanner is missing.
 #
 # Configuration (env vars, all optional):
-#   SECRETS_ROOT       Repo root to scan — must contain scripts/check-secrets.js.
+#   SECRETS_ROOT       Repo root to scan — must contain scripts/check-secrets.cjs.
 #                      Default: $(pwd).
 #   SECRETS_ALLOWLIST  Exact-instance allowlist JSON: [{path, sha256, reason}].
 #                      Glob paths, missing reasons, or missing fingerprints are
@@ -38,7 +38,7 @@ if ! command -v node >/dev/null 2>&1; then
   exit 2
 fi
 
-SCANNER="$ROOT_DIR/scripts/check-secrets.js"
+SCANNER="$ROOT_DIR/scripts/check-secrets.cjs"
 if [ ! -f "$SCANNER" ]; then
   echo "[GATE] no-secrets: $SCANNER missing (framework sync incomplete?) — fail closed" >&2
   exit 2

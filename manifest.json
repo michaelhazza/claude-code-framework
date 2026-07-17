@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.43.2",
+  "frameworkVersion": "2.43.3",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -506,7 +506,7 @@
       "substituteAt": "never"
     },
     {
-      "path": "scripts/check-secrets.js",
+      "path": "scripts/check-secrets.cjs",
       "category": "helper-script",
       "mode": "sync",
       "substituteAt": "never"

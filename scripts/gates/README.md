@@ -71,11 +71,11 @@ Config missing entirely = skip (exit 0, opt-in gate). Config present but empty, 
 
 ### verify-no-secrets.sh
 
-Provider-shaped secret sweep over tracked files (AWS, GitHub classic + fine-grained, OpenAI/Anthropic, Stripe secret/restricted, Slack, Google, private-key blocks). Thin wrapper over the framework-synced `scripts/check-secrets.js` (Node stdlib, unit-tested upstream in `scripts/__tests__/check-secrets.test.ts`); fails closed when Node or the scanner is missing. Deliberately provider-patterned rather than entropy-based — entropy scanners drown the signal in kebab-case-heavy repos. Findings print a redacted preview plus the sha256 fingerprint (never the token); copy the fingerprint into an allowlist entry to exempt a genuine placeholder.
+Provider-shaped secret sweep over tracked files (AWS, GitHub classic + fine-grained, OpenAI/Anthropic, Stripe secret/restricted, Slack, Google, private-key blocks). Thin wrapper over the framework-synced `scripts/check-secrets.cjs` (Node stdlib, unit-tested upstream in `scripts/__tests__/check-secrets.test.ts`); fails closed when Node or the scanner is missing. Deliberately provider-patterned rather than entropy-based — entropy scanners drown the signal in kebab-case-heavy repos. Findings print a redacted preview plus the sha256 fingerprint (never the token); copy the fingerprint into an allowlist entry to exempt a genuine placeholder.
 
 | Knob | Default | Meaning |
 |---|---|---|
-| `SECRETS_ROOT` | `$(pwd)` | Repo root; must contain `scripts/check-secrets.js` |
+| `SECRETS_ROOT` | `$(pwd)` | Repo root; must contain `scripts/check-secrets.cjs` |
 | `SECRETS_ALLOWLIST` | `scripts/gates/.baselines/secrets-allowlist.json` | Exact-instance entries `[{path, sha256, reason}]`. Glob paths / missing reasons / missing fingerprints are config errors; an entry that suppresses nothing FAILS the gate (stale); missing file = empty allowlist (scanning always runs) |
 
 Pair with the hosting provider's secret scanning + push protection (git history + future pushes); this gate covers the working tree on every run.

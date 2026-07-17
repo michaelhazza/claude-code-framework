@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.43.3 — 2026-07-17
+
+**Highlights:** patch — ESM-consumer compatibility for the secret scanner and vitest-convention adoption for the anchors test, the third and final fix in the 2.43.x consumer-gate series. `scripts/check-secrets.js` is CommonJS, so consumers with `"type": "module"` parsed it as ESM and both the CLI and its test suite crashed ("require is not defined"); renamed to `scripts/check-secrets.cjs`, which pins CJS in every consumer. `scripts/__tests__/generate-architecture-anchors.test.ts` was written on node:test, which vitest-only consumers collect as an empty suite; the vitest conversion automation-v1 had already made locally is adopted upstream (with explicit 120s timeouts on the three CLI-spawn tests — the spawns exceed vitest's 5s default on slower machines).
+
+**Changed:** scripts/check-secrets.js → scripts/check-secrets.cjs (content identical; manifest, ci.yml, CONTRIBUTING, gates README, verify-no-secrets.sh, and the test import updated). scripts/__tests__/generate-architecture-anchors.test.ts — node:test → vitest (consumer conversion adopted; run-tests.js routes it by runner automatically). Migration: v2.43.3.js — deletes the consumer's orphaned `scripts/check-secrets.js` when it matches the framework-deployed content (state entry dropped too); diverged copies get a conflict note instead, never deleted. Covered by three new cases in tests/migrations.test.ts.
+
 ## 2.43.2 — 2026-07-17
 
 **Highlights:** patch — second consumer lint-gate compatibility sweep, same failure class as 2.43.1. automation-v1's ESLint errors on `no-useless-escape` and `no-useless-assignment`; canonical `harness-metricsPure.ts` carried `[:\-]` character classes (4 sites across the TS_TAIL and dateTime regexes) and `knowledge-citations.ts` a dead `let ok = false` initialiser. The consumer copies had been locally lint-fixed (the very divergence /claudeupdate flagged as customised), and the post-merge resync clobbered those fixes back to canonical — so the fixes land upstream, keeping consumers byte-identical AND gate-green.

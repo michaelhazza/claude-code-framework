@@ -1,5 +1,5 @@
 /**
- * Tests for scripts/check-secrets.js — the provider-shaped secret sweep gate.
+ * Tests for scripts/check-secrets.cjs — the provider-shaped secret sweep gate.
  * Runner: Vitest (per docs/testing-conventions.md).
  *
  * Every fixture secret below is assembled by string CONCATENATION so this
@@ -16,7 +16,7 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { fingerprint, scanContent, validateAllowlist, runScan } = require('../check-secrets.js');
+const { fingerprint, scanContent, validateAllowlist, runScan } = require('../check-secrets.cjs');
 
 // --- concatenated fixtures (never literal) ---------------------------------
 const OPENAI_LEGACY = 'sk-' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4o5p6';

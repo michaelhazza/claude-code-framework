@@ -535,3 +535,96 @@ test('v2.33.0: overlay absent locally is a no-op (status skipped)', async () => 
     rmrf(consumer);
   }
 });
+
+// ---------------------------------------------------------------------------
+// v2.43.3 — check-secrets.js → check-secrets.cjs rename cleanup
+// ---------------------------------------------------------------------------
+
+const V2_43_3_SRC = path.join(FRAMEWORK_ROOT, 'migrations', 'v2.43.3.js');
+const CHECK_SECRETS_OLD_REL = 'scripts/check-secrets.js';
+const CHECK_SECRETS_NEW_ABS = path.join(FRAMEWORK_ROOT, 'scripts', 'check-secrets.cjs');
+
+test('v2.43.3: deletes an unmodified consumer check-secrets.js and drops its state entry (status applied)', async () => {
+  const { migrate } = requireCjs(V2_43_3_SRC);
+  const canonical = await fsp.readFile(CHECK_SECRETS_NEW_ABS, 'utf8');
+  const helpers = requireCjs(HELPERS_SRC);
+  const state = buildMinimalState({
+    files: {
+      [CHECK_SECRETS_OLD_REL]: {
+        lastAppliedHash: helpers.hashContent(helpers.normaliseContent(canonical)),
+        lastAppliedFrameworkVersion: '2.43.2',
+        lastAppliedFrameworkCommit: null,
+        lastAppliedSourcePath: CHECK_SECRETS_OLD_REL,
+        customisedLocally: false,
+      },
+    },
+  });
+  const consumer = await makeConsumer(state);
+  try {
+    await fsp.mkdir(path.join(consumer, 'scripts'), { recursive: true });
+    await fsp.writeFile(path.join(consumer, 'scripts', 'check-secrets.js'), canonical, 'utf8');
+
+    const result = await migrate({
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.43.2',
+      toVersion: '2.43.3',
+    });
+    assert.equal(result.status, 'applied');
+    assert.equal(fs.existsSync(path.join(consumer, 'scripts', 'check-secrets.js')), false, 'old file must be deleted');
+
+    const persisted = JSON.parse(
+      await fsp.readFile(path.join(consumer, '.claude', '.framework-state.json'), 'utf8')
+    );
+    assert.equal(persisted.files[CHECK_SECRETS_OLD_REL], undefined, 'state entry must be dropped');
+
+    // Re-run: nothing left to do.
+    const second = await migrate({
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.43.2',
+      toVersion: '2.43.3',
+    });
+    assert.equal(second.status, 'skipped');
+  } finally {
+    rmrf(consumer);
+  }
+});
+
+test('v2.43.3: absent consumer file is a no-op (status skipped)', async () => {
+  const { migrate } = requireCjs(V2_43_3_SRC);
+  const consumer = await makeConsumer();
+  try {
+    const result = await migrate({
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.43.2',
+      toVersion: '2.43.3',
+    });
+    assert.equal(result.status, 'skipped');
+  } finally {
+    rmrf(consumer);
+  }
+});
+
+test('v2.43.3: locally-diverged check-secrets.js is reported, never deleted (status conflict)', async () => {
+  const { migrate } = requireCjs(V2_43_3_SRC);
+  const consumer = await makeConsumer();
+  try {
+    await fsp.mkdir(path.join(consumer, 'scripts'), { recursive: true });
+    const divergent = '// locally customised scanner\n';
+    await fsp.writeFile(path.join(consumer, 'scripts', 'check-secrets.js'), divergent, 'utf8');
+
+    const result = await migrate({
+      consumerRoot: consumer,
+      frameworkRoot: FRAMEWORK_ROOT,
+      fromVersion: '2.43.2',
+      toVersion: '2.43.3',
+    });
+    assert.equal(result.status, 'conflict');
+    const after = await fsp.readFile(path.join(consumer, 'scripts', 'check-secrets.js'), 'utf8');
+    assert.equal(after, divergent, 'diverged file must be byte-for-byte untouched');
+  } finally {
+    rmrf(consumer);
+  }
+});

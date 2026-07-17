@@ -51,7 +51,7 @@ jobs:
       # push protection (enabled on the repo) cover history and future pushes.
       # Exemptions: exact-instance entries in scripts/check-secrets-allowlist.json.
       - name: Secret sweep (provider-shaped tokens in tracked files)
-        run: node scripts/check-secrets.js
+        run: node scripts/check-secrets.cjs
 
       - name: Manifest / settings JSON validity
         run: |
