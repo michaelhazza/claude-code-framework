@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.43.2 — 2026-07-17
+
+**Highlights:** patch — second consumer lint-gate compatibility sweep, same failure class as 2.43.1. automation-v1's ESLint errors on `no-useless-escape` and `no-useless-assignment`; canonical `harness-metricsPure.ts` carried `[:\-]` character classes (4 sites across the TS_TAIL and dateTime regexes) and `knowledge-citations.ts` a dead `let ok = false` initialiser. The consumer copies had been locally lint-fixed (the very divergence /claudeupdate flagged as customised), and the post-merge resync clobbered those fixes back to canonical — so the fixes land upstream, keeping consumers byte-identical AND gate-green.
+
+**Fixed:** scripts/harness-metricsPure.ts — `[:\-]` → `[:-]` in both timestamp regexes (dash last in class, no escape needed; behaviour identical, 25 tests green). scripts/knowledge-citations.ts — `let ok = false;` → `let ok: boolean;` in the pathExists cache helper (both branches assign before use). No migration: content-only changes deployed by `sync.js`.
+
 ## 2.43.1 — 2026-07-17
 
 **Highlights:** patch — consumer lint-gate compatibility fix for the memory-digest hook. automation-v1's ESLint flat config enforces `no-useless-assignment` as an error and rejected canonical `memory-digest.js` line 296 (`let lines = [];` where both the try and catch branches assign `lines`), failing the consumer's Lint + Typecheck + Static gates CI on the 2.43.0 bump PR. The consumer copy had been locally lint-fixed, which made it divergent-from-canonical — exactly the fork the behavioural framework-wins rule forbids — so the fix lands upstream instead.
