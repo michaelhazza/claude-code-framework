@@ -32,6 +32,12 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.43.1 — 2026-07-17
+
+**Highlights:** patch — consumer lint-gate compatibility fix for the memory-digest hook. automation-v1's ESLint flat config enforces `no-useless-assignment` as an error and rejected canonical `memory-digest.js` line 296 (`let lines = [];` where both the try and catch branches assign `lines`), failing the consumer's Lint + Typecheck + Static gates CI on the 2.43.0 bump PR. The consumer copy had been locally lint-fixed, which made it divergent-from-canonical — exactly the fork the behavioural framework-wins rule forbids — so the fix lands upstream instead.
+
+**Fixed:** .claude/hooks/memory-digest.js — dropped the redundant initialiser (`let lines = [];` → `let lines;`) in `sourceLines()`; both branches assign before use, behaviour unchanged, hook test green. No migration: content-only change deployed by `sync.js`.
+
 ## 2.43.0 — 2026-07-16
 
 **Highlights:** harness self-audit batch (source: clean-my-ai-harness read-only audit of this repo's own Claude setup + the validate-setup ↔ framework-doctor probation comparison it prescribed; PR #46). Headline discovery: Claude Code registers `.claude/agents/**` recursively, so the `_retired/` subfolder alone never unloaded a retired agent — reality-checker sat retired-but-live in the session router since 2.21.0. Fixed by an in-place `.md.retired` extension rename (verified live: the host dropped it from the agent list mid-session), and the retirement convention now encodes the rename as the load-bearing step. Also ships a behavioral drift gate between the two config-guard hooks' duplicated protected-path lists, restores this changelog to greppable UTF-8 text, and lands all seven follow-up findings from the health-check comparison (verdict: keep both — disjoint coverage).
