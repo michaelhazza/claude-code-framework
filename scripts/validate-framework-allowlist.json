@@ -1,5 +1,5 @@
 {
-  "_comment": "Allowlist for scripts/validate-framework.js markdown link checking. consumerFiles: paths that exist only in CONSUMER repos — the framework's managed docs legitimately cite them ('if present' cites). Supports exact repo-relative paths and 'dir/**' prefixes. knownIssues: temporarily suppressed genuinely-broken links, each { file, target, note } — fix the doc and remove the entry; stale entries fail validation.",
+  "_comment": "Allowlist for scripts/validate-framework.js. consumerFiles: paths that exist only in CONSUMER repos — the framework's managed docs legitimately cite them ('if present' cites). Supports exact repo-relative paths and 'dir/**' prefixes. knownIssues: temporarily suppressed genuinely-broken links, each { file, target, note } — fix the doc and remove the entry; stale entries fail validation. hookLibraries: repo-relative paths of .claude/hooks/ files that are shared libraries require()d by entry hooks rather than registered in settings.json — the hook-wiring check skips them; stale entries fail validation. Empty as of v2.44: every non-test .js under .claude/hooks/ is a registered entry hook.",
   "consumerFiles": [
     "CLAUDE.md",
     "KNOWLEDGE.md",
@@ -15,5 +15,6 @@
     "references/project-map.md",
     "references/import-graph/**"
   ],
-  "knownIssues": []
+  "knownIssues": [],
+  "hookLibraries": []
 }
