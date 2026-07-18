@@ -108,6 +108,35 @@ describe('check-shipped-source gate', () => {
     expect(status).toBe(1);
   });
 
+  test('executable CommonJS inside template interpolation IS detected (red)', () => {
+    const cases: Record<string, string> = {
+      'scripts/tpl-require.js': 'const target = `${require("./config").name}`;\nconsole.log(target);\n',
+      'scripts/tpl-dirname.js': 'const here = `${__dirname}/fixtures`;\nconsole.log(here);\n',
+    };
+    for (const [file, content] of Object.entries(cases)) {
+      const { status, stdout } = runGateOn({ [file]: content }, [file]);
+      const report = JSON.parse(stdout);
+      expect(report.findings.map((f: { file: string }) => f.file), `expected finding for ${file}`).toEqual([file]);
+      expect(report.findings[0].check).toBe('module-system');
+      expect(status).toBe(1);
+    }
+  });
+
+  test('CommonJS-looking text inside regex literals is NOT an idiom (clean)', () => {
+    const { status, stdout } = runGateOn(
+      {
+        'scripts/scanner.js':
+          'export const requirePattern = /require\\s*\\(/;\n'
+          + 'export const exportsPattern = /module\\.exports/;\n'
+          + 'export const dirnamePattern = /__dirname/;\n',
+      },
+      ['scripts/scanner.js'],
+    );
+    const report = JSON.parse(stdout);
+    expect(report.findings).toEqual([]);
+    expect(status).toBe(0);
+  });
+
   test('CommonJS syntax inside comments and strings is NOT an idiom (masked)', () => {
     const { status, stdout } = runGateOn(
       {

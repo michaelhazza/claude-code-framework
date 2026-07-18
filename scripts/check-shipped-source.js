@@ -79,42 +79,121 @@ function nodeCheck(file) {
   return result.status === 0 ? null : (result.stderr || 'node --check failed').trim().split('\n')[0];
 }
 
-/**
- * Blanks comment and string/template contents (delimiters and newlines kept)
- * so idiom detection cannot be satisfied — or suppressed — by prose. Template
- * interpolation code is blanked along with the template text: a require()
- * inside `${...}` is not worth the parser complexity (noted limitation).
- */
+// ── Source masking ──────────────────────────────────────────────────────────
+// State-machine masker blanking the CONTENTS of comments, string/template
+// literals, and REGEX LITERALS while KEEPING template-interpolation code.
+// Both halves matter for correctness of the module-system gate:
+//   - `${require('./x')}` is executable CommonJS inside a template — it must
+//     stay visible to the markers (blanking it is a false NEGATIVE);
+//   - `/require\s*\(/` in a pure-ESM scanner is prose, not code — it must be
+//     blanked (matching it is a false POSITIVE).
+// Regex-literal detection uses the standard preceding-token heuristic with
+// newline recovery. Ported from the consumer's proven implementation
+// (automation-v1 scripts/lib/cronRegistrationAuditPure.ts maskSource).
+
+const REGEX_PRECEDERS = new Set([
+  '(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '<', '>', '~', '^',
+]);
+const REGEX_KEYWORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'case', 'do', 'else', 'yield', 'await', 'throw',
+]);
+
 function maskJsSource(source) {
-  let out = '';
-  let i = 0;
-  const n = source.length;
-  while (i < n) {
+  const out = new Array(source.length);
+  const stack = [{ kind: 'code', interpolation: false, braceDepth: 0 }];
+  const isIdent = (c) => /[\w$]/.test(c);
+  let lastCode = '';
+  let lastToken = '';
+  let tokenActive = false;
+
+  for (let i = 0; i < source.length; i += 1) {
     const ch = source[i];
-    const next = source[i + 1];
-    if (ch === '/' && next === '/') {
-      while (i < n && source[i] !== '\n') { out += ' '; i += 1; }
-    } else if (ch === '/' && next === '*') {
-      out += '  '; i += 2;
-      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) {
-        out += source[i] === '\n' ? '\n' : ' ';
-        i += 1;
+    const next = i + 1 < source.length ? source[i + 1] : '';
+    const state = stack[stack.length - 1];
+    const blanked = ch === '\n' ? '\n' : ' ';
+
+    if (state.kind === 'code') {
+      if (ch === '/' && next === '/') { stack.push({ kind: 'line' }); out[i] = ' '; continue; }
+      if (ch === '/' && next === '*') { stack.push({ kind: 'block' }); out[i] = ' '; continue; }
+      if (ch === "'" || ch === '"') {
+        stack.push({ kind: ch === "'" ? 'single' : 'double' });
+        out[i] = ch; lastCode = ch; lastToken = ''; tokenActive = false;
+        continue;
       }
-      if (i < n) { out += '  '; i += 2; }
-    } else if (ch === "'" || ch === '"' || ch === '`') {
-      const quote = ch;
-      out += quote; i += 1;
-      while (i < n && source[i] !== quote) {
-        if (source[i] === '\\') { out += '  '; i += 2; continue; }
-        out += source[i] === '\n' ? '\n' : ' ';
-        i += 1;
+      if (ch === '`') {
+        stack.push({ kind: 'template' });
+        out[i] = ch; lastCode = ch; lastToken = ''; tokenActive = false;
+        continue;
       }
-      if (i < n) { out += quote; i += 1; }
-    } else {
-      out += ch; i += 1;
+      if (ch === '/') {
+        const regexStart = lastCode === ''
+          || REGEX_PRECEDERS.has(lastCode)
+          || (isIdent(lastCode) && REGEX_KEYWORDS.has(lastToken));
+        if (regexStart) { stack.push({ kind: 'regex', inClass: false }); out[i] = ch; continue; }
+      }
+      if (state.interpolation && ch === '}') {
+        if (state.braceDepth === 0) { stack.pop(); out[i] = ch; continue; }
+        state.braceDepth -= 1;
+      } else if (state.interpolation && ch === '{') {
+        state.braceDepth += 1;
+      }
+      out[i] = ch;
+      if (!/\s/.test(ch)) {
+        if (isIdent(ch)) { lastToken = tokenActive ? lastToken + ch : ch; tokenActive = true; }
+        else { lastToken = ''; tokenActive = false; }
+        lastCode = ch;
+      } else {
+        tokenActive = false;
+      }
+      continue;
     }
+
+    if (state.kind === 'single' || state.kind === 'double') {
+      if (ch === '\\' && next !== '') { out[i] = ' '; out[i + 1] = next === '\n' ? '\n' : ' '; i += 1; continue; }
+      if ((state.kind === 'single' && ch === "'") || (state.kind === 'double' && ch === '"') || ch === '\n') {
+        stack.pop(); out[i] = ch; continue; // newline pop = unterminated-literal recovery
+      }
+      out[i] = blanked;
+      continue;
+    }
+
+    if (state.kind === 'template') {
+      if (ch === '\\' && next !== '') { out[i] = ' '; out[i + 1] = next === '\n' ? '\n' : ' '; i += 1; continue; }
+      if (ch === '`') { stack.pop(); out[i] = ch; continue; }
+      if (ch === '$' && next === '{') {
+        out[i] = ' '; out[i + 1] = '{'; i += 1;
+        stack.push({ kind: 'code', interpolation: true, braceDepth: 0 });
+        continue;
+      }
+      out[i] = blanked;
+      continue;
+    }
+
+    if (state.kind === 'line') {
+      if (ch === '\n') { stack.pop(); out[i] = '\n'; continue; }
+      out[i] = ' ';
+      continue;
+    }
+
+    if (state.kind === 'block') {
+      if (ch === '*' && next === '/') { stack.pop(); out[i] = ' '; out[i + 1] = ' '; i += 1; continue; }
+      out[i] = blanked;
+      continue;
+    }
+
+    // regex
+    if (ch === '\\' && next !== '') { out[i] = ' '; out[i + 1] = next === '\n' ? '\n' : ' '; i += 1; continue; }
+    if (ch === '\n') { stack.pop(); out[i] = '\n'; continue; } // regex literals cannot span lines — misdetection recovery
+    if (state.inClass) {
+      if (ch === ']') state.inClass = false;
+      out[i] = ' ';
+      continue;
+    }
+    if (ch === '[') { state.inClass = true; out[i] = ' '; continue; }
+    if (ch === '/') { stack.pop(); out[i] = ch; continue; }
+    out[i] = ' ';
   }
-  return out;
+  return out.join('');
 }
 
 // CommonJS markers, matched over MASKED source. Broader than declaration
