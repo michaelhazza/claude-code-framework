@@ -8,6 +8,11 @@
     "test:scripts": "node scripts/run-tests.js scripts",
     "test:hooks": "node scripts/run-tests.js hooks",
     "validate": "node scripts/validate-framework.js",
+    "check:profiles": "node scripts/check-profiles.js",
+    "check:migrations": "node scripts/check-migrations.js",
+    "check:shipped-source": "node scripts/check-shipped-source.js",
+    "audit:consumer": "node scripts/audit-consumer-state.js",
+    "audit:all": "node scripts/audit-all.js",
     "eval:routing": "tsx scripts/skill-routing-evals.ts"
   },
   "devDependencies": {
