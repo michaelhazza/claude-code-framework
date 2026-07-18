@@ -79,8 +79,58 @@ function nodeCheck(file) {
   return result.status === 0 ? null : (result.stderr || 'node --check failed').trim().split('\n')[0];
 }
 
-const CJS_IDIOM_RE = /^\s*(?:const|let|var)\s+[^=]*=\s*require\(|^\s*module\.exports|^\s*exports\.[A-Za-z_$]/m;
-const ESM_IDIOM_RE = /^\s*import\s|^\s*export\s/m;
+/**
+ * Blanks comment and string/template contents (delimiters and newlines kept)
+ * so idiom detection cannot be satisfied — or suppressed — by prose. Template
+ * interpolation code is blanked along with the template text: a require()
+ * inside `${...}` is not worth the parser complexity (noted limitation).
+ */
+function maskJsSource(source) {
+  let out = '';
+  let i = 0;
+  const n = source.length;
+  while (i < n) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < n && source[i] !== '\n') { out += ' '; i += 1; }
+    } else if (ch === '/' && next === '*') {
+      out += '  '; i += 2;
+      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      if (i < n) { out += '  '; i += 2; }
+    } else if (ch === "'" || ch === '"' || ch === '`') {
+      const quote = ch;
+      out += quote; i += 1;
+      while (i < n && source[i] !== quote) {
+        if (source[i] === '\\') { out += '  '; i += 2; continue; }
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      if (i < n) { out += quote; i += 1; }
+    } else {
+      out += ch; i += 1;
+    }
+  }
+  return out;
+}
+
+// CommonJS markers, matched over MASKED source. Broader than declaration
+// assignment on purpose: bare side-effect `require('./x')`, lazy `require`
+// inside functions, `require.main === module`, `module.*`, `exports.*` /
+// `exports =`, and `__dirname`/`__filename` all crash at load or at run
+// time when the file is interpreted as ESM. `(?<![.\w$])` keeps member
+// accesses like `pkg.require(` and identifiers like `myrequire` out.
+const CJS_MARKER_RES = [
+  /(?<![.\w$])require\s*[.(]/,
+  /(?<![.\w$])module\s*\./,
+  /(?<![.\w$])exports\s*[.=]/,
+  /(?<![.\w$])__dirname(?![\w$])/,
+  /(?<![.\w$])__filename(?![\w$])/,
+];
+const ESM_IDIOM_RE = /^\s*import[\s('"]|^\s*export\s|import\s*\.\s*meta/m;
 
 /** Module type governing `rel` per the SHIPPED files: nearest shipped
  *  package.json wins; no shipped package.json => consumer root governs,
@@ -142,9 +192,9 @@ function main() {
       continue;
     }
     if (!rel.endsWith('.js')) continue; // .cjs/.mjs are self-describing
-    const source = readFileSync(abs, 'utf8');
-    const isCjs = CJS_IDIOM_RE.test(source);
-    const isEsm = ESM_IDIOM_RE.test(source);
+    const masked = maskJsSource(readFileSync(abs, 'utf8'));
+    const isCjs = CJS_MARKER_RES.some((re) => re.test(masked));
+    const isEsm = ESM_IDIOM_RE.test(masked);
     if (!isCjs) continue; // pure ESM or idiom-free .js is safe under either type
     const type = governingType(rel, shippedPackageJsons);
     if (type === 'commonjs') continue;

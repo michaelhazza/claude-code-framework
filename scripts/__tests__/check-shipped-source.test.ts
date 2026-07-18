@@ -77,4 +77,50 @@ describe('check-shipped-source gate', () => {
     expect(report.findings[0].file).toBe('scripts/broken.cjs');
     expect(status).toBe(1);
   });
+
+  test('catches non-declaration CommonJS forms (red tests for the bypass class)', () => {
+    const bypasses: Record<string, string> = {
+      'scripts/side-effect.js': 'require("./side-effect-module");\n',
+      'scripts/lazy.js': 'function load() { return require("./lazy-module"); }\nload();\n',
+      'scripts/main-guard.js': 'function main() {}\nif (require.main === module) main();\n',
+      'scripts/dirname-user.js': 'console.log(__dirname);\n',
+      'scripts/filename-user.js': 'const f = __filename;\nconsole.log(f);\n',
+      'scripts/conditional.js': 'const enabled = true;\nif (enabled) require("./plugin");\n',
+      'scripts/exports-assign.js': 'exports.helper = () => 1;\n',
+    };
+    for (const [file, content] of Object.entries(bypasses)) {
+      const { status, stdout } = runGateOn({ [file]: content }, [file]);
+      const report = JSON.parse(stdout);
+      expect(report.findings.map((f: { file: string; check: string }) => [f.file, f.check]), `expected module-system finding for ${file}`).toEqual([[file, 'module-system']]);
+      expect(status).toBe(1);
+    }
+  });
+
+  test('mixed CommonJS + ESM idioms in one shipped .js still fails', () => {
+    const { status, stdout } = runGateOn(
+      { 'scripts/mixed.js': 'import { x } from "./x.js";\nconsole.log(__dirname, x);\n' },
+      ['scripts/mixed.js'],
+    );
+    const report = JSON.parse(stdout);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].check).toBe('module-system');
+    expect(report.findings[0].message).toContain('mixes CJS and ESM');
+    expect(status).toBe(1);
+  });
+
+  test('CommonJS syntax inside comments and strings is NOT an idiom (masked)', () => {
+    const { status, stdout } = runGateOn(
+      {
+        'scripts/prose-only.js':
+          '// require("./x") is the old way\n'
+          + '/* module.exports = {} used to live here */\n'
+          + 'const doc = "call require(\'./x\') if on CJS";\n'
+          + 'export const y = doc;\n',
+      },
+      ['scripts/prose-only.js'],
+    );
+    const report = JSON.parse(stdout);
+    expect(report.findings).toEqual([]);
+    expect(status).toBe(0);
+  });
 });
