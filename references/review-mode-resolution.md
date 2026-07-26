@@ -48,6 +48,25 @@ Mode meanings:
 - `parallel` — both paths, interleaved, with the side-by-side compare panel.
   Requires `OPENAI_API_KEY`. Contract: `docs/review-pipeline/parallel-mode.md`.
 
+## Next-round artifact discipline (manual + parallel) — MANDATORY
+
+Binding on `manual` AND `parallel` in all three review agents. `automated`-only
+is the sole exemption (no human upload step).
+
+**Always assume another round is coming.** At the END of every round, BEFORE the
+round summary is printed, the agent produces the round-N+1 bundle — the updated
+artifact, the `PROJECT_CONTEXT` refreshed with this round's applied findings in
+its do-not-re-raise register, the pinned artifact hash, and a ready-to-paste
+prompt — with clickable links in the SAME message. Applies even on a zero-change
+round. Stop only on an explicit `proceed` / `approved` / `done`; silence, a
+question, or a hedge is not a stop signal.
+
+Canonical text and per-agent detail live in each agent's
+`### Next-round artifact discipline` section (`chatgpt-pr-review.md`,
+`chatgpt-spec-review.md`, `chatgpt-plan-review.md`). Recorded here because this
+rule was missed repeatedly when it existed only in one agent, and MODE is the
+first thing every reviewer resolves.
+
 The resolved MODE is recorded in the session log's Session Info block and
 restored from there on resume (log wins over tiers 2–3 on resume).
 
