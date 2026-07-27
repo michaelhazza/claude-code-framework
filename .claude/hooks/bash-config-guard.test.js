@@ -202,7 +202,11 @@ for (const [label, input, expectedExit] of CASES) {
     ['.claude/settings.json',       2, 2, 'core protected path — both guards block'],
     ['.claude/hooks/some-hook.js',  2, 2, 'core protected path — both guards block'],
     ['.claude/settings.local.json', 0, 2, 'delta 1 — Bash-side only'],
-    ['package.json',                2, 0, 'delta 2 — basename rule is Edit-side only'],
+    // package.json left PROTECTED_BASENAMES 2026-07-28 (standing operator
+    // pre-approval — see config-protection.js). Now unprotected on BOTH
+    // hook surfaces; kept in this table so a regression re-adding it to
+    // either hook fails here rather than shipping silently.
+    ['package.json',                0, 0, 'unprotected both sides since 2026-07-28 (operator pre-approval)'],
     ['src/ordinary-file.ts',        0, 0, 'unprotected in both'],
   ];
   for (const [probe, editExpected, bashExpected, note] of PROBES) {
