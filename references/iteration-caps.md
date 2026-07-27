@@ -26,6 +26,9 @@ commit. `validate-setup` may diff agent-stated caps against this table.
 | 17 | experiment-runner consecutive non-keeps | 5 (warn) / 10 (stop) | per experiment | `.claude/agents/experiment-runner.md` |
 | 18 | spec-coordinator Step 3a revise loop | 3 | per intent — on the 4th `revise`, escalate to the operator instead of looping (added 2.27.0; previously unbounded) | `.claude/agents/spec-coordinator.md` (Step 3a) |
 | 19 | G3 lint+typecheck fix attempts | 3 | per gate invocation (§8.1 CONFORMANT_AFTER_FIXES, §8.4 fix-loop, §8.5 post-dual-review) — on exceed, escalate with full diagnostics per failure path 4; never mark the gate passed | `.claude/agents/feature-coordinator.md` (Step 8) |
+| 20 | plan-reviewer (Codex) iterations | 5 | lifetime per plan | `.claude/agents/plan-reviewer.md` |
+| 21 | brief-reviewer rounds | single-round | per brief revision — one Codex + one ChatGPT pass, no loop; a revised brief may be re-reviewed once | `.claude/agents/brief-reviewer.md` |
+| 22 | verify-phase fix loop | 5 | per verify-phase invocation — exceed escalates to the operator with the failure set; recorded as REVIEW_GAP-style entry in `progress.md` (blocks merge) | `.claude/agents/verify-phase.md` |
 
 Auto-fix guardrails AF1–AF4 (`finalisation-coordinator` Step 11) are rules, not
 loops — they are intentionally not in this table.
