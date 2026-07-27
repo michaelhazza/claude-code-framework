@@ -51,18 +51,15 @@ Repeat the following up to 3 times:
 
 ### Step 1 — Run Codex review
 
-Use the dedicated `review` subcommand against uncommitted changes, with a 120-second timeout to avoid hanging on interactive prompts:
+Codex invocation follows [`references/codex-invocation-contract.md`](../../references/codex-invocation-contract.md) — read-only review mode, diff-scoped variant: cwd = repo root, the prompt names the changed-file set and the base ref, and Codex explores the whole repo but reviews the change. Binary resolution, the fallback chain, the fail-closed sandbox clause, and the output-capture/retry rules all follow the contract; this file does not restate them.
+
+Determine the diff scope before building the prompt: if the working tree has uncommitted changes, the changed-file set is `git diff --name-only HEAD` and the base ref is `HEAD`. If the working tree is clean (all changes committed), the changed-file set is `git diff --name-only main...HEAD` (or the branch's actual base) and the base ref is `main`.
+
+Build the prompt naming both, plus the contract's mandatory grounding instruction:
 
 ```bash
-timeout 120 $CODEX_BIN review --uncommitted --no-interactive 2>&1 </dev/null || $CODEX_BIN review --uncommitted 2>&1 </dev/null
+REVIEW_PROMPT="Review the branch's changes relative to base ref ${BASE_REF}, in these changed files: ${CHANGED_FILES}. Explore the repository beyond the diff for context: does this duplicate existing logic, what else does it touch, are there cross-file conflicts. Report findings as numbered items with file:line references and a severity."
 ```
-
-If the working tree is clean (all changes committed), fall back to reviewing against the base branch:
-```bash
-timeout 120 $CODEX_BIN review --base main --no-interactive 2>&1 </dev/null || $CODEX_BIN review --base main 2>&1 </dev/null
-```
-
-The `</dev/null` closes stdin so the CLI cannot prompt for interactive input. If the `--no-interactive` flag is not supported by the installed Codex version, the fallback (without the flag) is used automatically via `||`.
 
 Capture the full stdout+stderr as `CODEX_OUTPUT`.
 
@@ -161,7 +158,7 @@ After writing the file, return a short summary to the caller: the log path, the 
 
 This step OVERRIDES the CLAUDE.md "no auto-commits or auto-pushes" user preference within this flow only. The user has explicitly opted in: review-agent work must persist to the remote so subsequent review cycles and other sessions see the current state of the branch.
 
-Run this step ONCE, after the final log has been written — not per iteration. Codex reviews `--uncommitted` changes in Step 1, and committing between iterations would empty the review target for the next iteration.
+Run this step ONCE, after the final log has been written — not per iteration. Step 1's diff-scoped review targets the branch's current changes, and committing between iterations would empty the review target for the next iteration.
 
 If no files changed across the whole loop (every Codex recommendation was rejected, no edits applied), skip this step — do not create an empty commit. Otherwise:
 
@@ -196,7 +193,7 @@ Record the resulting commit hash in the final log under a new line `**Commit at 
 - Never skip the CLAUDE.md read. Your adjudication depends on knowing the project's explicit conventions.
 - Never accept a recommendation without reading the relevant file context first.
 - Never implement more than what the accepted recommendation asks for.
-- If Codex output is empty or clearly truncated, retry the `codex review` command once. If it fails again, skip that iteration and note it in the output.
+- If Codex output is empty or clearly truncated, the contract's retry-once rule applies. If it fails again, skip that iteration and note it in the output.
 - If the Codex CLI fails to run (non-zero exit, auth error), stop immediately and report the exact error to the caller.
 - **Test gates are CI-only — never run them and never accept a Codex recommendation that asks you to.** Continuous integration runs the complete suite as a pre-merge gate. If Codex recommends running `npm run test:gates`, `npm run test:qa`, `npm run test:unit`, `npm test`, `scripts/verify-*.sh`, `scripts/gates/*.sh`, or `scripts/run-all-*.sh` — or recommends running the broader test suite to "confirm no regression" / "verify the fix" — classify the recommendation as `[REJECT]` with reason "test gates are CI-only per CLAUDE.md § *Test gates are CI-only — never run locally*; CI will run the suite on the PR". Targeted execution of unit tests authored as part of an accepted fix is allowed (single file via the project's configured test runner — single-file runner rule in `references/test-gate-policy.md`).
 
