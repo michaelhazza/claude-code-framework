@@ -55,6 +55,21 @@ The fallback chain preserves the `-s read-only` sandbox for as long as any fallb
 - Two consecutive failures (including two truncated/empty attempts) → stop and report to the caller. Do not attempt a third time.
 - **Absence of findings after a failure is never treated as approval.** A tier that could not get a clean Codex run has no verdict to report — it must not synthesize `APPROVED` (or equivalent) from silence.
 
+## Environment parity for TEST-EXECUTING dispatches — MANDATORY precondition
+
+Binding on every dispatch where Codex (or any external tool) will **execute tests**, not merely read code: the verify-phase author/run loop, a dual-review iteration that runs tests live, a bug-fix verification, a browser-test session.
+
+**The caller brings the local environment to parity BEFORE the dispatch, and states the parity in the handoff prompt.** The one that has already burned a build: **database migrations.** A test-executing session against a database that is behind on migrations produces results against stand-in data, and the failure mode is the worst kind — the tests *run*, the session *completes*, and the gap surfaces only as a reviewer's closing caveat ("the local database is behind on migrations, so the browser tests ran against stand-in data") **after everything is done**. A caveat delivered after the work is a precondition that was skipped.
+
+Concretely, before any test-executing dispatch the caller MUST:
+
+1. **Apply pending migrations** using the consuming repo's declared migrate command (automation-v1: `npm run migrate`; each repo pins its own in `.claude/context/agent-context.md`). Run it unconditionally — "probably at head" is not a state, and the command is idempotent at head by definition.
+2. **Verify, not assume:** confirm the command exited 0. Non-zero is a **blocking stop** — report the failure and do not dispatch. A dispatch against a knowingly-stale database is never acceptable, and neither is discovering staleness afterwards.
+3. **State parity in the handoff prompt**, one line: `Environment: migrations applied to head via <command> (exit 0) at <ISO timestamp>.` This gives the executing session grounds to trust the data AND an instruction to re-check if it does something (like switching branches) that could invalidate it.
+4. **The executing session re-checks on doubt.** If Codex switches branches, pulls, or observes schema-shaped test failures (missing table/column), its first move is to re-run the migrate command, not to author around the gap or annotate results with a caveat.
+
+The same rule generalises to any state a test run depends on: seeded fixtures, built artifacts a suite imports, environment variables a harness requires. Migrations are named explicitly because they are the instance that actually happened.
+
 ## Citing this contract
 
 Agent files reference this document instead of restating the command line:

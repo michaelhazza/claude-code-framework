@@ -41,6 +41,8 @@ $CODEX_BIN login status
 If not authenticated, stop and report: "Codex not authenticated. Run: codex login --device-auth"
 If the binary is not found, stop and report: "Codex CLI not found. Run: npm install -g @openai/codex"
 
+**Environment parity — BLOCKING precondition, before Step 1** (`references/codex-invocation-contract.md § Environment parity`): this playbook executes tests, so the local database MUST be at migration head before Codex is dispatched. Run the repo's declared migrate command (automation-v1: `npm run migrate`; per-repo pin in `.claude/context/agent-context.md`) unconditionally — it is idempotent at head. Exit 0 → record one line in the Step 1 handoff prompt: `Environment: migrations applied to head via <command> (exit 0) at <timestamp>.` Non-zero → **stop, report, do not dispatch**. The failure this prevents is real and already happened once: a test session that ran to completion against stand-in data, surfacing the stale database only as a closing caveat after all the work was done. A caveat after the fact is a precondition that was skipped. If mid-run anything could invalidate parity (branch switch, pull, schema-shaped test failures like a missing table or column), the first move is to re-run the migrate command — never to author around the gap or annotate results with a caveat.
+
 ---
 
 ## Re-entry rule (CSR-006) and stale-input guard — check this BEFORE Step 1
