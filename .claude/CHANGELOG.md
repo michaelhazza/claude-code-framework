@@ -32,6 +32,13 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.44.2 — 2026-07-28
+
+**Highlights:** Patch. Promotes three spec-review rules that had been living as an un-upstreamed local delta in a consuming repo, surfaced when v2.44.1 sync flagged the file as customised.
+
+**Added:**
+- `scripts/chatgpt-reviewPure.ts` — three spec-review hunt rules promoted from a consumer overlay: invariant-vs-mechanism contradictions (a stated determinism/idempotency/replay invariant undermined by a resource-budget stop, cache regeneration or partial-failure path), fingerprint / stable-identity completeness (acceptance depending on a fingerprint no section derives is unimplementable-as-specified), and closed-membership completeness under multi-relationship inputs. Load-bearing review capability that would have been lost by resolving the sync conflict in the other direction.
+
 ## 2.44.1 — 2026-07-28
 
 **Highlights:** Patch. `board-sync.mjs` could not create its identity field on a real Projects v2 board — `Repo` is a reserved field name and `createProjectV2Field` rejects it outright. Found by running `--init` against a live board during the pilot adoption, which is precisely the class of defect no amount of review catches.
