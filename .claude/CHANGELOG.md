@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.52.0 — 2026-07-29
+
+**Highlights:** Aligns `verify-phase` with the operator's proven manual practice — the "build the tests, run them, loop until it's genuinely working, then hand me something I can UAT" goal. The loop already existed; two things it did not do explicitly are now required.
+
+**Changed:**
+- `.claude/agents/verify-phase.md` Step 1 + Step 2 — **stale tests are now first-class work, not just new coverage.** The Design pass emits its plan in three parts, and part 2 is explicitly "existing tests this build's refactoring has invalidated, made misleading, or left asserting the old shape, each named with the file and why it is now wrong". The Author step then updates them. Rationale recorded inline: after a refactor, a test that still passes while asserting behaviour that no longer exists is **worse than no test** — it reports green for something that is gone. The old wording ("writes the tests the plan called for") could be read as new-tests-only, which is exactly the gap the operator was filling by hand. When code is right and the test is wrong, fix the test; when the test is right, it is an app defect and routes to Claude. Amended tests must be listed with their reason, because a silently rewritten assertion is indistinguishable from a weakened one.
+- `.claude/agents/verify-phase.md` Step 5 — **added a required operator-facing UAT-readiness block.** The existing report is machine-facing (release-control uploads, run ids); it never answered the operator's actual question, "can I start using this?". The new block states ready-yes/no, suite results, new vs amended test counts, bugs found and fixed, **what UAT should focus on**, and **what automated tests could NOT cover**. Two rules: `Ready for UAT: yes` requires a genuinely green full suite (never "green apart from known failures"), and the block must name what the tests cannot judge — visual polish, copy, workflow feel — because otherwise "all tests pass" reads as "everything is fine" and UAT degrades into a rubber stamp.
+
+**Not changed, deliberately — operator decision required.** The operator's manual practice authors broader frontend coverage than this repo's declared posture permits: `docs/spec-context.md:82` reads "do not add frontend unit tests beyond focused Vitest DOM tests for critical flows", and `verify-phase` refuses to widen a repo's posture on its own ("a deliberate posture expansion is an operator-approved carve-out … never a verify-phase default"). That guard is doing real work — it is what stops an agent generating hundreds of brittle frontend tests unasked — so widening it is a posture edit the operator makes, not something this release should slip in.
+
 ## 2.51.0 — 2026-07-29
 
 **Highlights:** Round-2 external review. Four findings, **every one a defect in a v2.50.0 fix made the same day** — two of them my own guards scoped only halfway, leaving the original hazard reachable through the path I did not cover. All verified at source before acceptance.

@@ -74,7 +74,7 @@ Codex reads the branch diff + spec and emits a test plan: surfaces to cover, bac
 Codex invocation follows [`references/codex-invocation-contract.md`](../../references/codex-invocation-contract.md) — **read-only review mode**: cwd = repo root, artefact (spec path + branch diff / base ref) named in the prompt, full-repo grounding. Binary resolution, the fallback chain, the fail-closed sandbox clause, and the output-capture/retry rules all follow the contract; this file does not restate them.
 
 ```bash
-DESIGN_PROMPT="Read the specification at tasks/builds/${SLUG}/spec.md, then read the branch diff (base ${BASE_SHA} against HEAD). Explore the repository for context: existing test conventions, fixtures, and coverage this build's surfaces already have. Emit a test-authoring plan: which surfaces need coverage, the backend/frontend split, fixtures needed. Do not write any files — this is a design pass only."
+DESIGN_PROMPT="Read the specification at tasks/builds/${SLUG}/spec.md, then read the branch diff (base ${BASE_SHA} against HEAD). Explore the repository for context: existing test conventions, fixtures, and coverage this build's surfaces already have. Emit a test-authoring plan in THREE parts: (1) NEW coverage — surfaces this build added that have no tests; (2) STALE coverage — existing tests this build's refactoring has invalidated, made misleading, or left asserting the old shape, each named with the file and why it is now wrong; (3) the backend/frontend split and fixtures needed. Part 2 matters as much as part 1: a refactor leaves tests that still pass while asserting behaviour that no longer exists, which is worse than no test at all. Do not write any files — this is a design pass only."
 ```
 
 Persist the output to `tasks/builds/<slug>/verify-plan.md`. **This file is append-only across re-entries** — each Design round appends a new dated section below any earlier ones; never edit or remove a prior round's section.
@@ -92,6 +92,8 @@ Persist the output to `tasks/builds/<slug>/verify-plan.md`. **This file is appen
 ```
 
 ## Step 2 — Author
+
+**Both halves of the plan, not just the new tests.** Author the NEW coverage *and* bring the STALE coverage into line with the refactored code. Updating an existing test is a first-class outcome here, not a concession: after a refactor, a test that still passes while asserting the old shape is actively misleading — it reports green for behaviour that no longer exists. When the code is right and the test is wrong, **fix the test**; when the test is right and the code is wrong, that is an app defect and routes to Claude in Step 4. Record which existing tests were amended, and why, in the Step 5 report — a silently rewritten assertion is indistinguishable from a weakened one.
 
 Codex writes the tests the plan called for, using the **write-enabled mode** named in [`references/codex-invocation-contract.md § Write-enabled mode`](../../references/codex-invocation-contract.md) — workspace-write sandbox, or patch-emit-and-apply reviewed and applied via `Edit`/`Write` (exact mechanism pinned per invoking playbook run). This is explicitly distinct from Step 1's read-only mode and every review tier's read-only mode — no reader should treat "Codex writes the tests" as a contradiction of "Codex tiers are read-only." Scope Codex's write access to test-file paths only; it never touches production code in this step.
 
@@ -137,6 +139,27 @@ node scripts/sync-rc-failures-to-github.mjs --test-run-id <playwright-run-id> [-
 JUnit/backend failures do **NOT** sync to issues (`sync-rc-failures-to-github.mjs` hard-codes Playwright-specific shapes — `source:playwright`, `[UI][<project>]` titles — and would be wrong, not merely suboptimal, for a JUnit run). They stay in the Step 4 fix loop and the release-control evidence trail; a pre-merge failure never needs the post-merge issue-sync leg.
 
 **No release-control registration.** `report-to-rc.mjs` requires `RC_BASE_URL`, `RC_REPO_ID`, `RC_CALLBACK_TOKEN` (loaded via `.env`/`.env.local` through `scripts/lib/rc-env.mjs`'s `loadRcEnv()` + `requireEnv()`); the issue sync additionally needs `GH_OWNER`/`GH_REPO`/`GH_PROJECT_NUMBER`. If the repo has none of this registered, **Step 5 is skipped with a one-line record** in `tasks/builds/<slug>/progress.md` (`Step 5 (report) skipped — no release-control registration for this repo.`) — the phase is still a gate; only the evidence upload is conditional.
+
+### UAT-readiness statement (operator-facing, required)
+
+The evidence upload above is machine-facing. Close Step 5 with a short block written for the **operator**, whose actual question is "can I start using this?" — a gate verdict alone does not answer that.
+
+```markdown
+## Verify phase — UAT readiness
+
+**Ready for UAT:** yes | no — <one line: what is or is not exercisable>
+**Suite:** <n> passed / <n> failed across <lanes>, <iterations> fix iteration(s)
+**New tests:** <count> — <surfaces covered>
+**Existing tests amended:** <count> — <file: why the old assertion no longer held>
+**Bugs found and fixed:** <count> — <one line each, app-defect vs test-defect>
+**What UAT should focus on:** <the surfaces automated tests genuinely cannot judge>
+**What automated tests could NOT cover:** <gaps, and why — posture limits, environment, judgement calls>
+```
+
+Two rules on this block:
+
+- **`Ready for UAT: yes` requires a genuinely green full-suite run**, not "green apart from known failures". If the suite is green but a surface is untestable for a stated reason, that belongs in *What automated tests could NOT cover*, not hidden behind a yes.
+- **Name what the tests cannot judge.** Visual polish, copy, workflow feel and anything requiring taste will not be caught by any suite here — the operator needs to know where to actually look, otherwise "all tests pass" is read as "everything is fine" and UAT becomes a rubber stamp.
 
 ## Recording the gate outcome
 
