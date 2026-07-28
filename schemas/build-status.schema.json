@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "build-status.schema.json",
+  "title": "BuildStatus",
+  "description": "Contract for tasks/builds/<slug>/status.json (contract_version build-status.v1). Producer: the coordinator owning the current phase (spec/feature/finalisation), written at every phase transition. Consumers: scripts/status/generate-current-focus.mjs, scripts/status/board-sync.mjs, human readers.",
+  "$comment": "Transition enforcement (previous->next legality, terminal immutability, the two blocker-gated back-edges MERGE_READY->REVIEWING and REVIEWING->BUILDING) is coordinator discipline in v1. JSON Schema validates one status.json document in isolation and cannot express cross-write or cross-document rules. A dedicated transition-validator module is a named deferred hardening, built the first time a bad transition is observed in any repo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "slug",
+    "title",
+    "classification",
+    "phase",
+    "status",
+    "branch",
+    "pr",
+    "gates",
+    "gate_evidence",
+    "blockers",
+    "summary",
+    "updated_at",
+    "updated_by"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "build-status.v1"
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "$comment": "FORMAT ONLY (OAI-SPEC-003). JSON Schema cannot enforce filename<->content equality; the slug == directory-name invariant (this file must live at tasks/builds/<slug>/status.json) is a READER obligation, implemented by scripts/status/generate-current-focus.mjs (INVALID line on mismatch) and consumed by scripts/status/board-sync.mjs.",
+      "description": "Kebab-case build slug."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["Trivial", "Standard", "Significant", "Major"]
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["spec", "plan", "build", "review", "finalise"],
+      "description": "Closed set. Must agree with .claude/hooks/phase-lock.js's VALID_PHASES."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PLANNING", "BUILDING", "REVIEWING", "MERGE_READY", "MERGED", "ABANDONED"],
+      "description": "Per-build status. NONE is not a per-build state — it exists only in the generated current-focus pointer when no build is active."
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pr": {
+      "oneOf": [
+        { "type": "integer" },
+        { "type": "null" }
+      ],
+      "description": "GitHub PR number, or null until a PR exists."
+    },
+    "gates": {
+      "type": "object",
+      "$comment": "OPEN map keyed by gate-id (CSR-005) — a coordinator can record a new gate without a schema amendment. Initial key set: s0, duplication_check, g1, g2, g4, g5, verify, merge_gate.",
+      "additionalProperties": {
+        "enum": ["pass", "fail", "incomplete", "proceed", null]
+      }
+    },
+    "gate_evidence": {
+      "type": "object",
+      "$comment": "Sibling open map to gates, same keys.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha", "run_ids", "url", "completed_at"],
+        "properties": {
+          "sha": {
+            "type": "string"
+          },
+          "run_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "One entry per uploaded run — e.g. the verify gate records one release-control testRunId per uploaded lane (JUnit, Playwright); the merge gate records the one workflow run id. Empty array allowed."
+          },
+          "url": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ]
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "raised_by", "raised_at", "cleared_at"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "raised_by": { "type": "string", "minLength": 1 },
+          "raised_at": { "type": "string", "format": "date-time" },
+          "cleared_at": {
+            "oneOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601, UTC."
+    },
+    "updated_by": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Coordinator name."
+    }
+  }
+}
