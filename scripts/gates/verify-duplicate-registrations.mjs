@@ -80,6 +80,13 @@ const REGISTRATION_METHODS = new Set(
     .map((m) => m.trim())
     .filter(Boolean)
 );
+// See the sibling gate: an empty method set makes every AST walk match
+// nothing. This gate survives it only incidentally, via the unrelated
+// zero-registrations tripwire; make the real cause explicit and fail closed.
+if (REGISTRATION_METHODS.size === 0) {
+  console.error(`[FAIL] ${GATE_ID}: GATE_METHOD_SET resolved to an empty method set — misconfiguration, fail closed`);
+  process.exit(1);
+}
 
 // Set once by loadTypeScript() at the top of main(), before any helper below
 // runs. Every reader here executes only after that resolution completes.

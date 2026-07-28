@@ -110,5 +110,17 @@ if [ "$PARSE_FAILURES" -gt 0 ] || [ "$UNKNOWN_COUNT" -gt 0 ]; then
   exit 1
 fi
 
+# Zero-parsed tripwire. Every sibling gate carries one; the "guards for the
+# guards" did not, so a moved directory, an over-broad prune, or a find that
+# silently yielded nothing produced "[PASS] All 0 parsed scripts" and exit 0 —
+# a meta-validator reporting success having validated nothing. `set -euo
+# pipefail` does not propagate a failure out of the process substitution that
+# feeds the loop, so the count is the only available signal.
+if [ "$PARSED_COUNT" -eq 0 ]; then
+  echo "[BLOCKING FAIL] gate-syntax parsed 0 scripts under $GATES_DIR — the scan found nothing to validate."
+  echo "                Refusing to report a pass that validated nothing (directory moved, prune too broad, or find failed)."
+  exit 1
+fi
+
 echo "[PASS] All $PARSED_COUNT parsed scripts under scripts/gates/ are syntactically clean."
 exit 0

@@ -91,4 +91,35 @@ describe('verify-factory-invocation gate', () => {
     const r = runGate(missing);
     expect(r.status, r.stdout + r.stderr).toBe(1);
   });
+
+  // Regression: adversarial review, 2026-07-28. The gate fail-closed on 0
+  // DERIVED factories but not on 0 MATCHED registrations, so pointing
+  // GATE_METHOD_SET at a method the repo never calls made every AST walk match
+  // nothing and produced a clean green that inspected nothing. The env is set
+  // by the workflow/callee, which is a branch-controlled file, so this was
+  // reachable by a one-line diff.
+  it('neutered GATE_METHOD_SET on a VIOLATING fixture — exit 1, not a false green', () => {
+    const dir = isolatedFixtureDir('uninvoked-factory.ts');
+    try {
+      const r = runGate(dir, { GATE_METHOD_SET: 'head' });
+      expect(r.status, r.stdout + r.stderr).toBe(1);
+      expect(r.stderr).toMatch(/matched 0 registration call sites/);
+      expect(r.stderr).toMatch(/inspected nothing/);
+    } finally {
+      rmrf(dir);
+    }
+  });
+
+  it('pass line reports the effective config so a neutered run is visible', () => {
+    const dir = isolatedFixtureDir('clean-source.ts');
+    try {
+      const r = runGate(dir);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(r.stdout).toMatch(/registrations=[1-9]/);
+      expect(r.stdout).toMatch(/method_set=\{/);
+      expect(r.stdout).toMatch(/suppressed_files=0/);
+    } finally {
+      rmrf(dir);
+    }
+  });
 });

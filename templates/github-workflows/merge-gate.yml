@@ -75,6 +75,22 @@
 
 name: merge-gate
 
+# ── Runner trust boundary (spec §7.5, STANDING CONDITION) ────────────────────
+# Deliberately BELOW `name:` so it survives rendering — the renderer strips the
+# leading header comment block, so the copy up there never reaches the workflow
+# an operator actually reads in their repo.
+#
+#   A same-repo branch PR that modifies a workflow file DOES run the modified
+#   workflow on the persistent self-hosted runner. Accepted for a
+#   single-operator PRIVATE account with per-repo runner registration and no
+#   fork PRs. This posture MUST be revisited before any collaborator is added
+#   to a repo using this workflow.
+#
+#   Note the consequence for THIS file specifically: because a branch's own
+#   version of this workflow is what runs for its PR, the gate cannot by itself
+#   prove which version produced a given run. Treat the coordinator-side
+#   refusal rules as the authority on gate integrity, not this file alone.
+
 on:
   pull_request:
     types: [labeled]
@@ -90,6 +106,14 @@ on:
 # `pull_request.head.sha`, which does not exist on the `push` path.
 concurrency:
   group: merge-gate-${{ github.event.pull_request.head.sha || github.sha }}
+
+# Least privilege by default (spec §7.5 pins "read-only default token"). Only
+# resolve-label needs more, and it declares its own block. Previously the two
+# `uses:` jobs and merge-guard inherited whatever the repo/org default happened
+# to be — an unverifiable settings-page value the templates depended on and
+# never asserted, on a persistent self-hosted runner.
+permissions:
+  contents: read
 
 jobs:
   # ── Caller-owned: commit identity, provenance, live label re-query ─────────────

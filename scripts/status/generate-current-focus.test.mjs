@@ -262,4 +262,61 @@ describe('generate-current-focus.mjs', () => {
       rmrf(root);
     }
   });
+
+  // Regression: pr-reviewer PR-001, 2026-07-28 (reproduced destructive bug).
+  // The replace branch re-derived both boundaries with unchecked indexOf
+  // calls. With the marker pair on ONE line, indexOf('\n', begin) + 1 was 0,
+  // `before` collapsed to '', and every byte above the block was deleted --
+  // while the script printed success and exited 0. The pre-existing
+  // idempotence test could not catch it because it only ever re-ran over the
+  // generator's OWN output, where BEGIN always sits alone on its line.
+  it('marker pair sharing one line: content above AND below is byte-preserved', () => {
+    const root = makeTempRoot();
+    try {
+      writeStatus(root, 'alpha');
+      writeCurrentFocus(
+        root,
+        `# Current Focus\n\nOperator preamble that must survive.\n\n${BEGIN_MARKER}${END_MARKER}\n\n## Operator notes\n\nkeep me\n`
+      );
+
+      const r = runGenerator(root);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+
+      const after = readCurrentFocus(root);
+      expect(after).toContain('# Current Focus');
+      expect(after).toContain('Operator preamble that must survive.');
+      expect(after).toContain('## Operator notes');
+      expect(after).toContain('keep me');
+      expect(after).toContain('alpha');
+      // Exactly one marker pair survives — no duplication of the block.
+      expect(after.split(BEGIN_MARKER).length - 1).toBe(1);
+      expect(after.split(END_MARKER).length - 1).toBe(1);
+    } finally {
+      rmrf(root);
+    }
+  });
+
+  // Regression: pr-reviewer PR-002, 2026-07-28. main() ran at module scope
+  // with --root defaulting to cwd, so importing the module rewrote
+  // tasks/current-focus.md in whatever repo the importer happened to be in.
+  // That already fired once against the framework's own file during a probe.
+  it('importing the module does not write anything (entry-point guard)', () => {
+    const root = makeTempRoot();
+    try {
+      const seeded = `# Current Focus\n\nuntouched by import\n`;
+      writeCurrentFocus(root, seeded);
+      writeStatus(root, 'alpha');
+
+      const importUrl = new URL(`file://${GENERATOR.split(path.sep).join('/')}`).href;
+      const res = spawnSync(process.execPath, ['-e', `import(${JSON.stringify(importUrl)})`], {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 60000,
+      });
+      expect(res.status, res.stdout + res.stderr).toBe(0);
+      expect(readCurrentFocus(root)).toBe(seeded);
+    } finally {
+      rmrf(root);
+    }
+  });
 });

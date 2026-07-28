@@ -85,8 +85,33 @@ describe.skipIf(!PS)('Resolve-DistroWorkDir (executed from the real .ps1)', () =
     expect(r.value).not.toContain('~');
   });
 
-  it('resolves a bare ~ to the home directory itself', () => {
-    expect(resolveWorkDir('~', '/home/mike')).toEqual({ ok: true, value: '/home/mike' });
+  // Changed 2026-07-28 (adversarial review, finding 7). This previously
+  // asserted that a bare `~` resolves to the home directory — encoding the
+  // hazard as the contract. The install path untars the runner over this
+  // directory and -Uninstall/-Repair run `rm -rf` on it, so accepting `~`
+  // meant `-WorkDir ~` would unpack across $HOME and later delete it wholesale.
+  it('fails closed on a bare ~ rather than targeting the home directory itself', () => {
+    const r = resolveWorkDir('~', '/home/mike');
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/home directory/);
+  });
+
+  it('rejects the filesystem root', () => {
+    expect(resolveWorkDir('/', '/home/mike').ok).toBe(false);
+  });
+
+  it('rejects a path on the Windows filesystem (/mnt/*), the generalised C22 trap', () => {
+    const r = resolveWorkDir('/mnt/c/files/Claude/automation-v1', '/home/mike');
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/Windows filesystem/);
+    expect(resolveWorkDir('/mnt', '/home/mike').ok).toBe(false);
+  });
+
+  it('still accepts a normal dedicated subdirectory of home', () => {
+    expect(resolveWorkDir('~/actions-runner/owner-repo', '/home/mike')).toEqual({
+      ok: true,
+      value: '/home/mike/actions-runner/owner-repo',
+    });
   });
 
   it('passes absolute paths through unchanged', () => {

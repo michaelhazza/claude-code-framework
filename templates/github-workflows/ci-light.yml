@@ -68,10 +68,30 @@
 
 name: ci-light
 
+# ── Runner trust boundary (spec §7.5, STANDING CONDITION) ────────────────────
+# Deliberately BELOW `name:` so it survives rendering. The renderer strips the
+# leading header comment block, so the copy of this note that lives up there
+# never reaches the workflow an operator actually reads in their repo — which
+# voided the very "recorded as a standing condition in the templates" the spec
+# relies on. Body comments are retained verbatim; this one belongs here.
+#
+#   A same-repo branch PR that modifies a workflow file DOES run the modified
+#   workflow on the persistent self-hosted runner. Accepted for a
+#   single-operator PRIVATE account with per-repo runner registration and no
+#   fork PRs. This posture MUST be revisited before any collaborator is added
+#   to a repo using this workflow, and this lane is NOT label-gated: it runs on
+#   every pull request.
+
 on:
   pull_request:
   push:
     branches: [main]
+
+# Least privilege by default (spec §7.5 pins "read-only default token"). Stated
+# here rather than assumed from a repo settings page, so the guarantee travels
+# with the workflow instead of depending on an unverifiable external default.
+permissions:
+  contents: read
 
 # CSR-007: cancel-in-progress here IS correct — this is the advisory lane, a
 # superseded push should cancel its predecessor's light run. Contrast with
@@ -95,4 +115,12 @@ jobs:
     with:
       tested_sha: ${{ github.event.pull_request.head.sha || github.sha }}
       strict: '0'
-    secrets: inherit
+    # NO `secrets: inherit`. This lane is ungated — it runs on every pull
+    # request with no label required — so inheriting the entire repo secret set
+    # here meant a one-line edit to a branch's own callee could exfiltrate every
+    # secret with no operator action and no gate involved. Lint, typecheck and
+    # static gates need none of them. A consumer whose light suite genuinely
+    # requires one (a private registry token, say) declares it explicitly:
+    #   secrets:
+    #     NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    # Explicit beats inherit: it names what crosses the boundary.

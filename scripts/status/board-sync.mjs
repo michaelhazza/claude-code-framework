@@ -158,8 +158,18 @@ const ARCHIVE_AFTER_MS = ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
 
 const UPDATED_AT_MARKER = /<!-- board-sync:v1 updated_at=(\S+) -->/;
 
+// Single source of truth for the repo field's display name. It is NOT 'Repo':
+// that name is reserved in Projects v2 and createProjectV2Field rejects it
+// (found live during board provisioning). The rename originally touched only
+// the create + write sites while normaliseItem still read `item.Repo`, so the
+// upsert key never matched, every existing card was skipped as "not one of
+// ours", and each sync created a duplicate draft card while the MERGED
+// auto-archive stayed permanently unreachable. Both sides read this constant
+// so they cannot drift apart again.
+export const REPO_FIELD_NAME = 'Build Repo';
+
 const BOARD_FIELDS_TO_CREATE = [
-  { name: 'Build Repo', dataType: 'TEXT' },  // NOT 'Repo' — reserved in Projects v2 (createProjectV2Field rejects it)
+  { name: REPO_FIELD_NAME, dataType: 'TEXT' },
   { name: 'Slug', dataType: 'TEXT' },
   { name: 'Phase', dataType: 'TEXT' },
   {
@@ -228,7 +238,7 @@ export function mapRecordToCard(record, repository) {
     title: `${record.slug}: ${record.title}`,
     body: buildCardBody(record),
     fields: {
-      'Build Repo': repo,
+      [REPO_FIELD_NAME]: repo,
       Slug: record.slug,
       Status: record.status,
       Phase: record.phase,
@@ -380,11 +390,15 @@ function fetchProjectId(owner, number) {
 
 // ASSUMPTION (see header): unverified without a live board. Hedges for both
 // a flat field-name-keyed shape and a nested fieldValues map.
-function normaliseItem(item) {
+// Exported so the read side of the upsert key is directly testable. It was
+// unexported when the 'Repo' -> 'Build Repo' rename silently broke it, which
+// is why board-sync.test.mjs could only assert the write key and the
+// divergence survived a full test run.
+export function normaliseItem(item) {
   const body = item.body ?? item.content?.body ?? '';
   return {
     id: item.id,
-    repo: canonicaliseRepo(item.Repo ?? item.fieldValues?.Repo ?? null),
+    repo: canonicaliseRepo(item[REPO_FIELD_NAME] ?? item.fieldValues?.[REPO_FIELD_NAME] ?? null),
     slug: item.Slug ?? item.fieldValues?.Slug ?? null,
     updated_at: extractUpdatedAtFromBody(body),
     body,

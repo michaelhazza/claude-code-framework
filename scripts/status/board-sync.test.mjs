@@ -15,7 +15,9 @@ import {
   chooseSurvivor,
   extractUpdatedAtFromBody,
   mapRecordToCard,
+  normaliseItem,
   parseOwnerRepoFromGitUrl,
+  REPO_FIELD_NAME,
   shouldArchive,
   shouldSkipStale,
   validateSlugMatchesDir,
@@ -217,5 +219,65 @@ describe('parseOwnerRepoFromGitUrl', () => {
 
   it('returns null for a non-github remote', () => {
     expect(parseOwnerRepoFromGitUrl('https://gitlab.com/someone/somewhere.git')).toBe(null);
+  });
+});
+
+// Regression: pr-reviewer PR-003, 2026-07-28. The repo field was renamed
+// 'Repo' -> 'Build Repo' (Projects v2 reserves 'Repo'), but only the create
+// and write sites were updated; normaliseItem still read `item.Repo`. So
+// item.repo was always null, every existing card was skipped as "not one of
+// ours", and each sync created a DUPLICATE draft card -- with duplicate
+// recovery, stale-skip and the MERGED auto-archive all unreachable. The old
+// suite could not catch it: it asserted only the write key, and normaliseItem
+// was not exported.
+describe('upsert key: read side matches write side', () => {
+  const record = {
+    slug: 'dev-pipeline-v2',
+    status: 'REVIEWING',
+    phase: 'build',
+    updated_at: '2026-07-28T00:00:00Z',
+    summary: 's',
+    blockers: [],
+  };
+
+  it('normaliseItem reads the same field name mapRecordToCard writes', () => {
+    const card = mapRecordToCard(record, 'michaelhazza/automation-v1');
+    expect(Object.keys(card.fields)).toContain(REPO_FIELD_NAME);
+
+    const item = {
+      id: 'PVTI_x',
+      [REPO_FIELD_NAME]: card.fields[REPO_FIELD_NAME],
+      Slug: card.fields.Slug,
+      body: card.body,
+    };
+    expect(normaliseItem(item).repo).toBe('michaelhazza/automation-v1');
+  });
+
+  it('a card written by mapRecordToCard round-trips to the SAME key (no duplicate)', () => {
+    const card = mapRecordToCard(record, 'michaelhazza/automation-v1');
+    const item = {
+      id: 'PVTI_x',
+      [REPO_FIELD_NAME]: card.fields[REPO_FIELD_NAME],
+      Slug: card.fields.Slug,
+      body: card.body,
+    };
+    const normalised = normaliseItem(item);
+    expect(buildCardKey(normalised.repo, normalised.slug)).toBe(card.key);
+  });
+
+  it('also reads the field from the nested fieldValues shape', () => {
+    const item = {
+      id: 'PVTI_y',
+      fieldValues: { [REPO_FIELD_NAME]: 'Owner/Repo', Slug: 's' },
+      body: '',
+    };
+    expect(normaliseItem(item).repo).toBe('owner/repo');
+  });
+
+  it('the legacy reserved name is NOT what the code reads', () => {
+    // Guards the specific regression: an item carrying only the old 'Repo'
+    // key must not resolve, otherwise the rename was never really applied.
+    const item = { id: 'PVTI_z', Repo: 'Owner/Repo', Slug: 's', body: '' };
+    expect(normaliseItem(item).repo).toBe(null);
   });
 });

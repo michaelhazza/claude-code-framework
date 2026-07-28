@@ -42,6 +42,7 @@
 import { readFile, readdir, writeFile, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const BEGIN_MARKER = '<!-- STATUS:GENERATED:BEGIN -->';
 const END_MARKER = '<!-- STATUS:GENERATED:END -->';
@@ -242,10 +243,28 @@ async function main() {
     const blockText = `${BEGIN_MARKER}\n${body}\n${END_MARKER}\n`;
     newText = existing.slice(0, insertPos) + blockText + existing.slice(insertPos);
   } else if (beginIndices.length === 1 && endIndices.length === 1 && beginIndices[0] < endIndices[0]) {
-    const beginLineEnd = existing.indexOf('\n', beginIndices[0]) + 1;
-    const endMarkerIdx = existing.indexOf(END_MARKER, beginLineEnd);
-    const before = existing.slice(0, beginLineEnd);
-    const after = existing.slice(endMarkerIdx);
+    // Both boundaries come from the already-validated indices. The previous
+    // version re-derived them with two unchecked indexOf calls, and each
+    // -1 sentinel silently destroyed content:
+    //   - indexOf('\n', begin) + 1 === 0 when BEGIN has no following newline,
+    //     collapsing `before` to '' and deleting everything above the block;
+    //   - a fresh indexOf(END_MARKER, ...) returning -1 made slice(-1)
+    //     substitute the file's LAST CHARACTER for the entire tail.
+    // Reproduced: a marker pair sharing one line deleted the operator's prose
+    // below it while the script printed success and exited 0 — directly
+    // against this module's byte-preservation promise.
+    const newlineAfterBegin = existing.indexOf('\n', beginIndices[0]);
+    // Only usable when that newline actually falls INSIDE the block; when the
+    // two markers share a line it lands after END and must not be consumed.
+    const beginLineEnd =
+      newlineAfterBegin !== -1 && newlineAfterBegin < endIndices[0]
+        ? newlineAfterBegin + 1
+        : null;
+    const before =
+      beginLineEnd !== null
+        ? existing.slice(0, beginLineEnd)
+        : existing.slice(0, beginIndices[0] + BEGIN_MARKER.length) + '\n';
+    const after = existing.slice(endIndices[0]);
     newText = before + body + '\n' + after;
   } else {
     console.error(
@@ -264,7 +283,15 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(`[FAIL] generate-current-focus: ${err.message}`);
-  process.exit(1);
-});
+// Entry-point guard, matching board-sync.mjs and adopt-ci-templates.mjs.
+// main() defaults --root to process.cwd() and WRITES tasks/current-focus.md,
+// so without this an `import` of the module rewrites whichever repo the
+// importing process happens to be running in. That already happened once
+// during a chunk probe, against the framework's own current-focus.md.
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((err) => {
+    console.error(`[FAIL] generate-current-focus: ${err.message}`);
+    process.exit(1);
+  });
+}

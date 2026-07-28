@@ -192,13 +192,57 @@ function Resolve-DistroWorkDir {
     }
     # Deliberately not named $home -- that is a PowerShell automatic variable.
     $resolvedHome = $HomeDir.TrimEnd('/')
-    if ($Path -eq '~') { return $resolvedHome }
-    if ($Path.StartsWith('~/')) { return "$resolvedHome/" + $Path.Substring(2).TrimStart('/') }
-    if ($Path.StartsWith('/')) { return $Path.TrimEnd('/') }
-    # Anything else (a bare relative path, or a `~user` form this script does
-    # not resolve) would land against bash's CWD -- the /mnt/c trap above.
-    # Fail closed rather than guess.
-    throw "-WorkDir '$Path' is neither absolute nor '~/'-relative. A relative path resolves against bash's working directory inside the distro, which for wsl.exe launched from a Windows directory is that directory under /mnt/c -- the runner would be installed into your repo working tree. Pass an absolute path (e.g. /home/<user>/actions-runner/<slug>) or a '~/'-prefixed one."
+    $resolved = $null
+    if ($Path -eq '~') {
+        $resolved = $resolvedHome
+    } elseif ($Path.StartsWith('~/')) {
+        $resolved = "$resolvedHome/" + $Path.Substring(2).TrimStart('/')
+    } elseif ($Path.StartsWith('/')) {
+        $resolved = $Path.TrimEnd('/')
+    } else {
+        # Anything else (a bare relative path, or a `~user` form this script does
+        # not resolve) would land against bash's CWD -- the /mnt/c trap above.
+        # Fail closed rather than guess.
+        throw "-WorkDir '$Path' is neither absolute nor '~/'-relative. A relative path resolves against bash's working directory inside the distro, which for wsl.exe launched from a Windows directory is that directory under /mnt/c -- the runner would be installed into your repo working tree. Pass an absolute path (e.g. /home/<user>/actions-runner/<slug>) or a '~/'-prefixed one."
+    }
+
+    # Floor on what the work dir is allowed to BE, not just how it is spelled.
+    # -Uninstall and -Repair run `rm -rf` on this value, and the install step
+    # untars over it, so a too-broad path is destructive in both directions.
+    # `-WorkDir ~` previously resolved to the distro home and was accepted:
+    # installing would have unpacked the runner tarball across $HOME, and a
+    # later uninstall would have deleted the entire home directory.
+    if ($resolved -eq '' -or $resolved -eq '/') {
+        throw "-WorkDir resolves to the filesystem root. Refusing: this directory is created, untarred over, and later deleted wholesale."
+    }
+    if ($resolved -eq $resolvedHome) {
+        throw "-WorkDir resolves to the distro home directory ('$resolved'). Refusing: the installer untars the runner over this directory and -Uninstall deletes it wholesale, which would destroy the home directory. Pass a dedicated subdirectory, e.g. '$resolvedHome/actions-runner/<repo-slug>'."
+    }
+    # /mnt/* is the Windows filesystem seen from inside WSL. Installing a Linux
+    # runner there is the generalised form of the C22 defect (666 MB unpacked
+    # into a Windows repo working tree), and `rm -rf` there reaches the
+    # operator's real drive.
+    if ($resolved -eq '/mnt' -or $resolved.StartsWith('/mnt/')) {
+        throw "-WorkDir '$resolved' is on the Windows filesystem (/mnt/*) as seen from inside WSL. Refusing: the runner must live in the distro's own filesystem, and this script's `rm -rf` would otherwise reach the Windows drive. Pass a path under the distro home, e.g. '$resolvedHome/actions-runner/<repo-slug>'."
+    }
+    return $resolved
+}
+
+# Last line of defence before `rm -rf`. Resolve-DistroWorkDir bounds what the
+# path may be; this asserts the target actually IS a runner install before it
+# is deleted, so a mistyped-but-legal path deletes nothing. Both markers are
+# checked: `.runner` alone can be a leftover, `config.sh` alone can be an
+# unconfigured extract.
+function Assert-RunnerWorkDirBeforeDelete {
+    param(
+        [Parameter(Mandatory = $true)][string]$Distro,
+        [Parameter(Mandatory = $true)][string]$WorkDir
+    )
+    $quoted = ConvertTo-BashSingleQuoted $WorkDir
+    $probe = Invoke-WslBash -Distro $Distro -Command "test -f $quoted/.runner && test -f $quoted/config.sh && echo RUNNER_DIR_OK"
+    if ($probe.Output -notmatch 'RUNNER_DIR_OK') {
+        throw "Refusing to delete '$WorkDir' inside '$Distro': it does not look like a runner install (expected both '.runner' and 'config.sh' to exist there). Nothing was deleted. Verify -WorkDir, or remove the directory by hand if you are certain."
+    }
 }
 
 # -- Host-level preconditions (safe: never starts the WSL2 VM) --------------
@@ -244,8 +288,32 @@ function Test-GhReady {
     return [PSCustomObject]@{ Passed = $true; Detail = "$versionLine, authenticated" }
 }
 
+# Spec section 7.5 pins the trust boundary as "private repos only". That was
+# prose until now: nothing verified it, while the installer registers a
+# PERSISTENT runner whose jobs run as a user that must be in the docker group
+# (Test-DockerReachable makes that a hard precondition). Docker group is
+# root-equivalent, and /mnt/* exposes the operator's whole Windows drive, so a
+# runner on a PUBLIC repo turns any fork PR into arbitrary code execution with
+# access to every .env and sibling repo on the machine. Checked here, against
+# the already-authenticated gh, because a precondition is the only place it can
+# be enforced rather than asserted.
+function Test-RepoTrustBoundary {
+    param([Parameter(Mandatory = $true)][string]$Repo)
+    $visibility = & gh api "repos/$Repo" --jq '.private' 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        return [PSCustomObject]@{ Passed = $false; Detail = "could not read repo visibility for '$Repo' via gh api (exit $LASTEXITCODE): $visibility. Fail-closed -- refusing to register a persistent runner against a repo whose visibility is unknown." }
+    }
+    if ("$visibility".Trim() -ne 'true') {
+        return [PSCustomObject]@{ Passed = $false; Detail = "'$Repo' is PUBLIC. Refusing: a persistent self-hosted runner on a public repo lets any fork PR execute attacker-authored workflow code on this machine, as a user in the docker group (root-equivalent) with /mnt/* access to the whole Windows drive. Spec section 7.5 pins this boundary to private repos only." }
+    }
+    return [PSCustomObject]@{ Passed = $true; Detail = "'$Repo' is private" }
+}
+
 function Show-HostPreconditions {
-    param([Parameter(Mandatory = $true)][string]$Distro)
+    param(
+        [Parameter(Mandatory = $true)][string]$Distro,
+        [Parameter(Mandatory = $true)][string]$Repo
+    )
     Write-Section "Host preconditions"
     $wslCheck = Test-WslDistroPresent -Distro $Distro
     $ghCheck = Test-GhReady
@@ -253,6 +321,12 @@ function Show-HostPreconditions {
         [PSCustomObject]@{ Check = "WSL2 distro '$Distro' present (version 2)"; Passed = $wslCheck.Passed; Detail = $wslCheck.Detail }
         [PSCustomObject]@{ Check = 'gh CLI installed + authenticated'; Passed = $ghCheck.Passed; Detail = $ghCheck.Detail }
     )
+    # Only meaningful once gh is authenticated; otherwise it would report a
+    # confusing auth error rather than the real precondition failure.
+    if ($ghCheck.Passed) {
+        $trustCheck = Test-RepoTrustBoundary -Repo $Repo
+        $rows += [PSCustomObject]@{ Check = "'$Repo' is private (trust boundary, spec 7.5)"; Passed = $trustCheck.Passed; Detail = $trustCheck.Detail }
+    }
     foreach ($row in $rows) {
         $mark = if ($row.Passed) { '[OK]  ' } else { '[FAIL]' }
         $color = if ($row.Passed) { 'Green' } else { 'Red' }
@@ -321,8 +395,23 @@ function Get-ExistingRunnerConfig {
         [Parameter(Mandatory = $true)][string]$WorkDir
     )
     $quotedPath = ConvertTo-BashSingleQuoted "$WorkDir/.runner"
-    $result = Invoke-WslBash -Distro $Distro -Command "cat $quotedPath 2>/dev/null"
-    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
+    # ABSENT and UNREADABLE must be distinguishable. `cat ... 2>/dev/null`
+    # collapsed "no registration here" (legitimate), "permission denied"
+    # (plausible after a prior sudo-run install) and "wsl transient failure"
+    # into one $null, and the main flow reads $null as "nothing registered"
+    # and proceeds to install with `config.sh --replace` -- clobbering
+    # whatever registration is actually there. That is exactly the
+    # detect-and-skip behaviour this script's .DESCRIPTION forbids, and it is
+    # the headline safety property of the whole file.
+    $probe = "if [ ! -e $quotedPath ]; then echo '__RUNNER_CFG_ABSENT__'; elif cat $quotedPath; then :; else echo '__RUNNER_CFG_UNREADABLE__'; fi"
+    $result = Invoke-WslBash -Distro $Distro -Command $probe
+    if ($result.ExitCode -ne 0) {
+        throw "Could not determine whether a runner is already registered at '$WorkDir/.runner' inside '$Distro' (wsl exited $($result.ExitCode)): $($result.Output). Fail-closed: refusing to continue, because treating this as 'nothing registered' would let an install replace an existing registration."
+    }
+    if ($result.Output -match '__RUNNER_CFG_UNREADABLE__') {
+        throw "A '.runner' file exists at '$WorkDir/.runner' inside '$Distro' but could not be read (permission denied?). Refusing to continue: assuming 'nothing registered' here would clobber an existing registration via 'config.sh --replace'. Inspect it manually (e.g. 'wsl -d $Distro -u root -- cat $WorkDir/.runner') and resolve before re-running."
+    }
+    if ($result.Output -match '__RUNNER_CFG_ABSENT__' -or [string]::IsNullOrWhiteSpace($result.Output)) {
         return $null
     }
     try {
@@ -575,6 +664,7 @@ function Repair-Runner {
         [System.GC]::Collect()
     }
 
+    Assert-RunnerWorkDirBeforeDelete -Distro $Distro -WorkDir $WorkDir
     $quotedWorkDirForDelete = ConvertTo-BashSingleQuoted $WorkDir
     $deleteResult = Invoke-WslBash -Distro $Distro -Command "rm -rf -- $quotedWorkDirForDelete"
     if ($deleteResult.ExitCode -ne 0) { throw "Deleting work dir failed:`n$($deleteResult.Output)" }
@@ -617,6 +707,7 @@ function Uninstall-Runner {
         [System.GC]::Collect()
     }
 
+    Assert-RunnerWorkDirBeforeDelete -Distro $Distro -WorkDir $WorkDir
     $quotedWorkDirForDelete = ConvertTo-BashSingleQuoted $WorkDir
     $deleteResult = Invoke-WslBash -Distro $Distro -Command "rm -rf -- $quotedWorkDirForDelete"
     if ($deleteResult.ExitCode -ne 0) { throw "Deleting work dir failed:`n$($deleteResult.Output)" }
@@ -635,7 +726,7 @@ Write-Host "  Runner name: $RunnerName"
 Write-Host "  Labels:      $LabelsCsv"
 Write-Host "  Mode:        $(if ($Uninstall) { 'uninstall' } elseif ($Repair) { 'repair' } else { 'install (or verify if already registered)' })"
 
-$hostReady = Show-HostPreconditions -Distro $WslDistro
+$hostReady = Show-HostPreconditions -Distro $WslDistro -Repo $Repo
 if (-not $hostReady) {
     exit 1
 }

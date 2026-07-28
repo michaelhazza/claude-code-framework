@@ -83,6 +83,15 @@ const REGISTRATION_METHODS = new Set(
     .map((m) => m.trim())
     .filter(Boolean)
 );
+// An empty or whitespace-only GATE_METHOD_SET survives the filter as an empty
+// Set, after which no call site can ever match and the gate reports a
+// confident pass having inspected nothing. Fail closed at construction, where
+// the message can name the actual cause, rather than relying on the
+// downstream zero-registrations tripwire to infer it.
+if (REGISTRATION_METHODS.size === 0) {
+  console.error(`[FAIL] ${GATE_ID}: GATE_METHOD_SET resolved to an empty method set — misconfiguration, fail closed`);
+  process.exit(1);
+}
 
 // Set once by loadTypeScript() at the top of main(), before any helper below
 // runs. Every reader here executes only after that resolution completes.
@@ -137,11 +146,26 @@ function returnsFunctionLiteral(fn) {
   return false;
 }
 
+// Recurses, matching the scan side (collectTsFiles). It previously read only
+// the top level of GATE_SOURCE_DIR, so a repo organising middleware as
+// server/middleware/auth/requireX.ts lost every factory in that subtree while
+// the gate still printed a confident "N factories tracked" pass. The
+// zero-count tripwire below catches total derivation failure but is blind to
+// this partial narrowing. Test files are excluded for the same reason they are
+// on the scan side: a factory defined only in a test is not a real registration
+// target, and including them would inflate the tracked set with names that can
+// never be violated in production code.
 async function deriveFactories(sourceDirAbs) {
   const factories = new Set();
   const entries = await readdir(sourceDirAbs, { withFileTypes: true });
   for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+    if (entry.name === '__tests__' || entry.name === 'node_modules') continue;
+    if (entry.isDirectory()) {
+      const nested = await deriveFactories(path.resolve(sourceDirAbs, entry.name));
+      for (const name of nested) factories.add(name);
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.endsWith('.ts') || entry.name.endsWith('.test.ts')) continue;
     const abs = path.resolve(sourceDirAbs, entry.name);
     const sourceFile = parseSource(entry.name, await readFile(abs, 'utf8'));
     for (const statement of sourceFile.statements) {
@@ -180,8 +204,12 @@ function buildSuppressionIndex(sourceText) {
 function scanFile(relativePath, sourceText, factories) {
   const sourceFile = parseSource(relativePath, sourceText);
   const suppression = buildSuppressionIndex(sourceText);
-  if (suppression.all) return [];
+  // A file-wide suppression is reported, not silent: main() surfaces the count
+  // so a reviewer sees the number move in the gate's own output rather than
+  // having to spot a one-line comment in a large diff.
+  if (suppression.all) return { findings: [], registrationCallSites: 0, fileSuppressed: true };
   const findings = [];
+  let registrationCallSites = 0;
 
   function flagIfBareFactory(argumentNode, methodName) {
     const value = unwrap(argumentNode);
@@ -205,6 +233,11 @@ function scanFile(relativePath, sourceText, factories) {
       ts.isPropertyAccessExpression(node.expression) &&
       REGISTRATION_METHODS.has(node.expression.name.text)
     ) {
+      // Counted so main() can fail closed when the whole scan matches nothing.
+      // Without this the gate is silenceable: point GATE_METHOD_SET at a method
+      // the repo never calls and every walk matches zero nodes, yielding a
+      // clean green that inspected nothing.
+      registrationCallSites += 1;
       const methodName = node.expression.name.text;
       for (const argument of node.arguments) {
         const value = unwrap(argument);
@@ -219,7 +252,7 @@ function scanFile(relativePath, sourceText, factories) {
   }
 
   visit(sourceFile);
-  return findings;
+  return { findings, registrationCallSites };
 }
 
 async function collectTsFiles(absoluteDir, relativeRoot) {
@@ -281,9 +314,29 @@ async function main() {
   }
 
   const findings = [];
+  let registrationCallSites = 0;
+  let suppressedFiles = 0;
   for (const relativePath of scanTargets) {
     const source = await readFile(path.resolve(ROOT, relativePath), 'utf8');
-    findings.push(...scanFile(relativePath, source, factories));
+    const result = scanFile(relativePath, source, factories);
+    findings.push(...result.findings);
+    registrationCallSites += result.registrationCallSites;
+    if (result.fileSuppressed) suppressedFiles += 1;
+  }
+
+  // Fail closed on a scan that matched nothing, mirroring the derivation-side
+  // guard above and the sibling gate (verify-duplicate-registrations.mjs).
+  // Without it the gate is silenceable from a branch-controlled `env:` block:
+  // GATE_METHOD_SET set to a method the repo never calls makes every AST walk
+  // match zero nodes, and the pass line still reads like a real inspection.
+  if (registrationCallSites === 0) {
+    console.error(
+      `[FAIL] ${GATE_ID}: matched 0 registration call sites across ${scanTargets.length} file(s) ` +
+      `using method set {${[...REGISTRATION_METHODS].sort().join(', ')}} — ` +
+      `scan broken, wrong GATE_METHOD_SET/GATE_SCAN_DIR, or every file suppressed (${suppressedFiles} file-wide suppression(s)). ` +
+      `Refusing to report a pass that inspected nothing.`
+    );
+    process.exit(1);
   }
 
   if (findings.length > 0) {
@@ -297,9 +350,16 @@ async function main() {
 
   console.log(
     `Factory invocation check passed: ${scanTargets.length} file(s) scanned, ` +
+    `${registrationCallSites} registration call site(s) matched, ` +
     `${factories.size} factories tracked (${[...factories].sort().join(', ')}).`
   );
-  console.log(`[GATE] ${GATE_ID}: violations=0`);
+  // Effective configuration is echoed so a neutered run is visible as a log
+  // diff. A pass line that never names its inputs looks identical whether the
+  // gate inspected the whole repo or nothing at all.
+  console.log(
+    `[GATE] ${GATE_ID}: violations=0 registrations=${registrationCallSites} ` +
+    `suppressed_files=${suppressedFiles} method_set={${[...REGISTRATION_METHODS].sort().join(',')}}`
+  );
 }
 
 main().catch((error) => {
