@@ -32,6 +32,15 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.44.4 — 2026-07-28
+
+**Highlights:** Patch. Fixes a rethrow in `scripts/adopt-ci-templates.mjs` that passed this repo's lint but failed a consuming repo's stricter config. Found by running the consumer's G2 gate over the synced copy, which is the only place the two configs meet.
+
+**Fixed:**
+- `scripts/adopt-ci-templates.mjs` — the JSON-parse failure path rethrew a new `Error` without attaching the original as `cause`, discarding the parser's position information (`preserve-caught-error`). A malformed `project-registries.json` reported *that* it could not be parsed but dropped the underlying detail that says *where*. Now rethrows with `{ cause: err }`. Swept the rest of the framework's `.mjs` scripts for the same pattern: no other uncaused rethrows.
+
+> **Note for framework maintainers.** This class of defect is invisible to the framework's own lint. Consumers may enable rules the framework does not, and a synced script is linted under *their* config. When a shipped script changes, running a consuming repo's lint over the synced copy is the check that catches it — the framework being green is not sufficient evidence.
+
 ## 2.44.3 — 2026-07-28
 
 **Highlights:** Patch. Fixes a work-dir resolution defect in `scripts/runner/install-runner.ps1` found by running the installer on real hardware: a self-hosted runner installed itself into the calling repo's working tree instead of the WSL2 distro's home directory. Any repo that adopted v2.44.0–v2.44.2 and ran the installer should check for a literal `~` directory at its root.

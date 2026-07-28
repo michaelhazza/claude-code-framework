@@ -368,7 +368,7 @@ function loadCiTemplateValues(configPath) {
   try {
     data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   } catch (err) {
-    throw new Error(`cannot parse ${configPath}: ${err.message}`);
+    throw new Error(`cannot parse ${configPath}: ${err.message}`, { cause: err });
   }
   return data.ci_templates ?? {};
 }
