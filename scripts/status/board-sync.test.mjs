@@ -84,7 +84,7 @@ describe('mapRecordToCard', () => {
 
     expect(card.key).toBe('owner/repo::dev-pipeline-v2');
     expect(card.fields).toEqual({
-      Repo: 'owner/repo',
+      'Build Repo': 'owner/repo',  // NOT 'Repo' — reserved in Projects v2
       Slug: 'dev-pipeline-v2',
       Status: 'REVIEWING',
       Phase: 'review',

@@ -32,6 +32,13 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.44.1 — 2026-07-28
+
+**Highlights:** Patch. `board-sync.mjs` could not create its identity field on a real Projects v2 board — `Repo` is a reserved field name and `createProjectV2Field` rejects it outright. Found by running `--init` against a live board during the pilot adoption, which is precisely the class of defect no amount of review catches.
+
+**Fixed:**
+- `scripts/status/board-sync.mjs` — the repository identity field is now named `Build Repo` (`Repo` is reserved; GraphQL returns `Name cannot have a reserved value`). The upsert key semantics, lowercase canonicalisation and duplicate-recovery tie-break are unchanged; only the field label moved. Header docs and the card-mapping test updated to match.
+
 ## 2.44.0 — 2026-07-28
 
 **Highlights:** Development Pipeline v2 — the orchestrated multi-vendor pipeline. Every Codex review tier now invokes the CLI through one canonical contract with full repository context; two new review tiers (plan, brief) close the gaps at the plan and brief stages; a Codex-owned verify phase becomes a real gate at Phase 3 entry; per-build `status.json` replaces the hand-merged current-focus pointer and feeds a GitHub Projects board; and CI moves to self-hosted templates with the full suite gated at exactly two checkpoints per build. Ships alongside two auth-guard gate ports and the guards-for-the-guards meta-validator.

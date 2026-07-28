@@ -50,7 +50,7 @@
 //     custom fields costs one item-edit call per field. Draft-issue
 //     title/body edits use --id alone (no --project-id/--field-id needed).
 //   gh project item-list <number> --owner <login> --format json [-L <n>]
-//     -> list existing cards to resolve the {Repo, Slug} upsert key.
+//     -> list existing cards to resolve the {Build Repo, Slug} upsert key.
 //   gh project item-archive <number> --id <item-id> --owner <login>
 //     --format json [--undo] -> archive (or unarchive) one item. NOTE:
 //     unlike item-edit, item-archive DOES take the project <number> as a
@@ -81,8 +81,8 @@
 // ---------------------------------------------------------------------------
 //
 // Board contract (spec §7.4/§8.4):
-//   - Identity = {repository, slug}, held in two custom TEXT fields `Repo`
-//     + `Slug`. `Repo` is canonicalised to lowercase before any key
+//   - Identity = {repository, slug}, held in two custom TEXT fields `Build Repo`
+//     + `Slug`. The repo value is canonicalised to lowercase before any key
 //     comparison (OAI-SPEC-002 — GitHub owner/repo is case-insensitive, so
 //     `Owner/Repo` vs `owner/repo` must not create a duplicate card).
 //   - Item type: draft issues only. No per-build GitHub issue is created.
@@ -95,7 +95,7 @@
 //     seventh custom field.
 //   - Stale-update protection: skip a write when the existing card's
 //     updated_at is strictly newer than the incoming record's.
-//   - Duplicate recovery: two cards matching one {Repo, Slug} key -> keep
+//   - Duplicate recovery: two cards matching one {Build Repo, Slug} key -> keep
 //     the newest (by updated_at), archive the rest, warn. Equal updated_at
 //     -> lowest card id wins (OAI-SPEC-002 deterministic tie-break;
 //     GitHub Projects v2 item ids are opaque node-id strings, so "lowest"
@@ -159,7 +159,7 @@ const ARCHIVE_AFTER_MS = ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
 const UPDATED_AT_MARKER = /<!-- board-sync:v1 updated_at=(\S+) -->/;
 
 const BOARD_FIELDS_TO_CREATE = [
-  { name: 'Repo', dataType: 'TEXT' },
+  { name: 'Build Repo', dataType: 'TEXT' },  // NOT 'Repo' — reserved in Projects v2 (createProjectV2Field rejects it)
   { name: 'Slug', dataType: 'TEXT' },
   { name: 'Phase', dataType: 'TEXT' },
   {
@@ -228,7 +228,7 @@ export function mapRecordToCard(record, repository) {
     title: `${record.slug}: ${record.title}`,
     body: buildCardBody(record),
     fields: {
-      Repo: repo,
+      'Build Repo': repo,
       Slug: record.slug,
       Status: record.status,
       Phase: record.phase,
