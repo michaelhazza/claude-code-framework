@@ -146,6 +146,35 @@ describe('verify-factory-invocation gate', () => {
     }
   });
 
+  // Regression: external review round 2. The ROOT guard did not cover the
+  // METHOD SET. With canonical roots and a narrowed set, one clean matching
+  // registration satisfied the zero-match tripwire while violations under the
+  // omitted methods were never examined — right files, wrong lens.
+  it('narrowed GATE_METHOD_SET in CI without fixture mode — exit 1', () => {
+    const dir = isolatedFixtureDir('uninvoked-factory.ts');
+    try {
+      const r = runGate(dir, { GATE_FIXTURE_MODE: '', CI: 'true', GATE_METHOD_SET: 'options' });
+      expect(r.status, r.stdout + r.stderr).toBe(1);
+      expect(r.stderr).toMatch(/narrowed to \{options\}/);
+      expect(r.stderr).toMatch(/never examined/);
+    } finally {
+      rmrf(dir);
+    }
+  });
+
+  it('the CANONICAL method set explicitly passed in CI is accepted (not a false refusal)', () => {
+    const dir = isolatedFixtureDir('clean-source.ts');
+    try {
+      const canonical = 'get,post,put,patch,delete,all,use,options,head';
+      // Fixture mode is still needed for the non-default ROOT; the point here is
+      // that the method-set check itself does not reject an equal set.
+      const r = runGate(dir, { GATE_FIXTURE_MODE: '1', CI: 'true', GATE_METHOD_SET: canonical });
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+    } finally {
+      rmrf(dir);
+    }
+  });
+
   it('pass line reports the effective config so a neutered run is visible', () => {
     const dir = isolatedFixtureDir('clean-source.ts');
     try {

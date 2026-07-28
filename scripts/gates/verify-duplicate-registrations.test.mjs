@@ -135,6 +135,19 @@ describe('verify-duplicate-registrations gate', () => {
     }
   });
 
+  // Regression: external review round 2 — the method-set narrowing bypass,
+  // sibling to the root bypass above.
+  it('narrowed GATE_METHOD_SET in CI without fixture mode — exit 1', () => {
+    const dir = isolatedFixtureDir('double-registration.ts');
+    try {
+      const r = runGate(dir, { GATE_FIXTURE_MODE: '', CI: 'true', GATE_METHOD_SET: 'options' });
+      expect(r.status, r.stdout + r.stderr).toBe(1);
+      expect(r.stderr).toMatch(/narrowed to \{options\}/);
+    } finally {
+      rmrf(dir);
+    }
+  });
+
   it('CI=true + non-default scan root WITH fixture mode — runs normally', () => {
     const dir = isolatedFixtureDir('clean-registrations.ts');
     try {

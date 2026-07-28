@@ -774,31 +774,92 @@ function Unregister-RunnerAutoStart {
 #      casing while $RepoSlug is lowercased). Accept EXACTLY one. Zero or
 #      several -> return nothing and let the caller refuse, because guessing
 #      is how repo B's cleanup stops repo A's runner.
+# The single authority on "does this unit belong to THIS work dir".
+#
+# Reads the unit FILE rather than asking systemctl, deliberately: the uninstall
+# path skips the systemd health precondition, so `systemctl show` may be
+# unavailable exactly when this check matters most. The file is on disk either
+# way.
+#
+# Verification is by PATH, not by name. A name prefix is a hint an operator can
+# forge (or a stale file can carry); WorkingDirectory/ExecStart pointing inside
+# the canonical work dir is what actually proves ownership. Both are realpath'd
+# so a symlinked work dir still compares correctly.
+function Test-UnitBelongsToWorkDir {
+    param(
+        [Parameter(Mandatory = $true)][string]$Distro,
+        [Parameter(Mandatory = $true)][string]$Unit,
+        [Parameter(Mandatory = $true)][string]$WorkDir
+    )
+    if ($Unit -notmatch '^actions\.runner\.[^/]+\.service$') { return $false }
+    $quotedUnitPath = ConvertTo-BashSingleQuoted "/etc/systemd/system/$Unit"
+    $quotedDir = ConvertTo-BashSingleQuoted $WorkDir
+
+    # Two round trips rather than one clever payload: resolving the canonical
+    # dir inline needs command substitution with quoting, and NO payload in this
+    # file may contain a double quote (a quoted payload does not survive the
+    # argv hop to bash -- source invariant, earned the hard way).
+    $canon = Invoke-WslBash -Distro $Distro -Command "readlink -f $quotedDir 2>/dev/null || printf %s $quotedDir"
+    $canonDir = ($canon.Output -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1)
+    if ($null -ne $canonDir) { $canonDir = $canonDir.Trim().TrimEnd('/') }
+    if ([string]::IsNullOrWhiteSpace($canonDir) -or $canonDir -eq '/') { return $false }
+
+    $probe = "test -f $quotedUnitPath || { echo NO_UNIT_FILE; exit 0; }; " +
+             "grep -E '^(WorkingDirectory|ExecStart)=' $quotedUnitPath 2>/dev/null"
+    $result = Invoke-WslBash -Distro $Distro -Command $probe
+    if ($result.ExitCode -ne 0 -or $result.Output -match 'NO_UNIT_FILE') { return $false }
+
+    # At least one directive must point at the canonical dir or beneath it.
+    foreach ($line in ($result.Output -split "`n")) {
+        if ($line -notmatch '^(WorkingDirectory|ExecStart)=') { continue }
+        $value = ($line -split '=', 2)[1]
+        if ([string]::IsNullOrWhiteSpace($value)) { continue }
+        # ExecStart may carry arguments; the executable path is the first token.
+        $pathToken = ($value.Trim() -split '\s+')[0].Trim('"', "'")
+        if ($pathToken -eq $canonDir -or $pathToken.StartsWith("$canonDir/")) { return $true }
+    }
+    return $false
+}
+
 function Get-RunnerServiceUnit {
     param(
         [Parameter(Mandatory = $true)][string]$Distro,
         [Parameter(Mandatory = $true)][string]$WorkDir,
         [Parameter(Mandatory = $true)][string]$RepoSlug
     )
+    # PRIMARY: the work dir's own .service marker -- but as a CANDIDATE only.
+    # It previously returned on any syntactically plausible unit name, so a
+    # stale or hand-edited .service in repo B's dir naming repo A's unit sent
+    # the residue sweep at repo A's service: it stopped, disabled and DELETED
+    # it, and "verified" success. Scoping only the fallback left the
+    # higher-priority path as an open door (external review round 2).
     $quotedDir = ConvertTo-BashSingleQuoted $WorkDir
     $fromFile = Invoke-WslBash -Distro $Distro -Command "cat $quotedDir/.service 2>/dev/null"
-    $unit = $fromFile.Output.Trim()
-    if ($fromFile.ExitCode -eq 0 -and $unit -match '^actions\.runner\..+\.service$') {
-        return $unit
+    $candidate = $fromFile.Output.Trim()
+    if ($fromFile.ExitCode -eq 0 -and $candidate -match '^actions\.runner\.[^/]+\.service$') {
+        if (Test-UnitBelongsToWorkDir -Distro $Distro -Unit $candidate -WorkDir $WorkDir) {
+            return $candidate
+        }
+        Write-Host "Ignoring '$WorkDir/.service': it names '$candidate', whose unit file does not point at this work dir (stale or hand-edited). Falling back to scoped enumeration." -ForegroundColor Yellow
     }
 
+    # FALLBACK: enumerate, filter by slug, and apply the SAME work-dir proof --
+    # a name prefix alone is a hint, not ownership.
     $enumerate = Invoke-WslBash -Distro $Distro -Command "ls /etc/systemd/system/actions.runner.*.service 2>/dev/null"
-    $slugPrefix = "actions.runner.$RepoSlug."
-    $matches2 = @()
+    $slugPrefix = ("actions.runner.$RepoSlug.").ToLowerInvariant()
+    $verified = @()
     foreach ($line in ($enumerate.Output -split "`n")) {
         $m = [regex]::Match($line.Trim(), '/etc/systemd/system/(actions\.runner\.[^/\s]+\.service)$')
-        if ($m.Success -and $m.Groups[1].Value.ToLowerInvariant().StartsWith($slugPrefix.ToLowerInvariant())) {
-            $matches2 += $m.Groups[1].Value
+        if (-not $m.Success) { continue }
+        $unitName = $m.Groups[1].Value
+        if (-not $unitName.ToLowerInvariant().StartsWith($slugPrefix)) { continue }
+        if (Test-UnitBelongsToWorkDir -Distro $Distro -Unit $unitName -WorkDir $WorkDir) {
+            $verified += $unitName
         }
     }
-    if ($matches2.Count -eq 1) { return $matches2[0] }
-    if ($matches2.Count -gt 1) {
-        Write-Host "Found $($matches2.Count) unit files matching '$slugPrefix*' -- ambiguous, refusing to pick one: $($matches2 -join ', ')" -ForegroundColor Yellow
+    if ($verified.Count -eq 1) { return $verified[0] }
+    if ($verified.Count -gt 1) {
+        Write-Host "Found $($verified.Count) units matching '$slugPrefix*' that resolve to this work dir -- ambiguous, refusing to pick one: $($verified -join ', ')" -ForegroundColor Yellow
     }
     return $null
 }
@@ -882,15 +943,44 @@ function Remove-PartialInstallResidue {
         # residue in place for inspection rather than half-cleaning around a
         # still-installed service.
         $quotedUnit = ConvertTo-BashSingleQuoted $Residue.ServiceUnit
-        $svcRemove = Invoke-WslBash -Distro $Distro -AsRoot -Command "(systemctl stop $quotedUnit || true) && (systemctl disable $quotedUnit || true) && rm -f /etc/systemd/system/$quotedUnit && systemctl daemon-reload"
+
+        # STOP FIRST, and prove it stopped. The previous version swallowed both
+        # stop and disable failures with `|| true` and then verified only that
+        # the unit FILE was gone -- so on a degraded systemd (or a stuck unit,
+        # or no connection to the manager) the stop silently failed, the file
+        # was deleted, absence "verified", and the sweep went on to delete the
+        # work directory out from under a STILL-RUNNING runner process while
+        # reporting the residue cleared. Especially reachable here, because
+        # uninstall deliberately skips the systemd health precondition.
+        # (External review round 2.)
+        #
+        # `is-active` is the authority. Its exit code is non-zero for inactive,
+        # failed AND unknown, so the OUTPUT is what distinguishes them: any of
+        # inactive / failed / unknown means "not running", which is what the
+        # sweep needs. "unit does not exist" is success; "exists and would not
+        # stop" is a hard stop.
+        $stop = Invoke-WslBash -Distro $Distro -AsRoot -Command "systemctl stop $quotedUnit 2>&1; systemctl is-active $quotedUnit 2>&1 | head -1"
+        $activeState = ($stop.Output -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -Last 1)
+        if ($null -ne $activeState) { $activeState = $activeState.Trim() }
+        if ($activeState -notmatch '^(inactive|failed|unknown|deactivating)$') {
+            throw "Refusing to continue the sweep: systemd unit '$($Residue.ServiceUnit)' reports state '$activeState' after a stop attempt. It may still be RUNNING, and deleting its work directory now would pull the filesystem out from under a live runner. Investigate with: wsl -d $Distro -u root -- systemctl status $($Residue.ServiceUnit)"
+        }
+
+        $svcRemove = Invoke-WslBash -Distro $Distro -AsRoot -Command "(systemctl disable $quotedUnit || true) && rm -f /etc/systemd/system/$quotedUnit && systemctl daemon-reload"
         if ($svcRemove.ExitCode -ne 0) {
             throw "Removing systemd unit '$($Residue.ServiceUnit)' failed (exit $($svcRemove.ExitCode)) -- stopping before the auto-start task or work dir are touched:`n$($svcRemove.Output)"
         }
-        $verify = Invoke-WslBash -Distro $Distro -AsRoot -Command "test ! -e /etc/systemd/system/$quotedUnit && echo UNIT_GONE"
+        # Both conditions, not just the file: absent from disk AND not active.
+        $verify = Invoke-WslBash -Distro $Distro -AsRoot -Command "test ! -e /etc/systemd/system/$quotedUnit && echo UNIT_GONE; systemctl is-active $quotedUnit 2>&1 | head -1"
         if ($verify.Output -notmatch 'UNIT_GONE') {
             throw "Systemd unit '$($Residue.ServiceUnit)' still exists after removal -- refusing to report success or continue the sweep."
         }
-        Write-Host "Removed systemd unit '$($Residue.ServiceUnit)' (verified absent)." -ForegroundColor Green
+        $finalState = ($verify.Output -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -Last 1)
+        if ($null -ne $finalState) { $finalState = $finalState.Trim() }
+        if ($finalState -match '^active') {
+            throw "Systemd unit '$($Residue.ServiceUnit)' is STILL ACTIVE after its unit file was removed -- the runner process is live. Refusing to delete the work directory beneath it."
+        }
+        Write-Host "Removed systemd unit '$($Residue.ServiceUnit)' (verified: file absent, service not active)." -ForegroundColor Green
     }
 
     if ($Residue.TaskExists) {

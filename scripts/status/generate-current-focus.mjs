@@ -207,8 +207,29 @@ async function collectRecords(root) {
     // future-enum status vanished from the block entirely — silently, despite
     // this module's documented promise of a fail-loud INVALID channel for
     // schema problems. A status outside the schema enum IS a schema problem.
-    if (TERMINAL_STATUSES.has(data.status)) continue; // MERGED / ABANDONED — correctly excluded from active builds
-    if (!Object.prototype.hasOwnProperty.call(STATUS_PRIORITY, data.status)) {
+    // VALIDATE BEFORE CLASSIFYING. Ordering is the contract here: the terminal
+    // check used to `continue` first, so a MERGED/ABANDONED record with
+    // `blockers: null` and a bogus phase vanished entirely — neither rendered
+    // nor surfaced as INVALID — purely because its status happened to be
+    // terminal. That defeats the very distinction this module promises between
+    // "valid terminal, deliberately excluded" and "schema-invalid, surfaced"
+    // (external review round 2). Every record now faces validation; only then
+    // is it classified.
+    //
+    // Type/shape validation — key-complete is not schema-valid. A malformed
+    // VALUE (`"blockers": null`) sailed past the presence check and crashed
+    // buildBody on `.length`, exiting non-zero and writing NOTHING, so one bad
+    // build dir took every healthy build's status with it. Full JSON-Schema
+    // validation when ajv is importable (both current repos ship it); a
+    // structural check of exactly the renderer's dereferences when it is not —
+    // this file is stdlib-only BY DESIGN, so ajv is an enhancement, never a
+    // hard dependency.
+    // Status FIRST, for the diagnostic — ajv would otherwise catch it as a
+    // generic "must be equal to one of the allowed values", losing the message
+    // that names the offending value and lists the legal ones. Note this is a
+    // check, NOT a classification: it does not skip validation for terminal
+    // records, which was the whole defect.
+    if (!TERMINAL_STATUSES.has(data.status) && !Object.prototype.hasOwnProperty.call(STATUS_PRIORITY, data.status)) {
       invalids.push({
         dir: dirName,
         error:
@@ -218,21 +239,15 @@ async function collectRecords(root) {
       continue;
     }
 
-    // Type/shape validation — key-complete is not schema-valid. A record with
-    // every required KEY but a malformed VALUE (`"blockers": null`) used to
-    // sail past the presence check and crash buildBody on `.length` — the
-    // whole run exited non-zero and wrote NOTHING, so one bad build dir took
-    // every healthy build's status down with it, the opposite of this module's
-    // fail-loud INVALID contract (external review, 2026-07-29; also PR-012).
-    // Full JSON-Schema validation when ajv is importable (both current repos
-    // ship it); a minimal structural check of exactly the fields the renderer
-    // dereferences when it is not — this file is stdlib-only BY DESIGN, so ajv
-    // is an enhancement, never a hard dependency.
     const shapeError = await validateRecordShape(data);
     if (shapeError) {
       invalids.push({ dir: dirName, error: shapeError });
       continue;
     }
+
+    // Only now classify: a VALID terminal record is deliberately excluded from
+    // the active-builds block. An INVALID one was surfaced above.
+    if (TERMINAL_STATUSES.has(data.status)) continue;
 
     records.push({
       slug: data.slug,

@@ -92,6 +92,24 @@ if (REGISTRATION_METHODS.size === 0) {
   console.error(`[FAIL] ${GATE_ID}: GATE_METHOD_SET resolved to an empty method set — misconfiguration, fail closed`);
   process.exit(1);
 }
+// A NARROWED method set is the sibling of a narrowed corpus, and the root guard
+// below did not cover it: with canonical roots and `GATE_METHOD_SET: options`,
+// one clean `.options()` registration satisfies the zero-match tripwire while
+// every `.get()` violation goes unexamined — a green that inspected the right
+// files with the wrong lens (external review round 2). Under CI, the method set
+// must be exactly the canonical default unless fixture mode is declared.
+if (process.env.CI === 'true' && process.env.GATE_METHOD_SET && process.env.GATE_FIXTURE_MODE !== '1') {
+  const requested = [...REGISTRATION_METHODS].sort().join(',');
+  const canonical = [...METHOD_SET_DEFAULT].sort().join(',');
+  if (requested !== canonical) {
+    console.error(
+      `[FAIL] ${GATE_ID}: GATE_METHOD_SET narrowed to {${requested}} in CI without GATE_FIXTURE_MODE=1. ` +
+      `A subset that happens to be clean passes while violations under the omitted methods are never examined. ` +
+      `Canonical set is {${canonical}}. Fail closed.`
+    );
+    process.exit(1);
+  }
+}
 
 // Set once by loadTypeScript() at the top of main(), before any helper below
 // runs. Every reader here executes only after that resolution completes.

@@ -444,6 +444,59 @@ describe('key-complete but malformed records take the INVALID channel', () => {
     }
   });
 
+  // Regression: external review round 2. The terminal check `continue`d BEFORE
+  // validation, so a MERGED/ABANDONED record carrying schema-invalid data
+  // vanished silently — neither rendered nor surfaced — purely because its
+  // status was terminal. Validation now precedes classification.
+  it('a MERGED record with invalid data is INVALID, not silently discarded', () => {
+    const root = makeTempRoot();
+    try {
+      writeStatus(root, 'healthy');
+      writeStatus(root, 'bad-merged', { status: 'MERGED', blockers: null, phase: 'not-a-phase' });
+
+      const r = runGenerator(root);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+
+      const out = readCurrentFocus(root);
+      expect(out).toContain('healthy');
+      expect(out).toMatch(/INVALID: bad-merged/);
+    } finally {
+      rmrf(root);
+    }
+  });
+
+  it('an ABANDONED record with invalid data is INVALID too', () => {
+    const root = makeTempRoot();
+    try {
+      writeStatus(root, 'healthy');
+      writeStatus(root, 'bad-abandoned', { status: 'ABANDONED', blockers: null });
+
+      const r = runGenerator(root);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(readCurrentFocus(root)).toMatch(/INVALID: bad-abandoned/);
+    } finally {
+      rmrf(root);
+    }
+  });
+
+  it('a VALID terminal record is still excluded SILENTLY (the distinction holds)', () => {
+    const root = makeTempRoot();
+    try {
+      writeStatus(root, 'healthy');
+      writeStatus(root, 'clean-merged', { status: 'MERGED' });
+
+      const r = runGenerator(root);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+
+      const out = readCurrentFocus(root);
+      expect(out).toContain('healthy');
+      expect(out).not.toMatch(/INVALID: clean-merged/);
+      expect(out).not.toMatch(/clean-merged/);
+    } finally {
+      rmrf(root);
+    }
+  });
+
   it('a non-string summary and a bogus phase are also INVALID, not fatal', () => {
     const root = makeTempRoot();
     try {
