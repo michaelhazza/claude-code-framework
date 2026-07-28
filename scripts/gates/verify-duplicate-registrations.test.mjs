@@ -89,4 +89,25 @@ describe('verify-duplicate-registrations gate', () => {
     const r = runGate(missing);
     expect(r.status, r.stdout + r.stderr).toBe(1);
   });
+
+  // Added 2026-07-28 (dual-reviewer). This suite had no pass-line assertion at
+  // all, so the `[GATE]` line could be narrowed to nothing without any test
+  // noticing. The zero-registrations tripwire above only catches a scan that
+  // matched NOTHING; a GATE_SCAN_DIR or GATE_METHOD_SET narrowed to one clean
+  // file still prints a confident pass, and a line that names no inputs looks
+  // identical whether the gate inspected the whole repo or one file.
+  it('pass line reports the effective config so a neutered run is visible', () => {
+    const dir = isolatedFixtureDir('clean-registrations.ts');
+    try {
+      const r = runGate(dir);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(r.stdout).toMatch(/\[GATE\] duplicate-registrations: violations=0/);
+      expect(r.stdout).toMatch(/registrations=[1-9]/);
+      expect(r.stdout).toMatch(/method_set=\{/);
+      expect(r.stdout).toMatch(/scan_dir=\S+/);
+      expect(r.stdout).toMatch(/files=[1-9]/);
+    } finally {
+      rmrf(dir);
+    }
+  });
 });

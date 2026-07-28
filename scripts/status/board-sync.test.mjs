@@ -280,4 +280,73 @@ describe('upsert key: read side matches write side', () => {
     const item = { id: 'PVTI_z', Repo: 'Owner/Repo', Slug: 's', body: '' };
     expect(normaliseItem(item).repo).toBe(null);
   });
+
+  // Regression: dual-reviewer, 2026-07-28. The three tests above build their
+  // fixture item from REPO_FIELD_NAME, i.e. from the code's own constant, so
+  // they assert the assumption instead of testing it and stayed green while
+  // the read was broken against every real result. `gh project item-list
+  // --format json` flattens custom fields onto the item and lower-cases only
+  // the FIRST character of the display name, so the key is `build Repo`, not
+  // `Build Repo`, and `slug`, not `Slug`. These fixtures are written out
+  // literally, never derived from the constant, so they fail if the read side
+  // regresses to an exact-display-name lookup.
+  it('resolves the real gh item-list key shape (lower-cased first character)', () => {
+    const item = {
+      id: 'PVTI_gh',
+      content: { type: 'DraftIssue' },
+      title: 'dev-pipeline-v2: Development Pipeline v2',
+      'build Repo': 'michaelhazza/automation-v1',
+      slug: 'dev-pipeline-v2',
+      status: 'REVIEWING',
+      body: '<!-- board-sync:v1 updated_at=2026-07-28T00:00:00Z -->',
+    };
+    const normalised = normaliseItem(item);
+    expect(normalised.repo).toBe('michaelhazza/automation-v1');
+    expect(normalised.slug).toBe('dev-pipeline-v2');
+    expect(normalised.updated_at).toBe('2026-07-28T00:00:00Z');
+  });
+
+  it('a card written by mapRecordToCard round-trips through the gh key shape to the SAME key', () => {
+    const card = mapRecordToCard(record, 'michaelhazza/automation-v1');
+    const item = {
+      id: 'PVTI_gh',
+      'build Repo': card.fields[REPO_FIELD_NAME],
+      slug: card.fields.Slug,
+      body: card.body,
+    };
+    const normalised = normaliseItem(item);
+    expect(buildCardKey(normalised.repo, normalised.slug)).toBe(card.key);
+  });
+
+  it('also resolves a camelCased key shape, so the read does not pin one transformation', () => {
+    const item = { id: 'PVTI_c', buildRepo: 'Owner/Repo', slug: 's', body: '' };
+    expect(normaliseItem(item).repo).toBe('owner/repo');
+    expect(normaliseItem(item).slug).toBe('s');
+  });
+
+  it('prefers the exact field name over a looser match when a board carries both', () => {
+    // An operator-added `BuildRepo` alongside the real `Build Repo` normalises
+    // to the same key. Without precedence the winner would be whichever key gh
+    // emitted first, so a card could bind a different field from run to run.
+    const item = {
+      id: 'PVTI_dup',
+      BuildRepo: 'wrong/field',
+      'Build Repo': 'right/field',
+      Slug: 's',
+      body: '',
+    };
+    expect(normaliseItem(item).repo).toBe('right/field');
+  });
+
+  it('prefers a case-only match over a separator-insensitive one', () => {
+    const item = { id: 'PVTI_dup2', buildrepo: 'wrong/field', 'build Repo': 'right/field', slug: 's', body: '' };
+    expect(normaliseItem(item).repo).toBe('right/field');
+  });
+
+  it('a foreign card with neither field still reads as "not one of ours"', () => {
+    const item = { id: 'PVTI_f', title: 'someone else', body: 'no markers' };
+    const normalised = normaliseItem(item);
+    expect(normalised.repo).toBe(null);
+    expect(normalised.slug).toBe(null);
+  });
 });
