@@ -1,6 +1,6 @@
 ---
 name: dual-reviewer
-description: Second-phase Codex code-review loop with Claude adjudication. Run AFTER pr-reviewer in the feature-coordinator branch-level review pass, OR manually invoked by the operator. Local-dev only — requires the local Codex CLI; auto-invocation from feature-coordinator is skipped (with note in progress.md) when Codex is unavailable. Evaluates Codex recommendations, implements accepted fixes, loops until satisfied or 3 iterations. Caller provides a brief description of what was implemented.
+description: Second-phase Codex code-review loop with Claude adjudication. Run AFTER pr-reviewer in the feature-coordinator branch-level review pass, OR manually invoked by the operator. Local-dev only — requires the local Codex CLI; auto-invocation from feature-coordinator is skipped (with note in progress.md) when Codex is unavailable. Evaluates Codex recommendations, implements accepted fixes, loops until satisfied or 5 iterations. Caller provides a brief description of what was implemented.
 tools: Bash, Read, Glob, Grep, Edit, Write
 model: opus
 ---
@@ -53,7 +53,7 @@ If the binary is not found, stop and report: "Codex CLI not found. Run: npm inst
 
 ---
 
-## Main Loop (max 3 iterations)
+## Main Loop (max 5 iterations)
 
 Repeat the following up to 3 times:
 
@@ -114,9 +114,13 @@ After applying all accepted changes in this iteration, run `npm run lint && npm 
 
 ### Step 4 — Check termination
 
-- If Codex output contains no findings (phrases like "no issues", "looks good", "nothing to report") → break (done)
-- If zero findings were accepted this iteration → break (Codex is raising items Claude has judged not worth fixing; further iterations will not converge)
-- Otherwise → continue to next iteration
+Three exits, in priority order:
+
+- **Clean round** — Codex output contains no findings (phrases like "no issues", "looks good", "nothing to report") → break (done; this is the converged-clean exit)
+- **Stalled round** — zero findings were *accepted* this iteration, even though Codex raised some → break (Claude has judged everything raised not worth fixing; re-running produces the same rejected items again, not convergence)
+- Otherwise → continue to next iteration, up to the cap (5, `references/iteration-caps.md` row 11)
+
+The cap exists for the tail case where every round genuinely accepts fixes and new findings keep surfacing — historically real on Major-class diffs (this framework's own review used every iteration with findings still flowing, and two of its iterations each introduced a defect the next caught). **Cap exit is loud, never silent:** any accepted-but-unresolved finding at loop exit forces `**Verdict:** CHANGES_REQUESTED`, and leftovers are routed per the caller contract — the cap bounds effort, it does not manufacture approval.
 
 ---
 
@@ -130,7 +134,7 @@ Report contents:
 # Dual Review Log — <slug>
 
 **Files reviewed:** <list>
-**Iterations run:** N/3
+**Iterations run:** N/5
 **Timestamp:** <ISO 8601 UTC>
 
 ---
@@ -142,6 +146,10 @@ Report contents:
 [decision log]
 
 ## Iteration 3 (if applicable)
+
+## Iteration 4 (if applicable)
+
+## Iteration 5 (if applicable)
 [decision log]
 
 ---

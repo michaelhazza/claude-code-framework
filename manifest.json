@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.48.0",
+  "frameworkVersion": "2.49.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -777,6 +777,18 @@
     },
     {
       "path": ".claude/hooks/wargame-nudge.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/review-artifact-nudge.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/review-artifact-nudge.test.js",
       "category": "hook",
       "mode": "sync",
       "substituteAt": "never"

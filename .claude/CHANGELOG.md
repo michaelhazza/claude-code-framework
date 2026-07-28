@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.49.0 — 2026-07-29
+
+**Highlights:** Raises the Codex code-review cap from 3 to 5 iterations (operator-driven), and adds the `review-artifact-nudge` hook that enforces the v2.48.0 handoff contract at the moment of the ask instead of leaving it as prose.
+
+**Changed:**
+- `references/iteration-caps.md` row 11 + `.claude/agents/dual-reviewer.md` — **dual-reviewer cap 3 → 5 iterations per invocation.** Operator experience: real code reviews regularly need more rounds, and the framework's own review used all 3 with findings still flowing. The termination rules are unchanged and now documented explicitly at the decision point: a **clean round** (Codex raises nothing) exits as converged; a **stalled round** (Codex raises findings but zero are accepted) exits because re-running reproduces rejected items, not convergence; the cap bounds only the genuine tail where every round accepts fixes. **Cap exit stays loud** — accepted-but-unresolved findings force `CHANGES_REQUESTED`; the cap bounds effort, it does not manufacture approval.
+
+**Added:**
+- `.claude/hooks/review-artifact-nudge.js` (+ test; wired into `UserPromptSubmit`; 12th hook) — detects a request for an external-review artifact or a file link (artifact noun AND handoff intent, so "the spec says X" stays silent) and injects the § *External-review artifact handoff* contract before the response is composed. The v2.48.0 contract was prose; prose already failed twice this build (the Codex binary rule, then this very contract being violated by the ad-hoc diff request it was written about — file outside the workspace, bare-text path, no reviewer prompt). The trigger matrix in the test includes the operator's verbatim phrasings from that incident. `UserPromptSubmit` rather than `Stop`, deliberately: nudging after the fact still ships a broken handoff and costs the operator a round trip.
+
 ## 2.48.0 — 2026-07-29
 
 **Highlights:** Three operator-driven process fixes, each closing a failure that actually occurred: external-review handoffs that arrived unlinked and promptless, 92 MB of review scratch that no step ever cleaned up, and a test session that ran to completion against a stale database and only mentioned it afterwards.
