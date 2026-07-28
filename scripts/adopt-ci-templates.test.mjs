@@ -533,4 +533,39 @@ describe('CLI (main)', () => {
       expect(fs.existsSync(path.join(root, '.github', 'workflows', file))).toBe(true);
     }
   });
+
+  // Added 2026-07-28 (dual-reviewer). A job-level `permissions:` block REPLACES
+  // the workflow-level one rather than merging with it — every scope omitted
+  // from it becomes `none`. resolve-label declares its own block for
+  // `pull-requests: read`, which therefore withdrew the workflow-level
+  // `contents: read` from the ONE job in merge-gate that runs
+  // actions/checkout, breaking every gated run on a private repo. Nothing in
+  // this suite noticed, because it only asserted that the files were written.
+  it('the rendered merge-gate keeps contents: read on the job that checks out', () => {
+    const root = makeTempRoot();
+    writeCallee(root, '.github/workflows/suite.yml');
+    writeCallee(root, '.github/workflows/light-suite.yml');
+    writeConfig(root, {
+      runner_labels: ['self-hosted', 'linux'],
+      suite_workflow_path: '.github/workflows/suite.yml',
+      light_suite_workflow_path: '.github/workflows/light-suite.yml',
+      push_main_full_suite: false,
+    });
+    const res = runCli(['--repo', root, '--templates-dir', REAL_TEMPLATES_DIR, '--target', 'merge-gate']);
+    expect(res.status).toBe(0);
+
+    const rendered = fs.readFileSync(path.join(root, '.github', 'workflows', 'merge-gate.yml'), 'utf8');
+    const resolveLabelAt = rendered.indexOf('  resolve-label:');
+    expect(resolveLabelAt, 'resolve-label job must exist').toBeGreaterThan(-1);
+    // The job's own block runs from its declaration to the next job at the
+    // same indent level.
+    const nextJobAt = rendered.indexOf('\n  suite:', resolveLabelAt);
+    expect(nextJobAt).toBeGreaterThan(resolveLabelAt);
+    const jobBlock = rendered.slice(resolveLabelAt, nextJobAt);
+
+    expect(jobBlock).toMatch(/^\s+permissions:$/m);
+    expect(jobBlock).toMatch(/^\s+contents: read$/m);
+    expect(jobBlock).toMatch(/^\s+pull-requests: read$/m);
+    expect(jobBlock).toContain('actions/checkout@v4');
+  });
 });

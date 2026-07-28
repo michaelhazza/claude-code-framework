@@ -296,22 +296,24 @@ async function main() {
   }
 
   const scanTargets = [];
+  let scanDirAbs;
   if (scanDirOverride) {
-    const abs = path.resolve(scanDirOverride);
-    if (!existsSync(abs)) {
-      console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR ${abs} does not exist — misconfiguration, fail closed`);
+    scanDirAbs = path.resolve(scanDirOverride);
+    if (!existsSync(scanDirAbs)) {
+      console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR ${scanDirAbs} does not exist — misconfiguration, fail closed`);
       process.exit(1);
     }
-    scanTargets.push(...(await collectTsFiles(abs, path.relative(ROOT, abs).split(path.sep).join('/'))));
+    scanTargets.push(...(await collectTsFiles(scanDirAbs, path.relative(ROOT, scanDirAbs).split(path.sep).join('/'))));
   } else {
-    const defaultScanAbs = path.resolve(ROOT, SCAN_REL_DIR_DEFAULT);
-    if (!existsSync(defaultScanAbs)) {
-      console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR (default ${defaultScanAbs}) does not exist — misconfiguration, fail closed`);
+    scanDirAbs = path.resolve(ROOT, SCAN_REL_DIR_DEFAULT);
+    if (!existsSync(scanDirAbs)) {
+      console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR (default ${scanDirAbs}) does not exist — misconfiguration, fail closed`);
       process.exit(1);
     }
-    scanTargets.push(...(await collectTsFiles(defaultScanAbs, SCAN_REL_DIR_DEFAULT)));
+    scanTargets.push(...(await collectTsFiles(scanDirAbs, SCAN_REL_DIR_DEFAULT)));
     scanTargets.push(...SCAN_EXTRA_FILES_DEFAULT);
   }
+  const relFromRoot = (abs) => path.relative(ROOT, abs).split(path.sep).join('/') || '.';
 
   const findings = [];
   let registrationCallSites = 0;
@@ -355,10 +357,15 @@ async function main() {
   );
   // Effective configuration is echoed so a neutered run is visible as a log
   // diff. A pass line that never names its inputs looks identical whether the
-  // gate inspected the whole repo or nothing at all.
+  // gate inspected the whole repo or nothing at all. All THREE knobs are named:
+  // echoing only the method set left the two that most directly control what
+  // gets inspected invisible, and the zero-registrations tripwire does not
+  // catch narrowing — pointing GATE_SCAN_DIR at one clean route file still
+  // matches registration call sites and still prints a confident pass.
   console.log(
     `[GATE] ${GATE_ID}: violations=0 registrations=${registrationCallSites} ` +
-    `suppressed_files=${suppressedFiles} method_set={${[...REGISTRATION_METHODS].sort().join(',')}}`
+    `suppressed_files=${suppressedFiles} method_set={${[...REGISTRATION_METHODS].sort().join(',')}} ` +
+    `source_dir=${relFromRoot(sourceDirAbs)} scan_dir=${relFromRoot(scanDirAbs)} files=${scanTargets.length}`
   );
 }
 

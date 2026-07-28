@@ -275,6 +275,27 @@ async function main() {
     return;
   }
 
+  // Post-condition, checked BEFORE the write. Only the file being READ was
+  // marker-validated above; the text being WRITTEN never was, and buildBody()
+  // emits operator-authored free text (title, summary, branch) plus the whole
+  // raw status record. A status.json field holding the literal marker string
+  // therefore wrote a file with a duplicated or interleaved marker pair, exited
+  // 0, and then made every later run hit the malformed-marker refusal — a
+  // permanent, hand-repair-only brick of the file the phase-lock hook and the
+  // coordinators all read. Refusing here keeps the failure in the run that
+  // caused it, with the file untouched.
+  const writtenBegin = allIndicesOf(newText, BEGIN_MARKER).length;
+  const writtenEnd = allIndicesOf(newText, END_MARKER).length;
+  if (writtenBegin !== 1 || writtenEnd !== 1) {
+    console.error(
+      `[FAIL] generate-current-focus: the generated content would put BEGIN x${writtenBegin}, END x${writtenEnd} ` +
+        `into ${currentFocusPath} — a status.json field contains the marker text. Refusing to write: the next run ` +
+        `could not parse the result. Remove the marker text from the offending build's status.json and re-run.`
+    );
+    process.exit(1);
+    return;
+  }
+
   await writeAtomic(currentFocusPath, newText);
   console.log(
     `generate-current-focus: wrote ${records.length} active build(s), ${invalids.length} invalid entr${

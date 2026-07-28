@@ -121,7 +121,15 @@ jobs:
     name: resolve ready-to-merge (live) + tested commit identity
     runs-on: {{RUNNER_LABELS}}
     timeout-minutes: 5
+    # A job-level `permissions:` block REPLACES the workflow-level one — it does
+    # not merge with it. Every scope omitted here is set to `none`, so declaring
+    # only `pull-requests: read` withdrew the workflow-level `contents: read`
+    # from this job and `actions/checkout@v4` below could no longer fetch the
+    # tested commit on a private repo — i.e. the least-privilege floor added
+    # above broke the only job in this file that checks anything out. Both
+    # scopes must be listed together.
     permissions:
+      contents: read
       pull-requests: read
     outputs:
       ready: ${{ steps.check.outputs.ready }}

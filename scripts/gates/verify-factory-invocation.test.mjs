@@ -118,6 +118,13 @@ describe('verify-factory-invocation gate', () => {
       expect(r.stdout).toMatch(/registrations=[1-9]/);
       expect(r.stdout).toMatch(/method_set=\{/);
       expect(r.stdout).toMatch(/suppressed_files=0/);
+      // The two knobs that most directly control WHAT was inspected. The
+      // zero-registrations tripwire only catches a scan that matched nothing,
+      // so a GATE_SCAN_DIR narrowed to one clean file still prints a confident
+      // pass — naming the dirs is what makes that visible in a log diff.
+      expect(r.stdout).toMatch(/source_dir=\S+/);
+      expect(r.stdout).toMatch(/scan_dir=\S+/);
+      expect(r.stdout).toMatch(/files=[1-9]/);
     } finally {
       rmrf(dir);
     }

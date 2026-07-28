@@ -126,7 +126,53 @@ function Write-Section {
 # injection surfaces).
 function ConvertTo-BashSingleQuoted {
     param([Parameter(Mandatory = $true)][string]$Value)
+    # A double quote cannot be transported into the payload at all: Windows
+    # PowerShell re-escapes embedded double quotes while marshalling arguments
+    # to a native executable, so the string bash finally parses is NOT the
+    # string built here. Demonstrated against the live distro -- the 15-char
+    # payload  printf %s 'A"B'  arrived malformed enough that bash exited 2 with
+    # "unexpected EOF while looking for matching `'". Silently shipping a
+    # corrupted payload is the worst outcome for a function whose whole job is
+    # to make operator-controlled values safe to interpolate, so refuse instead.
+    # No legitimate input reaches here with one: -Repo is pattern-validated,
+    # and a label, runner name or Linux path containing a double quote is
+    # pathological rather than merely unusual.
+    # The message deliberately does NOT echo $Value: one call site quotes the
+    # registration token, and this file promises never to store, log or display
+    # it. The caller knows which value it passed.
+    if ($Value.Contains('"')) {
+        throw "A value being interpolated into a bash command inside the distro contains a double quote (length $($Value.Length)), which cannot be transported safely: PowerShell re-escapes it while marshalling native arguments, so the payload bash receives is not the payload built here. Refusing rather than shipping a corrupted command. Re-run with a -WorkDir / -RunnerName / -Labels value that contains no double quote."
+    }
     return "'" + ($Value -replace "'", "'\''") + "'"
+}
+
+# Every native command whose output this script CAPTURES goes through here.
+#
+# Windows PowerShell turns a native command's stderr into ErrorRecords the
+# moment that stream is redirected into the pipeline (`2>&1`, `*>`), and with
+# the script-level $ErrorActionPreference = 'Stop' above, those ErrorRecords
+# are TERMINATING: the call throws instead of returning, so $LASTEXITCODE is
+# never read and the crafted fail-closed message on the next line never runs.
+# Verified on the reference machine -- `& gh api repos/<missing> 2>&1` threw a
+# RemoteException rather than returning its "Not Found (HTTP 404)" text into
+# Test-RepoTrustBoundary's message, and a command that writes to stderr while
+# exiting 0 threw too, which is what `(sudo ./svc.sh stop || true)` does on a
+# stopped unit: bash tolerated it deliberately, PowerShell aborted the
+# uninstall anyway. Relaxing the preference for the duration of the capture
+# restores exit-code-driven control flow without weakening it for cmdlets.
+function Invoke-NativeCapture {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [string[]]$ArgumentList = @()
+    )
+    # Function-scoped: the native call below runs under it, the caller's 'Stop'
+    # is untouched.
+    $ErrorActionPreference = 'Continue'
+    $output = & $FilePath @ArgumentList 2>&1
+    return [PSCustomObject]@{
+        ExitCode = $LASTEXITCODE
+        Output   = ($output -join [Environment]::NewLine)
+    }
 }
 
 function ConvertFrom-SecureStringPlain {
@@ -139,11 +185,19 @@ function ConvertFrom-SecureStringPlain {
     }
 }
 
-# Runs a command inside the target WSL distro via `bash -lc`. Passed to
-# wsl.exe as ONE argv element (never re-concatenated into a single string by
-# PowerShell itself), so the outer call is argv-array-safe; the bash -lc
-# payload is an inherently-shell string by the nature of the vendor tooling,
-# hardened at each interpolation site via ConvertTo-BashSingleQuoted instead.
+# Runs a command inside the target WSL distro via `bash -lc`. The payload is
+# passed as ONE argv element; the bash -lc payload is an inherently-shell
+# string by the nature of the vendor tooling, hardened at each interpolation
+# site via ConvertTo-BashSingleQuoted instead.
+#
+# CONSTRAINT on every payload built for this function: it must contain NO
+# double-quote character. Windows PowerShell re-escapes embedded double quotes
+# when it marshals arguments to a native executable, so a payload containing
+# one does not survive the hop intact -- bash parses something other than what
+# was built here, and does so silently. ConvertTo-BashSingleQuoted refuses
+# double quotes in interpolated VALUES for this reason; payload text authored
+# in this file must avoid them too (use `cd ~ && pwd` over `printf %s "$HOME"`,
+# single-quoted bash literals over double-quoted ones).
 function Invoke-WslBash {
     param(
         [Parameter(Mandatory = $true)][string]$Distro,
@@ -153,20 +207,28 @@ function Invoke-WslBash {
     $wslArgs = @('-d', $Distro)
     if ($AsRoot) { $wslArgs += @('-u', 'root') }
     $wslArgs += @('--', 'bash', '-lc', $Command)
-    $output = & wsl.exe @wslArgs 2>&1
-    [PSCustomObject]@{
-        ExitCode = $LASTEXITCODE
-        Output   = ($output -join [Environment]::NewLine)
-    }
+    return Invoke-NativeCapture -FilePath 'wsl.exe' -ArgumentList $wslArgs
 }
 
 # Reads the target distro's real home directory. Starts the WSL2 VM, so it is
 # only ever called after the -WhatIf early-exit.
 function Get-DistroHome {
     param([Parameter(Mandatory = $true)][string]$Distro)
-    $result = Invoke-WslBash -Distro $Distro -Command 'printf %s "$HOME"'
+    # `cd ~ && pwd -P` rather than `printf %s "$HOME"`: the payload must carry no
+    # double quote (see Invoke-WslBash), and an UNQUOTED `$HOME` would word-split
+    # a home directory containing a space. Tilde expansion is not subject to word
+    # splitting, so this form is correct for any home path with no quoting at all.
+    #
+    # `-P` is load-bearing. Plain `pwd` prints the LOGICAL path, so on a distro
+    # where `/home` is itself a symlink (`/home -> /srv/home`) it reports
+    # `/home/alice` while the directory's real name is `/srv/home/alice`. The
+    # work-dir floor refuses a path EQUAL to the home directory, and that
+    # comparison is only sound if both sides are physical: with the logical form,
+    # `-WorkDir /srv/home/alice` compared unequal, was accepted, and would have
+    # been untarred over and later `rm -rf`'d -- the home directory itself.
+    $result = Invoke-WslBash -Distro $Distro -Command 'cd ~ && pwd -P'
     if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
-        throw "Could not read `$HOME inside '$Distro' (exit $($result.ExitCode)): $($result.Output)"
+        throw "Could not read the home directory inside '$Distro' (exit $($result.ExitCode)): $($result.Output)"
     }
     return $result.Output.Trim()
 }
@@ -191,7 +253,9 @@ function Resolve-DistroWorkDir {
         throw "Resolved home directory '$HomeDir' is not absolute -- refusing to build a work-dir path from it."
     }
     # Deliberately not named $home -- that is a PowerShell automatic variable.
-    $resolvedHome = $HomeDir.TrimEnd('/')
+    # Normalised the same way $resolved is below, so the equality test between
+    # them compares paths rather than spellings.
+    $resolvedHome = '/' + (($HomeDir -split '/' | Where-Object { $_ -ne '' -and $_ -ne '.' }) -join '/')
     $resolved = $null
     if ($Path -eq '~') {
         $resolved = $resolvedHome
@@ -205,6 +269,27 @@ function Resolve-DistroWorkDir {
         # Fail closed rather than guess.
         throw "-WorkDir '$Path' is neither absolute nor '~/'-relative. A relative path resolves against bash's working directory inside the distro, which for wsl.exe launched from a Windows directory is that directory under /mnt/c -- the runner would be installed into your repo working tree. Pass an absolute path (e.g. /home/<user>/actions-runner/<slug>) or a '~/'-prefixed one."
     }
+
+    # Canonicalise BEFORE the floor below, because that floor is a set of string
+    # comparisons and therefore only ever saw the spelling it was handed:
+    #   -WorkDir '~//'  produced "$resolvedHome/", which compares UNEQUAL to
+    #     $resolvedHome, so the home-directory refusal did not fire -- the
+    #     installer would untar across $HOME and -Uninstall would `rm -rf` it.
+    #   -WorkDir '~/./' produced "$resolvedHome/./", same escape.
+    #   -WorkDir '/home/u/x/../../../mnt/c/runner' never matched the '/mnt/'
+    #     prefix, so the Windows-filesystem refusal did not fire either.
+    # Empty and '.' segments collapse; a '..' segment is refused outright rather
+    # than resolved, because resolving it lexically would still be wrong across
+    # a symlink and this value is both untarred over and deleted wholesale.
+    $segments = @()
+    foreach ($segment in ($resolved -split '/')) {
+        if ($segment -eq '' -or $segment -eq '.') { continue }
+        if ($segment -eq '..') {
+            throw "-WorkDir '$Path' contains a '..' segment. Refusing: this directory is created, untarred over, and later deleted wholesale, and a '..' segment makes the refusals below (distro home, filesystem root, /mnt/*) unenforceable by string comparison. Pass a fully-resolved path, e.g. '$resolvedHome/actions-runner/<repo-slug>'."
+        }
+        $segments += $segment
+    }
+    $resolved = '/' + ($segments -join '/')
 
     # Floor on what the work dir is allowed to BE, not just how it is spelled.
     # -Uninstall and -Repair run `rm -rf` on this value, and the install step
@@ -228,20 +313,85 @@ function Resolve-DistroWorkDir {
     return $resolved
 }
 
+# Resolve-DistroWorkDir's floor is LEXICAL -- it can only judge the string it
+# was handed. A symlink defeats it completely: with
+# `/home/me/runner-root -> /mnt/c/Users/me/store`, the path
+# `/home/me/runner-root/owner-repo` passes every refusal in that function, and
+# then mkdir, the tarball extraction and `rm -rf` all follow the link onto the
+# Windows drive -- the generalised C22 defect the floor exists to stop.
+#
+# So ask the distro what the path actually resolves to, and re-run the SAME
+# floor against that answer rather than restating it here. `readlink -m`
+# canonicalises without requiring the path to exist yet, which matters because
+# this runs before a fresh install has created anything.
+#
+# SCOPE, precisely: `readlink` resolves SYMLINKS. It does not resolve mount
+# identity, so this does NOT catch a bind mount of /mnt/c under a distro-local
+# path, nor a WSL `[automount] root=` set to something other than /mnt -- both
+# leave the path textually unchanged and therefore accepted. Detecting those
+# needs the resolved path's filesystem type (findmnt/stat -f), which is a
+# separate mechanism; it is recorded as a follow-up rather than half-built here.
+# Do not read this function as covering them.
+#
+# The lexical path stays the one this script operates on; the canonical form is
+# used only to REFUSE. Silently relocating an install to a symlink's target
+# would be its own surprise.
+function Assert-WorkDirCanonicalWithinFloor {
+    param(
+        [Parameter(Mandatory = $true)][string]$Distro,
+        [Parameter(Mandatory = $true)][string]$WorkDir,
+        [Parameter(Mandatory = $true)][string]$HomeDir
+    )
+    $quoted = ConvertTo-BashSingleQuoted $WorkDir
+    $result = Invoke-WslBash -Distro $Distro -Command "readlink -m $quoted"
+    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
+        throw "Could not canonicalise '$WorkDir' inside '$Distro' (readlink -m exited $($result.ExitCode)): $($result.Output). Fail-closed: without the canonical path this script cannot tell whether the work directory is really on the distro's own filesystem. Note that '-m' is GNU coreutils; a BusyBox-only distro provides 'readlink [-fnv]' and will fail here. This script targets a systemd-based distro (Ubuntu by default, see -WslDistro)."
+    }
+    $canonical = $result.Output.Trim()
+
+    # The canonical path is ALWAYS rechecked -- there is deliberately no
+    # "unchanged, skip it" short-circuit. The obvious one, `if ($canonical -eq
+    # $WorkDir) { return }`, reopened the very bypass this function closes:
+    # PowerShell's -eq is case-INSENSITIVE, while Linux paths and the lexical
+    # `/mnt/` prefix test are case-SENSITIVE. With `/MNT -> /mnt`, the path
+    # `/MNT/c/...` passes the lexical floor, canonicalises to `/mnt/c/...`, and
+    # then compared EQUAL to its own pre-canonical spelling, so the recheck was
+    # skipped and the install landed on the Windows drive anyway. Rechecking
+    # unconditionally costs one pure-function call and removes the whole class.
+    try {
+        $null = Resolve-DistroWorkDir -Path $canonical -HomeDir $HomeDir
+    } catch {
+        $via = if ($canonical -ceq $WorkDir) { 'resolves to' } else { "resolves through a symlink to '$canonical', which" }
+        throw "-WorkDir '$WorkDir' $via a location the work-directory floor refuses inside '$Distro': $($_.Exception.Message)"
+    }
+}
+
 # Last line of defence before `rm -rf`. Resolve-DistroWorkDir bounds what the
 # path may be; this asserts the target actually IS a runner install before it
-# is deleted, so a mistyped-but-legal path deletes nothing. Both markers are
-# checked: `.runner` alone can be a leftover, `config.sh` alone can be an
-# unconfigured extract.
+# is deleted, so a mistyped-but-legal path deletes nothing.
+#
+# The markers are the two VENDOR-EXTRACT files, deliberately NOT `.runner`.
+# `.runner` is written by `config.sh` at registration and DELETED by
+# `config.sh remove` (Runner.Listener's unconfigure path deletes the settings
+# file). Both callers below run `config.sh remove` immediately BEFORE calling
+# this, so asserting on `.runner` refused every successful -Uninstall and
+# -Repair: the runner was deregistered from GitHub, then this threw, the work
+# directory survived, -Uninstall never removed the scheduled task, and -Repair
+# never reached its reinstall. The configured-ness of the directory is already
+# proven upstream: the main flow reached these modes only via
+# Get-ExistingRunnerConfig + Assert-NoWrongRepoRegistration, which read a valid
+# `.runner` naming exactly this repo, so all this assertion still owes is "is
+# this a runner directory at all", which the extract files answer and which
+# survives deregistration.
 function Assert-RunnerWorkDirBeforeDelete {
     param(
         [Parameter(Mandatory = $true)][string]$Distro,
         [Parameter(Mandatory = $true)][string]$WorkDir
     )
     $quoted = ConvertTo-BashSingleQuoted $WorkDir
-    $probe = Invoke-WslBash -Distro $Distro -Command "test -f $quoted/.runner && test -f $quoted/config.sh && echo RUNNER_DIR_OK"
+    $probe = Invoke-WslBash -Distro $Distro -Command "test -f $quoted/config.sh && test -f $quoted/run.sh && echo RUNNER_DIR_OK"
     if ($probe.Output -notmatch 'RUNNER_DIR_OK') {
-        throw "Refusing to delete '$WorkDir' inside '$Distro': it does not look like a runner install (expected both '.runner' and 'config.sh' to exist there). Nothing was deleted. Verify -WorkDir, or remove the directory by hand if you are certain."
+        throw "Refusing to delete '$WorkDir' inside '$Distro': it does not look like a runner install (expected both 'config.sh' and 'run.sh' to exist there). Nothing was deleted. Verify -WorkDir, or remove the directory by hand if you are certain."
     }
 }
 
@@ -253,15 +403,14 @@ function Test-WslDistroPresent {
     if (-not $wslCmd) {
         return [PSCustomObject]@{ Passed = $false; Detail = "wsl.exe not found on PATH. Install WSL2 manually: https://learn.microsoft.com/windows/wsl/install -- this script never auto-installs WSL2 (it changes the machine and may require a reboot)." }
     }
-    $raw = & wsl.exe -l -v 2>&1
-    $exit = $LASTEXITCODE
-    if ($exit -ne 0) {
-        return [PSCustomObject]@{ Passed = $false; Detail = "wsl.exe -l -v exited $exit -- $($raw -join ' ')" }
+    $listing = Invoke-NativeCapture -FilePath 'wsl.exe' -ArgumentList @('-l', '-v')
+    if ($listing.ExitCode -ne 0) {
+        return [PSCustomObject]@{ Passed = $false; Detail = "wsl.exe -l -v exited $($listing.ExitCode) -- $($listing.Output)" }
     }
     # wsl.exe writes UTF-16 to stdout when its output is redirected/captured;
     # PowerShell's default capture yields one NUL char after every ASCII
     # byte. Strip it before matching (documented wsl.exe capture quirk).
-    $text = ($raw -join "`n") -replace "`0", ''
+    $text = $listing.Output -replace "`0", ''
     $pattern = '(?im)^\s*\*?\s*' + [regex]::Escape($Distro) + '\s+(\S+)\s+(\d+)\s*$'
     $match = [regex]::Match($text, $pattern)
     if (-not $match.Success) {
@@ -280,10 +429,10 @@ function Test-GhReady {
     if (-not $ghCmd) {
         return [PSCustomObject]@{ Passed = $false; Detail = 'gh CLI not found on PATH. Install: https://cli.github.com/' }
     }
-    $versionLine = (& gh --version | Select-Object -First 1)
-    & gh auth status *> $null
-    if ($LASTEXITCODE -ne 0) {
-        return [PSCustomObject]@{ Passed = $false; Detail = "gh is installed ($versionLine) but not authenticated (gh auth status exited $LASTEXITCODE). Fix: gh auth login" }
+    $versionLine = ((Invoke-NativeCapture -FilePath 'gh' -ArgumentList @('--version')).Output -split "`r?`n" | Select-Object -First 1)
+    $authStatus = Invoke-NativeCapture -FilePath 'gh' -ArgumentList @('auth', 'status')
+    if ($authStatus.ExitCode -ne 0) {
+        return [PSCustomObject]@{ Passed = $false; Detail = "gh is installed ($versionLine) but not authenticated (gh auth status exited $($authStatus.ExitCode)). Fix: gh auth login" }
     }
     return [PSCustomObject]@{ Passed = $true; Detail = "$versionLine, authenticated" }
 }
@@ -299,9 +448,10 @@ function Test-GhReady {
 # be enforced rather than asserted.
 function Test-RepoTrustBoundary {
     param([Parameter(Mandatory = $true)][string]$Repo)
-    $visibility = & gh api "repos/$Repo" --jq '.private' 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        return [PSCustomObject]@{ Passed = $false; Detail = "could not read repo visibility for '$Repo' via gh api (exit $LASTEXITCODE): $visibility. Fail-closed -- refusing to register a persistent runner against a repo whose visibility is unknown." }
+    $probe = Invoke-NativeCapture -FilePath 'gh' -ArgumentList @('api', "repos/$Repo", '--jq', '.private')
+    $visibility = $probe.Output
+    if ($probe.ExitCode -ne 0) {
+        return [PSCustomObject]@{ Passed = $false; Detail = "could not read repo visibility for '$Repo' via gh api (exit $($probe.ExitCode)): $visibility. Fail-closed -- refusing to register a persistent runner against a repo whose visibility is unknown." }
     }
     if ("$visibility".Trim() -ne 'true') {
         return [PSCustomObject]@{ Passed = $false; Detail = "'$Repo' is PUBLIC. Refusing: a persistent self-hosted runner on a public repo lets any fork PR execute attacker-authored workflow code on this machine, as a user in the docker group (root-equivalent) with /mnt/* access to the whole Windows drive. Spec section 7.5 pins this boundary to private repos only." }
@@ -312,20 +462,45 @@ function Test-RepoTrustBoundary {
 function Show-HostPreconditions {
     param(
         [Parameter(Mandatory = $true)][string]$Distro,
-        [Parameter(Mandatory = $true)][string]$Repo
+        [Parameter(Mandatory = $true)][string]$Repo,
+        # Removal mode (-Uninstall) only ever REMOVES a runner, so every
+        # precondition that exists to protect a REGISTRATION has nothing left to
+        # protect -- while enforcing them there blocks cleanup at exactly the
+        # moment cleanup matters most.
+        #   - private-repo trust boundary: a repo that was private at install
+        #     time and has since been made public (or renamed, or deleted, all
+        #     of which read as "visibility unknown" and fail closed) could not
+        #     be cleaned up at all; the guard refused before mode dispatch,
+        #     leaving the persistent runner registered and running.
+        #   - gh readiness: nothing on the removal path calls gh. The removal
+        #     token is operator-supplied or prompted for, `config.sh remove`
+        #     and the scheduled-task cleanup are gh-free, and the only consumer
+        #     is the closing Show-RunnerStatus, whose failure is already
+        #     tolerated (it returns $false and its result is discarded). So gh
+        #     is REPORTED here but not REQUIRED.
+        # The WSL2 distro check stays required in both modes -- it is what runs
+        # the removal.
+        [switch]$RemovalMode
     )
     Write-Section "Host preconditions"
     $wslCheck = Test-WslDistroPresent -Distro $Distro
     $ghCheck = Test-GhReady
     $rows = @(
         [PSCustomObject]@{ Check = "WSL2 distro '$Distro' present (version 2)"; Passed = $wslCheck.Passed; Detail = $wslCheck.Detail }
-        [PSCustomObject]@{ Check = 'gh CLI installed + authenticated'; Passed = $ghCheck.Passed; Detail = $ghCheck.Detail }
     )
-    # Only meaningful once gh is authenticated; otherwise it would report a
-    # confusing auth error rather than the real precondition failure.
-    if ($ghCheck.Passed) {
-        $trustCheck = Test-RepoTrustBoundary -Repo $Repo
-        $rows += [PSCustomObject]@{ Check = "'$Repo' is private (trust boundary, spec 7.5)"; Passed = $trustCheck.Passed; Detail = $trustCheck.Detail }
+    if ($RemovalMode) {
+        $ghMark = if ($ghCheck.Passed) { '[OK]  ' } else { '[warn]' }
+        Write-Host "$ghMark gh CLI (informational on the removal path; not required)" -ForegroundColor DarkGray
+        Write-Host "       $($ghCheck.Detail)" -ForegroundColor DarkGray
+        Write-Host "[skip] '$Repo' private-repo trust boundary -- removal path, nothing is being registered." -ForegroundColor DarkGray
+    } else {
+        $rows += [PSCustomObject]@{ Check = 'gh CLI installed + authenticated'; Passed = $ghCheck.Passed; Detail = $ghCheck.Detail }
+        # Only meaningful once gh is authenticated; otherwise it would report a
+        # confusing auth error rather than the real precondition failure.
+        if ($ghCheck.Passed) {
+            $trustCheck = Test-RepoTrustBoundary -Repo $Repo
+            $rows += [PSCustomObject]@{ Check = "'$Repo' is private (trust boundary, spec 7.5)"; Passed = $trustCheck.Passed; Detail = $trustCheck.Detail }
+        }
     }
     foreach ($row in $rows) {
         $mark = if ($row.Passed) { '[OK]  ' } else { '[FAIL]' }
@@ -403,22 +578,54 @@ function Get-ExistingRunnerConfig {
     # whatever registration is actually there. That is exactly the
     # detect-and-skip behaviour this script's .DESCRIPTION forbids, and it is
     # the headline safety property of the whole file.
-    $probe = "if [ ! -e $quotedPath ]; then echo '__RUNNER_CFG_ABSENT__'; elif cat $quotedPath; then :; else echo '__RUNNER_CFG_UNREADABLE__'; fi"
+    # The status sentinels are OUT OF BAND with respect to the payload: the JSON
+    # is fenced between BEGIN/END lines and read only from inside that fence.
+    # Scanning the whole capture for a bare sentinel conflated the two channels
+    # in both directions. `-RunnerName '__RUNNER_CFG_ABSENT__'` is persisted
+    # verbatim as `agentName`, so a perfectly valid registration read back as
+    # "absent" -- -Uninstall then exited 0 reporting nothing to remove while the
+    # runner stayed live, and a plain install would have silently replaced it.
+    # In the other direction, anything a `bash -lc` login profile prints (nvm,
+    # direnv, conda banners) landed in the same capture and made valid JSON
+    # unparseable, tripping the "not valid JSON" refusal on a healthy install.
+    # The `echo ''` between the payload and the closing marker is load-bearing:
+    # the vendor writes `.runner` with NO trailing newline, so `cat` leaves the
+    # closing marker glued to the last JSON line and a line-anchored match for
+    # it finds nothing. Verified against a real fixture inside the distro. A
+    # blank line inside the fence is insignificant whitespace to ConvertFrom-Json.
+    $probe = "if [ ! -e $quotedPath ]; then echo '__RUNNER_CFG_ABSENT__'; elif cat $quotedPath >/dev/null 2>&1; then echo '__RUNNER_CFG_BEGIN__'; cat $quotedPath; echo ''; echo '__RUNNER_CFG_END__'; else echo '__RUNNER_CFG_UNREADABLE__'; fi"
     $result = Invoke-WslBash -Distro $Distro -Command $probe
     if ($result.ExitCode -ne 0) {
         throw "Could not determine whether a runner is already registered at '$WorkDir/.runner' inside '$Distro' (wsl exited $($result.ExitCode)): $($result.Output). Fail-closed: refusing to continue, because treating this as 'nothing registered' would let an install replace an existing registration."
     }
-    if ($result.Output -match '__RUNNER_CFG_UNREADABLE__') {
+    if ($result.Output -match '(?m)^__RUNNER_CFG_UNREADABLE__[ \t\r]*$') {
         throw "A '.runner' file exists at '$WorkDir/.runner' inside '$Distro' but could not be read (permission denied?). Refusing to continue: assuming 'nothing registered' here would clobber an existing registration via 'config.sh --replace'. Inspect it manually (e.g. 'wsl -d $Distro -u root -- cat $WorkDir/.runner') and resolve before re-running."
     }
-    if ($result.Output -match '__RUNNER_CFG_ABSENT__' -or [string]::IsNullOrWhiteSpace($result.Output)) {
+    $payload = [regex]::Match($result.Output, '(?ms)^__RUNNER_CFG_BEGIN__[ \t\r]*$(.*)^__RUNNER_CFG_END__[ \t\r]*$')
+    if ($payload.Success) {
+        $json = $payload.Groups[1].Value
+        if ([string]::IsNullOrWhiteSpace($json)) {
+            # The file EXISTS and is readable but holds nothing -- an interrupted
+            # or truncated `config.sh` run, not a clean "never registered here".
+            # Reading it as absent would send the main flow into an install that
+            # runs `config.sh --replace` over whatever state that half-written
+            # directory is in.
+            throw "A '.runner' file exists at '$WorkDir/.runner' inside '$Distro' but is empty. Refusing to continue: an empty registration file means an interrupted or truncated config.sh run, not 'nothing registered'. Inspect the work directory and remove the file by hand if it is genuinely stale, then re-run."
+        }
+        try {
+            return $json | ConvertFrom-Json
+        } catch {
+            throw "Existing '.runner' file at '$WorkDir/.runner' inside '$Distro' is present but not valid JSON. Refusing to guess its target repo -- resolve manually (inspect/remove the file) before re-running."
+        }
+    }
+    if ($result.Output -match '(?m)^__RUNNER_CFG_ABSENT__[ \t\r]*$') {
         return $null
     }
-    try {
-        return $result.Output | ConvertFrom-Json
-    } catch {
-        throw "Existing '.runner' file at '$WorkDir/.runner' inside '$Distro' is present but not valid JSON. Refusing to guess its target repo -- resolve manually (inspect/remove the file) before re-running."
-    }
+    # No recognised sentinel at all: the probe did not run as written (an
+    # unexpected wsl/bash state). Fail closed rather than inferring "absent"
+    # from unrecognised output -- that inference is the exact clobber this
+    # function exists to prevent.
+    throw "Probe for '$WorkDir/.runner' inside '$Distro' returned no recognised status marker, so it is unknown whether a runner is registered there. Fail-closed: refusing to continue. Raw output:`n$($result.Output)"
 }
 
 function Get-RepoFromGitHubUrl {
@@ -479,12 +686,12 @@ function Show-RunnerStatus {
         [string]$ExpectedName
     )
     Write-Section "Runner status for $Repo (gh api repos/$Repo/actions/runners)"
-    $json = & gh api "repos/$Repo/actions/runners" 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Could not query runner status: $json" -ForegroundColor Red
+    $query = Invoke-NativeCapture -FilePath 'gh' -ArgumentList @('api', "repos/$Repo/actions/runners")
+    if ($query.ExitCode -ne 0) {
+        Write-Host "Could not query runner status: $($query.Output)" -ForegroundColor Red
         return $false
     }
-    $parsed = $json | ConvertFrom-Json
+    $parsed = $query.Output | ConvertFrom-Json
     if (-not $parsed.runners -or @($parsed.runners).Count -eq 0) {
         Write-Host "No runners registered for $Repo." -ForegroundColor Yellow
         return $false
@@ -585,10 +792,12 @@ function Install-Runner {
     }
 
     try {
-        $versionTag = (& gh api repos/actions/runner/releases/latest --jq .tag_name 2>&1)
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($versionTag)) {
+        $release = Invoke-NativeCapture -FilePath 'gh' -ArgumentList @('api', 'repos/actions/runner/releases/latest', '--jq', '.tag_name')
+        $versionTag = $release.Output
+        if ($release.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($versionTag)) {
             throw "Could not resolve latest actions/runner release via gh api: $versionTag"
         }
+        $versionTag = $versionTag.Trim()
         $version = $versionTag.TrimStart('v').Trim()
         $tarball = "actions-runner-linux-x64-$version.tar.gz"
         $downloadUrl = "https://github.com/actions/runner/releases/download/$versionTag/$tarball"
@@ -726,7 +935,7 @@ Write-Host "  Runner name: $RunnerName"
 Write-Host "  Labels:      $LabelsCsv"
 Write-Host "  Mode:        $(if ($Uninstall) { 'uninstall' } elseif ($Repair) { 'repair' } else { 'install (or verify if already registered)' })"
 
-$hostReady = Show-HostPreconditions -Distro $WslDistro -Repo $Repo
+$hostReady = Show-HostPreconditions -Distro $WslDistro -Repo $Repo -RemovalMode:$Uninstall
 if (-not $hostReady) {
     exit 1
 }
@@ -758,16 +967,37 @@ if ($WhatIfPreference) {
     exit 0
 }
 
-$deepReady = Show-DeepPreconditions -Distro $WslDistro
-if (-not $deepReady) {
-    exit 1
+# Deep preconditions guard the INSTALL. Removal needs none of them: Docker has
+# no part in deregistering a runner, and the removal command already tolerates
+# `svc.sh stop`/`svc.sh uninstall` failing (both are `|| true`), which is the
+# only thing systemd is needed for. Requiring them on the removal path blocked
+# cleanup in exactly the degraded states that make cleanup necessary -- a
+# stopped Docker Desktop, or a distro that lost systemd, left the operator
+# unable to remove a persistent self-hosted runner at all. This is the same
+# class as the private-repo check skipped in Show-HostPreconditions above.
+if ($Uninstall) {
+    Write-Section "Deep preconditions skipped (removal path)"
+    Write-Host "Docker reachability and systemd status are install-time requirements. Removal does not" -ForegroundColor DarkGray
+    Write-Host "need them, and enforcing them here would block cleanup precisely when the machine is" -ForegroundColor DarkGray
+    Write-Host "already degraded. The WSL2 distro check above still applies -- it is what runs the removal." -ForegroundColor DarkGray
+} else {
+    $deepReady = Show-DeepPreconditions -Distro $WslDistro
+    if (-not $deepReady) {
+        exit 1
+    }
 }
 
 # Must happen before ANY use of $WorkDir in a bash payload -- see
 # Resolve-DistroWorkDir for why a bare '~' would otherwise create a literal
 # '~' directory under the Windows CWD. Deliberately after the -WhatIf
 # early-exit above: reading $HOME starts the WSL2 VM.
-$WorkDir = Resolve-DistroWorkDir -Path $WorkDir -HomeDir (Get-DistroHome -Distro $WslDistro)
+$DistroHome = Get-DistroHome -Distro $WslDistro
+$WorkDir = Resolve-DistroWorkDir -Path $WorkDir -HomeDir $DistroHome
+# The floor above is lexical; this asks the distro what the path really points
+# at and re-applies the same floor to that answer, so a symlink into /mnt (or
+# at $HOME, or at /) cannot walk the install and its later `rm -rf` off the
+# distro's own filesystem.
+Assert-WorkDirCanonicalWithinFloor -Distro $WslDistro -WorkDir $WorkDir -HomeDir $DistroHome
 Write-Host "  Work dir resolved to: $WorkDir" -ForegroundColor DarkGray
 
 $existingConfig = Get-ExistingRunnerConfig -Distro $WslDistro -WorkDir $WorkDir

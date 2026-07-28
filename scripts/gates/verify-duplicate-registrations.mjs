@@ -198,20 +198,21 @@ async function main() {
 
   const scanDirOverride = process.env.GATE_SCAN_DIR;
   const scanTargets = [];
+  let scanDirAbs;
   if (scanDirOverride) {
-    const abs = path.resolve(scanDirOverride);
-    if (!existsSync(abs)) {
-      console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR ${abs} does not exist — misconfiguration, fail closed`);
+    scanDirAbs = path.resolve(scanDirOverride);
+    if (!existsSync(scanDirAbs)) {
+      console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR ${scanDirAbs} does not exist — misconfiguration, fail closed`);
       process.exit(1);
     }
-    scanTargets.push(...(await collectTsFiles(abs, path.relative(ROOT, abs).split(path.sep).join('/'))));
+    scanTargets.push(...(await collectTsFiles(scanDirAbs, path.relative(ROOT, scanDirAbs).split(path.sep).join('/'))));
   } else {
-    const defaultScanAbs = path.resolve(ROOT, SCAN_REL_DIR_DEFAULT);
-    if (!existsSync(defaultScanAbs)) {
-      console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR (default ${defaultScanAbs}) does not exist — misconfiguration, fail closed`);
+    scanDirAbs = path.resolve(ROOT, SCAN_REL_DIR_DEFAULT);
+    if (!existsSync(scanDirAbs)) {
+      console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR (default ${scanDirAbs}) does not exist — misconfiguration, fail closed`);
       process.exit(1);
     }
-    scanTargets.push(...(await collectTsFiles(defaultScanAbs, SCAN_REL_DIR_DEFAULT)));
+    scanTargets.push(...(await collectTsFiles(scanDirAbs, SCAN_REL_DIR_DEFAULT)));
     scanTargets.push(...SCAN_EXTRA_FILES_DEFAULT);
   }
 
@@ -259,7 +260,18 @@ async function main() {
   console.log(
     `Duplicate registration check passed: ${registrations.length} registration(s) across ${scanTargets.length} file(s), 0 duplicate claims.`
   );
-  console.log(`[GATE] ${GATE_ID}: violations=0`);
+  // Effective configuration is echoed for the same reason the sibling gate
+  // echoes it: the zero-registrations tripwire above only catches a scan that
+  // matched NOTHING, so a GATE_SCAN_DIR or GATE_METHOD_SET narrowed to one
+  // clean file still prints a confident pass. A `[GATE]` line that names no
+  // inputs looks identical whether the gate inspected the whole repo or one
+  // file, which makes a neutered run invisible in a log diff.
+  const scanDirRel = path.relative(ROOT, scanDirAbs).split(path.sep).join('/') || '.';
+  console.log(
+    `[GATE] ${GATE_ID}: violations=0 registrations=${registrations.length} ` +
+    `method_set={${[...REGISTRATION_METHODS].sort().join(',')}} ` +
+    `scan_dir=${scanDirRel} files=${scanTargets.length}`
+  );
 }
 
 main().catch((error) => {

@@ -67,12 +67,14 @@
 // changes how --init must treat a pre-existing default "Status" field (see
 // above).
 //
-// UNVERIFIED ASSUMPTION (no live board exists to inspect without a
-// mutating call, which this chunk does not make): the exact JSON shape
-// `item-list`/`item-create` return for a card's custom-field values. This
-// script assumes each item object may expose field values either as flat
-// top-level keys matching the field's display name, or nested under a
-// `fieldValues` map, and hedges for both in normaliseItem() below. Because
+// FIELD-VALUE KEY SHAPE: `gh project item-list --format json` flattens custom
+// field values onto the item and lower-cases the first character of the
+// display name (`Build Repo` -> `build Repo`, `Slug` -> `slug`) rather than
+// keying them by the display name verbatim. readItemFieldValue() below
+// therefore matches a display name in three passes of decreasing precision
+// (exact, then case-insensitive, then case-and-separator-insensitive, first
+// hit wins), and also looks in a nested `fieldValues` map, so the read side
+// does not depend on pinning that transformation exactly. Because
 // `updated_at` is explicitly a card-BODY value per the contract (not a
 // field — see below), the stale/duplicate logic never depends on this
 // assumption: it reads updated_at back out of the body text instead, via a
@@ -388,8 +390,46 @@ function fetchProjectId(owner, number) {
   return data.id;
 }
 
-// ASSUMPTION (see header): unverified without a live board. Hedges for both
-// a flat field-name-keyed shape and a nested fieldValues map.
+/** Reads one custom-field value off a `gh project item-list` item, matching
+ *  the field's DISPLAY name against whatever key shape gh actually emitted.
+ *
+ *  gh does not key field values by their display name: it lower-cases the
+ *  first character and leaves the rest, so `Build Repo` comes back as
+ *  `build Repo` and `Slug` as `slug`. Reading `item['Build Repo']` therefore
+ *  matched nothing on a real result — item.repo and item.slug were always
+ *  null, every existing card failed the "is this one of ours" test in
+ *  syncBoard(), and each sync created a fresh duplicate while stale-skip,
+ *  duplicate recovery and the MERGED auto-archive all stayed unreachable.
+ *  That is the SAME failure the 'Repo' -> 'Build Repo' rename caused: the fix
+ *  for it unified the field NAME across the read and write sites but not the
+ *  key SHAPE, and the regression test built its fixture item from the code's
+ *  own constant, so it asserted the assumption rather than testing it.
+ *
+ *  Matching runs in three passes of DECREASING precision — exact, then
+ *  case-insensitive, then case-and-separator-insensitive — and the first pass
+ *  that hits wins. The looser passes keep the read working if gh's
+ *  transformation ever changes (that brittleness is what caused this bug), but
+ *  they must never outrank a better match: on a board carrying both
+ *  `Build Repo` and an operator-added `BuildRepo`, a single normalise-everything
+ *  pass would bind whichever key gh happened to emit first, so the card read
+ *  could silently flip between fields from run to run. Precedence makes the
+ *  result deterministic and independent of key enumeration order. */
+export function readItemFieldValue(item, fieldName) {
+  const sources = [item, item?.fieldValues].filter((s) => s && typeof s === 'object');
+  const foldCase = (k) => k.toLowerCase();
+  const foldAll = (k) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  for (const fold of [(k) => k, foldCase, foldAll]) {
+    const wanted = fold(fieldName);
+    for (const source of sources) {
+      for (const [key, value] of Object.entries(source)) {
+        if (fold(key) === wanted) return value;
+      }
+    }
+  }
+  return null;
+}
+
 // Exported so the read side of the upsert key is directly testable. It was
 // unexported when the 'Repo' -> 'Build Repo' rename silently broke it, which
 // is why board-sync.test.mjs could only assert the write key and the
@@ -398,8 +438,8 @@ export function normaliseItem(item) {
   const body = item.body ?? item.content?.body ?? '';
   return {
     id: item.id,
-    repo: canonicaliseRepo(item[REPO_FIELD_NAME] ?? item.fieldValues?.[REPO_FIELD_NAME] ?? null),
-    slug: item.Slug ?? item.fieldValues?.Slug ?? null,
+    repo: canonicaliseRepo(readItemFieldValue(item, REPO_FIELD_NAME)),
+    slug: readItemFieldValue(item, 'Slug'),
     updated_at: extractUpdatedAtFromBody(body),
     body,
   };

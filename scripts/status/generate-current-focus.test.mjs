@@ -319,4 +319,58 @@ describe('generate-current-focus.mjs', () => {
       rmrf(root);
     }
   });
+
+  // Added 2026-07-28 (dual-reviewer). Only the file being READ was marker-
+  // validated; the text being WRITTEN never was. buildBody() emits operator-
+  // authored free text plus the whole raw record, so a status.json field
+  // holding the literal marker string wrote a file with a duplicated marker,
+  // exited 0, and then made every LATER run hit the malformed-marker refusal —
+  // a permanent, hand-repair-only brick of the file the phase-lock hook and
+  // the coordinators read.
+  describe('generated content cannot brick the file it writes', () => {
+    it('refuses when a status field carries the END marker, instead of writing it', () => {
+      const root = makeTempRoot();
+      try {
+        writeCurrentFocus(root, `# Current Focus\n\noperator prose\n`);
+        writeStatus(root, 'alpha', { summary: `sneaky ${END_MARKER} text` });
+
+        const res = runGenerator(root);
+        expect(res.status).not.toBe(0);
+        expect(res.stderr).toMatch(/marker text/);
+        // Untouched: the refusal happens before the write, not after.
+        expect(readCurrentFocus(root)).toBe(`# Current Focus\n\noperator prose\n`);
+      } finally {
+        rmrf(root);
+      }
+    });
+
+    it('refuses on the BEGIN marker too, and leaves an existing generated block intact', () => {
+      const root = makeTempRoot();
+      try {
+        const seeded = `# Current Focus\n\n${BEGIN_MARKER}\nprior generated body\n${END_MARKER}\n\ntail prose\n`;
+        writeCurrentFocus(root, seeded);
+        writeStatus(root, 'alpha', { title: `Title with ${BEGIN_MARKER} in it` });
+
+        const res = runGenerator(root);
+        expect(res.status).not.toBe(0);
+        expect(readCurrentFocus(root)).toBe(seeded);
+      } finally {
+        rmrf(root);
+      }
+    });
+
+    it('still writes normally when no field carries marker text', () => {
+      const root = makeTempRoot();
+      try {
+        writeCurrentFocus(root, `# Current Focus\n\noperator prose\n`);
+        writeStatus(root, 'alpha', { summary: 'an ordinary summary' });
+
+        const res = runGenerator(root);
+        expect(res.status, res.stdout + res.stderr).toBe(0);
+        expect(buildSlugLines(readCurrentFocus(root))).toEqual(['alpha']);
+      } finally {
+        rmrf(root);
+      }
+    });
+  });
 });
