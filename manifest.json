@@ -956,6 +956,12 @@
       "substituteAt": "never"
     },
     {
+      "path": "scripts/runner/install-runner.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/gates/verify-factory-invocation.mjs",
       "category": "helper-script",
       "mode": "sync",

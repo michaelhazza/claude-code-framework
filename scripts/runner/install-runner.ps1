@@ -160,6 +160,47 @@ function Invoke-WslBash {
     }
 }
 
+# Reads the target distro's real home directory. Starts the WSL2 VM, so it is
+# only ever called after the -WhatIf early-exit.
+function Get-DistroHome {
+    param([Parameter(Mandatory = $true)][string]$Distro)
+    $result = Invoke-WslBash -Distro $Distro -Command 'printf %s "$HOME"'
+    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
+        throw "Could not read `$HOME inside '$Distro' (exit $($result.ExitCode)): $($result.Output)"
+    }
+    return $result.Output.Trim()
+}
+
+# Bash does NOT expand `~` inside single quotes, and every path this script
+# interpolates into a `bash -lc` payload is single-quoted as an injection
+# defence (see ConvertTo-BashSingleQuoted). Left unresolved, a `~`-prefixed
+# work dir therefore made `mkdir -p '~/actions-runner/...'` create a LITERAL
+# directory named '~' relative to bash's CWD -- and for wsl.exe launched from
+# a Windows directory that CWD is that directory under /mnt/c. The runner
+# installed itself into the caller's repo working tree instead of the distro
+# home (observed: 666 MB inside a pilot repo, breaking `git add -A` on the
+# runner's own symlinks). Resolving up-front keeps the quoting defence intact
+# while making every downstream site -- mkdir, cd, the .runner probe, and the
+# `rm -rf` in uninstall/repair -- operate on an absolute, CWD-independent path.
+function Resolve-DistroWorkDir {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$HomeDir
+    )
+    if (-not $HomeDir.StartsWith('/')) {
+        throw "Resolved home directory '$HomeDir' is not absolute -- refusing to build a work-dir path from it."
+    }
+    # Deliberately not named $home -- that is a PowerShell automatic variable.
+    $resolvedHome = $HomeDir.TrimEnd('/')
+    if ($Path -eq '~') { return $resolvedHome }
+    if ($Path.StartsWith('~/')) { return "$resolvedHome/" + $Path.Substring(2).TrimStart('/') }
+    if ($Path.StartsWith('/')) { return $Path.TrimEnd('/') }
+    # Anything else (a bare relative path, or a `~user` form this script does
+    # not resolve) would land against bash's CWD -- the /mnt/c trap above.
+    # Fail closed rather than guess.
+    throw "-WorkDir '$Path' is neither absolute nor '~/'-relative. A relative path resolves against bash's working directory inside the distro, which for wsl.exe launched from a Windows directory is that directory under /mnt/c -- the runner would be installed into your repo working tree. Pass an absolute path (e.g. /home/<user>/actions-runner/<slug>) or a '~/'-prefixed one."
+}
+
 # -- Host-level preconditions (safe: never starts the WSL2 VM) --------------
 
 function Test-WslDistroPresent {
@@ -589,7 +630,7 @@ function Uninstall-Runner {
 
 Write-Section "install-runner.ps1 -- $Repo"
 Write-Host "  Distro:      $WslDistro"
-Write-Host "  Work dir:    $WorkDir (inside the distro)"
+Write-Host "  Work dir:    $WorkDir (inside the distro; any '~' is resolved against its `$HOME at run time)"
 Write-Host "  Runner name: $RunnerName"
 Write-Host "  Labels:      $LabelsCsv"
 Write-Host "  Mode:        $(if ($Uninstall) { 'uninstall' } elseif ($Repair) { 'repair' } else { 'install (or verify if already registered)' })"
@@ -604,6 +645,9 @@ if ($WhatIfPreference) {
     Write-Host "Deep checks (Docker reachability, systemd status inside '$WslDistro', reading any"
     Write-Host "existing '.runner' registration) are skipped under -WhatIf so this preview never"
     Write-Host "starts the WSL2 VM. They run for real on a non-WhatIf invocation."
+    Write-Host "For the same reason the work dir below is shown UNRESOLVED: a leading '~' is"
+    Write-Host "expanded against the distro's `$HOME only on a real run, so the paths printed"
+    Write-Host "here are the requested form, not the final absolute one."
     Write-Host ""
     if ($Uninstall) {
         Write-Host "Would run the UNINSTALL plan: stop+uninstall the service, deregister from"
@@ -627,6 +671,13 @@ $deepReady = Show-DeepPreconditions -Distro $WslDistro
 if (-not $deepReady) {
     exit 1
 }
+
+# Must happen before ANY use of $WorkDir in a bash payload -- see
+# Resolve-DistroWorkDir for why a bare '~' would otherwise create a literal
+# '~' directory under the Windows CWD. Deliberately after the -WhatIf
+# early-exit above: reading $HOME starts the WSL2 VM.
+$WorkDir = Resolve-DistroWorkDir -Path $WorkDir -HomeDir (Get-DistroHome -Distro $WslDistro)
+Write-Host "  Work dir resolved to: $WorkDir" -ForegroundColor DarkGray
 
 $existingConfig = Get-ExistingRunnerConfig -Distro $WslDistro -WorkDir $WorkDir
 
