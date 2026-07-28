@@ -32,6 +32,30 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.45.1 — 2026-07-28
+
+**Highlights:** Follow-up release fixing defects **introduced by v2.45.0's own fixes**, plus a latent template bug that would have broken the merge gate on first real use. Found by a three-iteration Codex review loop run specifically to hunt for regressions in the previous release. 22 findings fixed, 6 rejected. Anyone on v2.45.0 should take this.
+
+**The lesson worth recording:** every *critical* finding in this round was a defect in a v2.45.0 fix. Two of the three review iterations each introduced a further bug that the next iteration caught. That is an argument for keeping the review loop at three iterations rather than one, and for verifying fixes by **execution** rather than inspection — two of the sharpest findings below were only reachable by running the code.
+
+**Fixed (regressions introduced by v2.45.0):**
+- `scripts/runner/install-runner.ps1` — **every uninstall would deregister the runner and then throw.** `config.sh remove` deletes `.runner` as part of unconfiguring, and v2.45.0's new pre-delete assertion (which requires both `.runner` and `config.sh` to be present) ran *after* it. So `-Uninstall` removed the GitHub-side registration, failed before deleting anything, and left the files behind; `-Repair` never reached its reinstall. The assertion now runs before `config.sh remove`, and the ordering constraint is documented at both call sites.
+- `scripts/runner/install-runner.ps1` — **the work-dir floor compared spellings, not paths.** `-WorkDir '~//'` resolved to `"$HOME/"`, which is not string-equal to `$HOME`, so the guard passed and the installer would have untarred across the home directory that a later `-Uninstall` would `rm -rf`. Two further bypasses surfaced after the first fix: a symlink pointing into `/mnt`, and a case-insensitive comparison combined with a logical (non-resolved) `pwd`. All verified closed against real symlinks, including `/MNT -> /mnt`.
+- `scripts/status/board-sync.mjs` — **still could not read its own cards.** v2.45.0 unified the field *name* behind one constant but not the *key shape*: `gh` emits the field as `build Repo`, not `Build Repo`, so the upsert key still never matched and every sync would still have created a duplicate. Worse, the regression test built its fixture from the code's own constant, so it asserted the implementation's assumption rather than testing the real shape — and the live board has zero cards, so nothing exercised it.
+
+**Fixed (latent, pre-existing since the template was authored):**
+- `templates/github-workflows/merge-gate.yml` — **`resolve-label` could not check out the tested commit.** A job-level `permissions:` block **replaces** the workflow-level one rather than merging with it, so every scope omitted becomes `none`. `resolve-label` declared only `pull-requests: read`, which withdrew `contents: read` from the one job in the file that runs `actions/checkout` — the gate would have failed on every run on a private repo. Present since the template was written (v2.44.4 has the same job-level block and no workflow-level one), so v2.45.0's least-privilege floor neither caused nor fixed it. Both scopes are now listed together, with the replace-not-merge semantics documented inline.
+
+**Fixed (found by executing the code, not reading it):**
+- `scripts/runner/install-runner.ps1` — `$ErrorActionPreference = 'Stop'` turns redirected native stderr into a **terminating** error, so every carefully-worded fail-closed message in the installer was unreachable, and the deliberately-tolerated `(sudo ./svc.sh stop || true)` aborted the uninstall anyway. The preference is now scoped around native invocations.
+- `scripts/runner/install-runner.ps1` — **a bash payload containing a double quote did not survive the argv hop**: `printf %s 'A"B'` made bash exit 2. That breaks `ConvertTo-BashSingleQuoted`, which is the file's entire shell-injection defence and which quotes the registration token.
+
+Plus 16 further important/minor fixes across the gates, status scripts, and their tests. Full per-finding detail with accept/reject reasoning: `tasks/review-logs/dual-review-log-dev-pipeline-v2-2026-07-28T10-54-01Z.md` in the consuming repo.
+
+**Known and deliberately not changed** (routed for an operator decision): bind mounts and a non-default WSL `[automount] root=` can still reach the Windows drive — closing that needs filesystem-type detection rather than path canonicalisation, and the comment that overclaimed coverage has been corrected. Separately, the PowerShell test suite silently **skips** on a Linux runner because `pwsh` is not installed there.
+
+**Tests:** 586 across 53 files, all green (up from 561).
+
 ## 2.45.0 — 2026-07-28
 
 **Highlights:** Review-hardening release. Fixes one reproduced data-loss bug, one broken idempotency key, and four fail-open safety gaps found by an independent code review and an adversarial threat-model review of the CI/runner surface shipped in v2.44.x. **Behaviour changes** are called out below: `-WorkDir ~` is now rejected, and `ci-light.yml` no longer inherits repo secrets.
