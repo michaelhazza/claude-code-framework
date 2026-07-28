@@ -33,7 +33,15 @@ Codex invocation follows [`references/codex-invocation-contract.md`](../../refer
 
 Locate the Codex binary:
 ```bash
-CODEX_BIN=$(command -v codex 2>/dev/null || echo "${CODEX_FALLBACK_PATH:-codex}")
+# Newer-of-PATH-vs-npm-shim resolution, per references/codex-invocation-contract.md.
+# Do NOT substitute `command -v codex`: on machines with two installs that
+# silently selects the PATH one, which may be older and hard-error against the
+# provisioned model. The script fails closed (exit 1, no stdout) when no
+# runnable binary exists.
+CODEX_BIN=$(bash scripts/codex/resolve-codex-bin.sh) || {
+  echo "No runnable Codex binary found — record a REVIEW_GAP and stop; do not proceed unsandboxed." >&2
+  exit 1
+}
 ```
 Verify auth: `$CODEX_BIN login status`. If not authenticated or the binary is not found, record `Round A: Codex unavailable — <reason>` in the output (below) and proceed to Round B — this tier is advisory, not a gate, so a Codex outage does not block the ChatGPT pass.
 

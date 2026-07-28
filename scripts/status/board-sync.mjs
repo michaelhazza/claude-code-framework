@@ -275,6 +275,27 @@ export function shouldSkipStale(card, record) {
 /** Auto-archive: MERGED/ABANDONED records archive their card once
  *  ARCHIVE_AFTER_DAYS has elapsed since updated_at. `now` is always
  *  injected — never reads the real clock, so this stays deterministic. */
+/**
+ * Composes the per-record card decision. Extracted and exported because the
+ * defect it now pins was a COMPOSITION bug, not a predicate bug: both
+ * shouldSkipStale and shouldArchive were individually correct, but the sync
+ * loop evaluated archival independently of whether it had accepted the record,
+ * so a stale terminal record archived a newer active card. A test over the two
+ * predicates alone could never have caught that.
+ *
+ * The invariant: `archive` is only ever true when the incoming record was
+ * ACCEPTED. A record too stale to apply is too stale to archive on.
+ */
+export function decideCardAction(survivor, record, now) {
+  if (!survivor) {
+    return { create: true, update: false, archive: false, skipped: false };
+  }
+  if (shouldSkipStale(survivor, record)) {
+    return { create: false, update: false, archive: false, skipped: true };
+  }
+  return { create: false, update: true, archive: shouldArchive(record, now), skipped: false };
+}
+
 export function shouldArchive(record, now) {
   if (record.status !== 'MERGED' && record.status !== 'ABANDONED') return false;
   const ageMs = now.getTime() - new Date(record.updated_at).getTime();
@@ -571,17 +592,29 @@ async function syncBoard(root, repository, boardConfig) {
         archiveItem(boardCtx.owner, boardCtx.number, dup.id);
       }
 
-      if (!survivor) {
+      // One decision, made in a pure function (decideCardAction) so the
+      // accept-then-archive invariant is testable. Previously the loop
+      // evaluated archival independently of the stale check, so a stale
+      // terminal record archived a NEWER active card: existing card updated
+      // 28 Jul, incoming MERGED record dated 1 Jul -> update correctly skipped,
+      // then the newer card archived on the strength of the record just
+      // rejected. Duplicate archival above is unaffected — it keys on card
+      // identity, not on the incoming record's freshness.
+      const action = decideCardAction(survivor, record, now);
+
+      if (action.create) {
         createCard(boardCtx, fields, card);
-      } else if (shouldSkipStale(survivor, record)) {
-        console.warn(`[board-sync] skip ${card.key} — existing card is newer than the incoming record`);
-      } else {
+      } else if (action.skipped) {
+        console.warn(
+          `[board-sync] skip ${card.key} — existing card is newer than the incoming record ` +
+            `(no update, and no archival: a record too stale to apply is too stale to archive on)`
+        );
+      } else if (action.update) {
         updateCard(boardCtx, fields, survivor.id, card);
       }
 
-      if (shouldArchive(record, now)) {
-        const targetId = survivor ? survivor.id : null;
-        if (targetId) archiveItem(boardCtx.owner, boardCtx.number, targetId);
+      if (action.archive && survivor) {
+        archiveItem(boardCtx.owner, boardCtx.number, survivor.id);
       }
     } catch (err) {
       console.warn(`[board-sync] gh failure syncing ${record.slug} — recorded, non-blocking: ${err.message}`);

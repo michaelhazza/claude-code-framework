@@ -374,3 +374,48 @@ describe('generate-current-focus.mjs', () => {
     });
   });
 });
+
+// Regression: Codex review, 2026-07-28. Terminal and UNRECOGNISED statuses
+// shared one bare `continue`, so a typo'd or future-enum status vanished from
+// the generated block entirely — despite this module documenting a fail-loud
+// INVALID channel for schema problems, and a status outside the schema enum
+// being exactly that.
+describe('unrecognised vs terminal status', () => {
+  it('a typo status surfaces in the INVALID channel instead of vanishing', () => {
+    const root = makeTempRoot();
+    try {
+      writeStatus(root, 'healthy');
+      writeStatus(root, 'typo-build', { status: 'REVIEWNG' });   // missing I
+
+      const r = runGenerator(root);
+      expect(r.status, r.stdout + r.stderr).toBe(0);   // still exit 0 — recorded, not fatal
+
+      const out = readCurrentFocus(root);
+      expect(out).toContain('healthy');                 // healthy build unaffected
+      expect(out).toMatch(/INVALID: typo-build/);
+      expect(out).toMatch(/unrecognised status/);
+      expect(out).toContain('REVIEWNG');                // names the offending value
+    } finally {
+      rmrf(root);
+    }
+  });
+
+  it('MERGED and ABANDONED are excluded SILENTLY — they are not invalid', () => {
+    const root = makeTempRoot();
+    try {
+      writeStatus(root, 'active-one');
+      writeStatus(root, 'done-one', { status: 'MERGED' });
+      writeStatus(root, 'dropped-one', { status: 'ABANDONED' });
+
+      const r = runGenerator(root);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+
+      const out = readCurrentFocus(root);
+      expect(out).toContain('active-one');
+      expect(out).not.toMatch(/INVALID: done-one/);
+      expect(out).not.toMatch(/INVALID: dropped-one/);
+    } finally {
+      rmrf(root);
+    }
+  });
+});

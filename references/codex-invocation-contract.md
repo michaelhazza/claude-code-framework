@@ -28,11 +28,18 @@ Write-enabled mode never governs a review tier. A review tier that needs write-e
 
 Resolve the runnable Codex binary as the **newer of PATH vs the npm global shim**, not "whatever PATH gives first." An older PATH-resolved binary can hard-error against a newer model even though a newer binary is installed and reachable elsewhere.
 
+**There is one implementation. Call it; do not re-derive it.**
+
 ```bash
-CODEX_BIN=$(command -v codex 2>/dev/null || echo "${CODEX_FALLBACK_PATH:-codex}")
+CODEX_BIN=$(bash scripts/codex/resolve-codex-bin.sh) || {
+  echo "No runnable Codex binary found — record a REVIEW_GAP and stop." >&2
+  exit 1
+}
 ```
 
-is the existing lookup used by `spec-reviewer` and `dual-reviewer`; it resolves whatever `codex` is first on PATH. Tiers built or re-mechanised against this contract additionally verify version currency: if a project's `.claude/context/agent-context.md` pins a `CODEX_FALLBACK_PATH` (or the caller otherwise knows of a second installed binary — e.g. an npm-global shim alongside a PATH install), prefer the **newer-versioned** binary of the two over blind PATH-first resolution. `codex --version` (or equivalent) is the comparison signal.
+`scripts/codex/resolve-codex-bin.sh` considers the PATH binary, the npm global shim, and `CODEX_FALLBACK_PATH` (which a project may pin in `.claude/context/agent-context.md`), reads `--version` from each, and returns the **newest**. It fails closed — exit 1 with empty stdout — when nothing runnable is found, rather than emitting a bare `codex` for a caller to invoke blindly. It syncs to consumers at the same relative path, so the command above works verbatim in any adopting repo.
+
+> **Do not substitute `CODEX_BIN=$(command -v codex …)`.** That was the lookup every tier used until 2026-07-28, and it is PATH-first with no version comparison. This section already required newer-of resolution at the time, but the rule existed **only as prose while six agent files carried the PATH-first snippet** — so on the operator's reference machine every tier silently selected 0.138.0, which hard-errors, while a working 0.144.3 sat in the npm prefix. Codex found the contradiction in review. The lesson generalises: a resolution rule stated in prose and re-implemented per caller will drift; one script, called by every caller, cannot.
 
 **Illustrative note (machine-specific, not a rule):** on the operator's reference machine, the PATH binary (`…/Programs/OpenAI/Codex/bin/codex`, version 0.138.0) hard-errors on the account's provisioned model; the working binary is the npm shim (`/c/Users/Michael/AppData/Roaming/npm/codex`, version 0.144.3). This is one instance of the newer-of-PATH-vs-npm-shim rule above, not a hardcoded path — other machines and other consuming repos will have different binary locations and versions.
 

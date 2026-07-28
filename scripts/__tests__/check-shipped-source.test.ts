@@ -33,6 +33,10 @@ function runGateOn(files: Record<string, string>, manifestPaths: string[]): { st
   return { status: result.status, stdout: result.stdout };
 }
 
+// Spawn-heavy: every case runs the real gate as a child process. The timeout
+// that makes this reliable under full-suite load is set globally in
+// vitest.config.mjs rather than per-file, because the same flakiness affects
+// every spawn-based suite here.
 describe('check-shipped-source gate', () => {
   test('passes on ESM .js, .cjs CommonJS, and CJS .js governed by a shipped commonjs package.json', () => {
     const { status, stdout } = runGateOn(

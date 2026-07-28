@@ -69,6 +69,12 @@ const REQUIRED_KEYS = [
 // ABANDONED) are deliberately absent — they are excluded from the block.
 const STATUS_PRIORITY = { MERGE_READY: 0, REVIEWING: 1, BUILDING: 2, PLANNING: 3 };
 
+// The terminal half of the schema's status enum (schemas/build-status.schema.json).
+// Named explicitly so "terminal, deliberately excluded" is distinguishable from
+// "unrecognised, therefore invalid" — collapsing the two is how a typo'd status
+// silently disappeared from the generated block.
+const TERMINAL_STATUSES = new Set(['MERGED', 'ABANDONED']);
+
 function parseArgs(argv) {
   let root = process.cwd();
   const idx = argv.indexOf('--root');
@@ -153,7 +159,21 @@ async function collectRecords(root) {
       continue;
     }
 
-    if (!Object.prototype.hasOwnProperty.call(STATUS_PRIORITY, data.status)) continue; // terminal or unrecognised — excluded
+    // Terminal and UNRECOGNISED are different outcomes and must not share a
+    // branch. Both were previously a bare `continue`, so a typo'd or
+    // future-enum status vanished from the block entirely — silently, despite
+    // this module's documented promise of a fail-loud INVALID channel for
+    // schema problems. A status outside the schema enum IS a schema problem.
+    if (TERMINAL_STATUSES.has(data.status)) continue; // MERGED / ABANDONED — correctly excluded from active builds
+    if (!Object.prototype.hasOwnProperty.call(STATUS_PRIORITY, data.status)) {
+      invalids.push({
+        dir: dirName,
+        error:
+          `unrecognised status ${JSON.stringify(data.status)} — expected one of ` +
+          `${[...Object.keys(STATUS_PRIORITY), ...TERMINAL_STATUSES].join(', ')}`,
+      });
+      continue;
+    }
 
     records.push({
       slug: data.slug,

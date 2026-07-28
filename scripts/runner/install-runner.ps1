@@ -764,6 +764,101 @@ function Unregister-RunnerAutoStart {
     Write-Host "Removed Task Scheduler task '$TaskName'." -ForegroundColor Green
 }
 
+# -- Partial-install residue (the C22 state) ---------------------------------
+#
+# A missing '.runner' means no REGISTRATION, not no residue. The C22 spike
+# produced precisely this: the runner tarball extracted, config.sh timed out,
+# so a large work dir existed with no '.runner'. -Uninstall used to report
+# "nothing to uninstall" and exit 0 in that state, leaving the operator to
+# clean up the one case the script most needs to handle.
+#
+# $WorkDir reaching here has already passed Resolve-DistroWorkDir AND
+# Assert-WorkDirCanonicalWithinFloor in the main flow, so it is bounded to the
+# distro's own filesystem and cannot be $HOME, '/' or /mnt/*.
+function Get-PartialInstallResidue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Distro,
+        [Parameter(Mandatory = $true)][string]$WorkDir,
+        [Parameter(Mandatory = $true)][string]$TaskName
+    )
+    $quoted = ConvertTo-BashSingleQuoted $WorkDir
+    # One round trip: does the dir exist, does it look like a runner extract,
+    # and is there a systemd unit for it?
+    $probeCmd = "if [ -d $quoted ]; then echo DIR_YES; else echo DIR_NO; fi; " +
+                "if [ -f $quoted/config.sh ]; then echo EXTRACT_YES; else echo EXTRACT_NO; fi; " +
+                "ls /etc/systemd/system/actions.runner.*.service 2>/dev/null | head -1"
+    $probe = Invoke-WslBash -Distro $Distro -Command $probeCmd
+
+    $items = @()
+    $workDirExists = $probe.Output -match 'DIR_YES'
+    $looksLikeExtract = $probe.Output -match 'EXTRACT_YES'
+    $unitMatch = [regex]::Match($probe.Output, '/etc/systemd/system/(actions\.runner\.[^\s]+\.service)')
+    $serviceUnit = if ($unitMatch.Success) { $unitMatch.Groups[1].Value } else { $null }
+
+    if ($workDirExists) {
+        $sizeProbe = Invoke-WslBash -Distro $Distro -Command "du -sh $quoted 2>/dev/null | cut -f1"
+        $size = ($sizeProbe.Output -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1)
+        $descriptor = if ($looksLikeExtract) { 'runner extract, config.sh present' } else { 'present but NOT a recognisable runner extract' }
+        $items += "work dir '$WorkDir' inside '$Distro' ($descriptor$(if ($size) { ", $($size.Trim())" }))"
+    }
+    if ($serviceUnit) { $items += "systemd unit '$serviceUnit' inside '$Distro'" }
+
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($task) { $items += "Task Scheduler task '$TaskName' (Windows, AtStartup/SYSTEM)" }
+
+    return [PSCustomObject]@{
+        Found            = ($items.Count -gt 0)
+        Items            = $items
+        WorkDirExists    = $workDirExists
+        LooksLikeExtract = $looksLikeExtract
+        ServiceUnit      = $serviceUnit
+        TaskExists       = [bool]$task
+    }
+}
+
+function Remove-PartialInstallResidue {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [Parameter(Mandatory = $true)][string]$Distro,
+        [Parameter(Mandatory = $true)][string]$WorkDir,
+        [Parameter(Mandatory = $true)][string]$TaskName,
+        [Parameter(Mandatory = $true)][PSCustomObject]$Residue
+    )
+    if (-not $PSCmdlet.ShouldProcess("partial-install residue for '$WorkDir' in '$Distro'", 'Remove')) { return }
+
+    if ($Residue.ServiceUnit) {
+        $quotedUnit = ConvertTo-BashSingleQuoted $Residue.ServiceUnit
+        Invoke-WslBash -Distro $Distro -Command "(sudo systemctl stop $quotedUnit || true) && (sudo systemctl disable $quotedUnit || true) && sudo rm -f /etc/systemd/system/$quotedUnit && sudo systemctl daemon-reload" | Out-Null
+        Write-Host "Removed systemd unit '$($Residue.ServiceUnit)'." -ForegroundColor Green
+    }
+
+    if ($Residue.TaskExists) {
+        Unregister-RunnerAutoStart -TaskName $TaskName
+    }
+
+    if ($Residue.WorkDirExists) {
+        if (-not $Residue.LooksLikeExtract) {
+            # Refuse rather than guess. Without '.runner' OR 'config.sh' there is
+            # no evidence this directory belongs to a runner, and deleting an
+            # operator directory that merely shares the configured path is worse
+            # than leaving residue behind.
+            Write-Host ""
+            Write-Host "NOT deleting '$WorkDir': it exists but contains no 'config.sh', so nothing proves it is a runner install." -ForegroundColor Yellow
+            Write-Host "Inspect and remove it by hand if you are certain:" -ForegroundColor Yellow
+            Write-Host "  wsl -d $Distro -- ls -la '$WorkDir'" -ForegroundColor Yellow
+        } else {
+            $quotedDelete = ConvertTo-BashSingleQuoted $WorkDir
+            $del = Invoke-WslBash -Distro $Distro -Command "rm -rf -- $quotedDelete"
+            if ($del.ExitCode -ne 0) { throw "Deleting work dir '$WorkDir' failed:`n$($del.Output)" }
+            Write-Host "Deleted work dir '$WorkDir'." -ForegroundColor Green
+        }
+    }
+
+    Write-Host ""
+    Write-Host "Partial-install residue cleared. No GitHub-side registration existed, so nothing was deregistered." -ForegroundColor Green
+    Write-Host "Confirm the repo has no orphaned runner: gh api repos/$Repo/actions/runners --jq '.total_count'" -ForegroundColor Cyan
+}
+
 # -- Mode: fresh install -----------------------------------------------------
 
 function Install-Runner {
@@ -953,6 +1048,10 @@ if ($WhatIfPreference) {
         Write-Host "Would run the UNINSTALL plan: stop+uninstall the service, deregister from"
         Write-Host "GitHub (removal token), delete '$WorkDir', remove Task Scheduler task '$TaskName',"
         Write-Host "then confirm absence via gh api."
+        Write-Host "If NO '.runner' registration is found, would instead sweep partial-install residue"
+        Write-Host "(the C22 state: extracted work dir, systemd unit, auto-start task, no registration)."
+        Write-Host "The work dir is deleted in that sweep only when it contains 'config.sh'; otherwise it"
+        Write-Host "is reported and left alone rather than guessed at."
     } elseif ($Repair) {
         Write-Host "Would run the REPAIR plan: remove the existing registration at '$WorkDir', then"
         Write-Host "the full INSTALL plan (see below) against the same repo."
@@ -1004,7 +1103,25 @@ $existingConfig = Get-ExistingRunnerConfig -Distro $WslDistro -WorkDir $WorkDir
 
 if ($Uninstall) {
     if ($null -eq $existingConfig) {
-        Write-Host "Nothing registered at '$WorkDir' in '$WslDistro' -- nothing to uninstall." -ForegroundColor Yellow
+        # No '.runner' means no REGISTRATION -- it does not mean no residue.
+        # The C22 spike produced exactly this state: the tarball extracted and
+        # config.sh timed out, so a 666 MB work dir (and potentially an
+        # auto-start task) existed with no '.runner' at all. The previous code
+        # printed "nothing to uninstall" and exited 0, leaving the operator to
+        # clean up by hand the one state this script most needs to handle.
+        Write-Host "No runner registration ('.runner') at '$WorkDir' in '$WslDistro'." -ForegroundColor Yellow
+        Write-Host "Checking for partial-install residue (interrupted install, or a prior failed config.sh)..." -ForegroundColor Yellow
+
+        $residue = Get-PartialInstallResidue -Distro $WslDistro -WorkDir $WorkDir -TaskName $TaskName
+        if (-not $residue.Found) {
+            Write-Host "Nothing to uninstall: no registration, no work dir, no auto-start task, no service unit." -ForegroundColor Green
+            exit 0
+        }
+
+        Write-Host ""
+        Write-Host "Partial-install residue found:" -ForegroundColor Yellow
+        foreach ($item in $residue.Items) { Write-Host "  - $item" }
+        Remove-PartialInstallResidue -Distro $WslDistro -WorkDir $WorkDir -TaskName $TaskName -Residue $residue
         exit 0
     }
     Assert-NoWrongRepoRegistration -ExistingConfig $existingConfig -ExpectedRepo $Repo | Out-Null

@@ -699,7 +699,15 @@ For each Blocking finding from pr-reviewer:
 Codex availability check (a repo may pin a machine-specific fallback path in its `.claude/context/agent-context.md` section for this agent):
 
 ```bash
-CODEX_BIN=$(command -v codex 2>/dev/null || echo "${CODEX_FALLBACK_PATH:-codex}")
+# Newer-of-PATH-vs-npm-shim resolution, per references/codex-invocation-contract.md.
+# Do NOT substitute `command -v codex`: on machines with two installs that
+# silently selects the PATH one, which may be older and hard-error against the
+# provisioned model. The script fails closed (exit 1, no stdout) when no
+# runnable binary exists.
+CODEX_BIN=$(bash scripts/codex/resolve-codex-bin.sh) || {
+  echo "No runnable Codex binary found — record a REVIEW_GAP and stop; do not proceed unsandboxed." >&2
+  exit 1
+}
 if [ ! -x "$CODEX_BIN" ] && [ ! -f "$CODEX_BIN" ]; then
   echo "dual-reviewer: skipped — Codex CLI unavailable or unauthenticated"
 fi

@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.45.1",
+  "frameworkVersion": "2.46.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -952,6 +952,18 @@
     {
       "path": "scripts/runner/install-runner.ps1",
       "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/codex/resolve-codex-bin.sh",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/codex/resolve-codex-bin.test.mjs",
+      "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"
     },

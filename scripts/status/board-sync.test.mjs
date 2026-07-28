@@ -13,6 +13,7 @@ import {
   buildCardKey,
   canonicaliseRepo,
   chooseSurvivor,
+  decideCardAction,
   extractUpdatedAtFromBody,
   mapRecordToCard,
   normaliseItem,
@@ -348,5 +349,60 @@ describe('upsert key: read side matches write side', () => {
     const normalised = normaliseItem(item);
     expect(normalised.repo).toBe(null);
     expect(normalised.slug).toBe(null);
+  });
+});
+
+// Regression: Codex review, 2026-07-28. shouldSkipStale and shouldArchive were
+// each correct, but the sync loop evaluated archival INDEPENDENTLY of the stale
+// check, so a stale terminal record archived a newer active card. The bug was in
+// the composition, so it is pinned at the composition.
+describe('decideCardAction — accept-then-archive invariant', () => {
+  const now = new Date('2026-07-28T00:00:00Z');
+
+  it('a stale MERGED record does NOT archive a newer active card (the reported bug)', () => {
+    const survivor = { id: 'PVTI_active', updated_at: '2026-07-28T00:00:00Z' };
+    const staleTerminal = baseRecord({ status: 'MERGED', updated_at: '2026-07-01T00:00:00Z' });
+
+    const a = decideCardAction(survivor, staleTerminal, now);
+
+    expect(a.skipped).toBe(true);
+    expect(a.update).toBe(false);
+    expect(a.archive).toBe(false);   // was true: archived a card 27 days newer than the record
+  });
+
+  it('an accepted, aged MERGED record still archives', () => {
+    const survivor = { id: 'PVTI_1', updated_at: '2026-07-01T00:00:00Z' };
+    const record = baseRecord({ status: 'MERGED', updated_at: '2026-07-13T00:00:00Z' });
+
+    const a = decideCardAction(survivor, record, now);
+
+    expect(a.skipped).toBe(false);
+    expect(a.update).toBe(true);
+    expect(a.archive).toBe(true);
+  });
+
+  it('an accepted, recent MERGED record updates without archiving', () => {
+    const survivor = { id: 'PVTI_1', updated_at: '2026-07-01T00:00:00Z' };
+    const record = baseRecord({ status: 'MERGED', updated_at: '2026-07-27T00:00:00Z' });
+
+    const a = decideCardAction(survivor, record, now);
+    expect(a.update).toBe(true);
+    expect(a.archive).toBe(false);
+  });
+
+  it('no survivor -> create, never archive', () => {
+    const record = baseRecord({ status: 'MERGED', updated_at: '2026-07-01T00:00:00Z' });
+    const a = decideCardAction(null, record, now);
+    expect(a).toEqual({ create: true, update: false, archive: false, skipped: false });
+  });
+
+  it('archive is never true while skipped is true, across a status sweep', () => {
+    const survivor = { id: 'PVTI_active', updated_at: '2026-07-28T00:00:00Z' };
+    for (const status of ['MERGED', 'ABANDONED', 'BUILDING', 'REVIEWING', 'MERGE_READY', 'PLANNING']) {
+      const stale = baseRecord({ status, updated_at: '2026-01-01T00:00:00Z' });
+      const a = decideCardAction(survivor, stale, now);
+      expect(a.skipped, status).toBe(true);
+      expect(a.archive, status).toBe(false);
+    }
   });
 });
