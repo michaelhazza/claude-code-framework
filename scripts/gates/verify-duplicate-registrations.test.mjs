@@ -41,6 +41,10 @@ function runGate(dir, env = {}) {
     timeout: 60000,
     env: {
       ...process.env,
+      // Tests point the gate at temp dirs, which the corpus-narrowing guard
+      // would refuse under CI=true. Fixture mode is the sanctioned test
+      // channel; cases that test the GUARD ITSELF override this to ''.
+      GATE_FIXTURE_MODE: '1',
       GATE_SCAN_DIR: dir,
       ...env,
     },
@@ -106,6 +110,36 @@ describe('verify-duplicate-registrations gate', () => {
       expect(r.stdout).toMatch(/method_set=\{/);
       expect(r.stdout).toMatch(/scan_dir=\S+/);
       expect(r.stdout).toMatch(/files=[1-9]/);
+    } finally {
+      rmrf(dir);
+    }
+  });
+
+  // Regression: external review, 2026-07-29 — the reviewer's exact scenario:
+  // GATE_SCAN_DIR at the committed clean fixture exits 0 while inspecting none
+  // of server/routes. Both narrowing routes must now refuse.
+  it('committed fixture tree as scan root WITHOUT fixture mode — exit 1', () => {
+    const r = runGate(FIXTURES_DIR, { GATE_FIXTURE_MODE: '' });
+    expect(r.status, r.stdout + r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/fixture tree/);
+  });
+
+  it('CI=true + non-default scan root WITHOUT fixture mode — exit 1', () => {
+    const dir = isolatedFixtureDir('clean-registrations.ts');
+    try {
+      const r = runGate(dir, { GATE_FIXTURE_MODE: '', CI: 'true' });
+      expect(r.status, r.stdout + r.stderr).toBe(1);
+      expect(r.stderr).toMatch(/narrowed corpus can be arbitrarily clean/);
+    } finally {
+      rmrf(dir);
+    }
+  });
+
+  it('CI=true + non-default scan root WITH fixture mode — runs normally', () => {
+    const dir = isolatedFixtureDir('clean-registrations.ts');
+    try {
+      const r = runGate(dir, { GATE_FIXTURE_MODE: '1', CI: 'true' });
+      expect(r.status, r.stdout + r.stderr).toBe(0);
     } finally {
       rmrf(dir);
     }

@@ -419,3 +419,51 @@ describe('unrecognised vs terminal status', () => {
     }
   });
 });
+
+// Regression: external review, 2026-07-29 (and pr-reviewer PR-012 before it).
+// A record with every required KEY but a malformed VALUE passed the presence
+// check and crashed buildBody on `record.blockers.length` — the run exited
+// non-zero and wrote NOTHING, so one bad build directory silently took every
+// healthy build's status down with it. Malformed values now take the
+// documented INVALID channel and the run completes.
+describe('key-complete but malformed records take the INVALID channel', () => {
+  it('blockers: null does not crash the run — the reported bug', () => {
+    const root = makeTempRoot();
+    try {
+      writeStatus(root, 'healthy');
+      writeStatus(root, 'bad-blockers', { blockers: null });
+
+      const r = runGenerator(root);
+      expect(r.status, r.stdout + r.stderr).toBe(0);   // completes, never aborts
+
+      const out = readCurrentFocus(root);
+      expect(out).toContain('healthy');                 // healthy builds survive
+      expect(out).toMatch(/INVALID: bad-blockers/);
+    } finally {
+      rmrf(root);
+    }
+  });
+
+  it('a non-string summary and a bogus phase are also INVALID, not fatal', () => {
+    const root = makeTempRoot();
+    try {
+      writeStatus(root, 'healthy');
+      writeStatus(root, 'bad-summary', { summary: 42 });
+      writeStatus(root, 'bad-phase', { phase: 'not-a-real-phase' });
+
+      const r = runGenerator(root);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+
+      const out = readCurrentFocus(root);
+      expect(out).toContain('healthy');
+      expect(out).toMatch(/INVALID: bad-summary/);
+      // This repo ships ajv, so the schema path is DETERMINISTIC here and the
+      // phase enum ("spec"|"plan"|"build"|"review"|"finalise") must catch it.
+      // (Without ajv the structural floor guards only crash vectors — that
+      // degradation is deliberate and documented in validateRecordShape.)
+      expect(out).toMatch(/INVALID: bad-phase/);
+    } finally {
+      rmrf(root);
+    }
+  });
+});

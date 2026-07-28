@@ -764,6 +764,45 @@ function Unregister-RunnerAutoStart {
     Write-Host "Removed Task Scheduler task '$TaskName'." -ForegroundColor Green
 }
 
+# Resolves THIS repo's systemd unit, never a global first-match. Two sources,
+# in order of trust:
+#   1. `$WorkDir/.service` -- svc.sh writes the exact unit name there at install
+#      time. Per-work-dir by construction; no pattern matching involved.
+#   2. Slug-scoped enumeration -- filter every actions.runner.* unit file down
+#      to those whose name starts with `actions.runner.<RepoSlug>.` (case-
+#      insensitive: the vendor derives its unit name from the repo's original
+#      casing while $RepoSlug is lowercased). Accept EXACTLY one. Zero or
+#      several -> return nothing and let the caller refuse, because guessing
+#      is how repo B's cleanup stops repo A's runner.
+function Get-RunnerServiceUnit {
+    param(
+        [Parameter(Mandatory = $true)][string]$Distro,
+        [Parameter(Mandatory = $true)][string]$WorkDir,
+        [Parameter(Mandatory = $true)][string]$RepoSlug
+    )
+    $quotedDir = ConvertTo-BashSingleQuoted $WorkDir
+    $fromFile = Invoke-WslBash -Distro $Distro -Command "cat $quotedDir/.service 2>/dev/null"
+    $unit = $fromFile.Output.Trim()
+    if ($fromFile.ExitCode -eq 0 -and $unit -match '^actions\.runner\..+\.service$') {
+        return $unit
+    }
+
+    $enumerate = Invoke-WslBash -Distro $Distro -Command "ls /etc/systemd/system/actions.runner.*.service 2>/dev/null"
+    $slugPrefix = "actions.runner.$RepoSlug."
+    $matches2 = @()
+    foreach ($line in ($enumerate.Output -split "`n")) {
+        $m = [regex]::Match($line.Trim(), '/etc/systemd/system/(actions\.runner\.[^/\s]+\.service)$')
+        if ($m.Success -and $m.Groups[1].Value.ToLowerInvariant().StartsWith($slugPrefix.ToLowerInvariant())) {
+            $matches2 += $m.Groups[1].Value
+        }
+    }
+    if ($matches2.Count -eq 1) { return $matches2[0] }
+    if ($matches2.Count -gt 1) {
+        Write-Host "Found $($matches2.Count) unit files matching '$slugPrefix*' -- ambiguous, refusing to pick one: $($matches2 -join ', ')" -ForegroundColor Yellow
+    }
+    return $null
+}
+
 # -- Partial-install residue (the C22 state) ---------------------------------
 #
 # A missing '.runner' means no REGISTRATION, not no residue. The C22 spike
@@ -779,21 +818,23 @@ function Get-PartialInstallResidue {
     param(
         [Parameter(Mandatory = $true)][string]$Distro,
         [Parameter(Mandatory = $true)][string]$WorkDir,
-        [Parameter(Mandatory = $true)][string]$TaskName
+        [Parameter(Mandatory = $true)][string]$TaskName,
+        [Parameter(Mandatory = $true)][string]$RepoSlug
     )
     $quoted = ConvertTo-BashSingleQuoted $WorkDir
-    # One round trip: does the dir exist, does it look like a runner extract,
-    # and is there a systemd unit for it?
+    # Dir existence + extract check in one round trip. The unit is resolved
+    # SCOPED (work-dir .service file, else exactly-one slug match) -- the
+    # previous global `ls actions.runner.*.service | head -1` would, on a
+    # two-runner machine, happily select the OTHER repository's unit and hand
+    # it to the sweep for deletion.
     $probeCmd = "if [ -d $quoted ]; then echo DIR_YES; else echo DIR_NO; fi; " +
-                "if [ -f $quoted/config.sh ]; then echo EXTRACT_YES; else echo EXTRACT_NO; fi; " +
-                "ls /etc/systemd/system/actions.runner.*.service 2>/dev/null | head -1"
+                "if [ -f $quoted/config.sh ]; then echo EXTRACT_YES; else echo EXTRACT_NO; fi"
     $probe = Invoke-WslBash -Distro $Distro -Command $probeCmd
 
     $items = @()
     $workDirExists = $probe.Output -match 'DIR_YES'
     $looksLikeExtract = $probe.Output -match 'EXTRACT_YES'
-    $unitMatch = [regex]::Match($probe.Output, '/etc/systemd/system/(actions\.runner\.[^\s]+\.service)')
-    $serviceUnit = if ($unitMatch.Success) { $unitMatch.Groups[1].Value } else { $null }
+    $serviceUnit = Get-RunnerServiceUnit -Distro $Distro -WorkDir $WorkDir -RepoSlug $RepoSlug
 
     if ($workDirExists) {
         $sizeProbe = Invoke-WslBash -Distro $Distro -Command "du -sh $quoted 2>/dev/null | cut -f1"
@@ -827,9 +868,29 @@ function Remove-PartialInstallResidue {
     if (-not $PSCmdlet.ShouldProcess("partial-install residue for '$WorkDir' in '$Distro'", 'Remove')) { return }
 
     if ($Residue.ServiceUnit) {
+        # AS ROOT, never sudo, exit code CHECKED, absence VERIFIED. This block
+        # previously did all three wrong at once: it kept `sudo` after the rest
+        # of the file had moved to `wsl -u root` (a non-interactive shell cannot
+        # answer sudo's password prompt, the exact condition that motivated the
+        # move), piped the result to Out-Null, and then printed success --
+        # so on a stock Ubuntu it would claim "Removed systemd unit" while the
+        # unit stayed installed and could restart the runner. Reported by
+        # external review, 2026-07-29.
+        #
+        # The service-removal verdict is established BEFORE the auto-start task
+        # or the work dir are touched: throwing here leaves the rest of the
+        # residue in place for inspection rather than half-cleaning around a
+        # still-installed service.
         $quotedUnit = ConvertTo-BashSingleQuoted $Residue.ServiceUnit
-        Invoke-WslBash -Distro $Distro -Command "(sudo systemctl stop $quotedUnit || true) && (sudo systemctl disable $quotedUnit || true) && sudo rm -f /etc/systemd/system/$quotedUnit && sudo systemctl daemon-reload" | Out-Null
-        Write-Host "Removed systemd unit '$($Residue.ServiceUnit)'." -ForegroundColor Green
+        $svcRemove = Invoke-WslBash -Distro $Distro -AsRoot -Command "(systemctl stop $quotedUnit || true) && (systemctl disable $quotedUnit || true) && rm -f /etc/systemd/system/$quotedUnit && systemctl daemon-reload"
+        if ($svcRemove.ExitCode -ne 0) {
+            throw "Removing systemd unit '$($Residue.ServiceUnit)' failed (exit $($svcRemove.ExitCode)) -- stopping before the auto-start task or work dir are touched:`n$($svcRemove.Output)"
+        }
+        $verify = Invoke-WslBash -Distro $Distro -AsRoot -Command "test ! -e /etc/systemd/system/$quotedUnit && echo UNIT_GONE"
+        if ($verify.Output -notmatch 'UNIT_GONE') {
+            throw "Systemd unit '$($Residue.ServiceUnit)' still exists after removal -- refusing to report success or continue the sweep."
+        }
+        Write-Host "Removed systemd unit '$($Residue.ServiceUnit)' (verified absent)." -ForegroundColor Green
     }
 
     if ($Residue.TaskExists) {
@@ -942,10 +1003,17 @@ function Install-Runner {
         $serviceResult = Invoke-WslBash -Distro $Distro -Command $serviceCmd -AsRoot
         if ($serviceResult.ExitCode -ne 0) { throw "svc.sh install/start failed:`n$($serviceResult.Output)" }
 
-        $unitLookup = Invoke-WslBash -Distro $Distro -Command "systemctl list-unit-files --no-legend 2>/dev/null | grep '^actions\.runner\.' | awk '{print `$1}' | head -n1"
-        $serviceUnit = $unitLookup.Output.Trim()
+        # Scoped unit discovery -- NEVER a global first-match. `grep '^actions\.
+        # runner\.' | head -n1` returned whichever runner unit sorted first, so
+        # on a machine with runners for two repositories the auto-start task for
+        # repo B could be wired to start repo A's service. Primary source of
+        # truth: svc.sh writes the exact unit name into `$WorkDir/.service` at
+        # install time -- per-work-dir by construction, no matching needed.
+        # Fallback: filter all units by this repo's slug and require EXACTLY
+        # one; zero or several means we do not guess.
+        $serviceUnit = Get-RunnerServiceUnit -Distro $Distro -WorkDir $WorkDir -RepoSlug $RepoSlug
         if ([string]::IsNullOrWhiteSpace($serviceUnit)) {
-            Write-Host "Could not determine the exact systemd unit name; auto-start task will not be registered automatically. Inspect with: wsl -d $Distro -u root -- systemctl list-unit-files | grep actions.runner" -ForegroundColor Yellow
+            Write-Host "Could not determine THIS repo's systemd unit unambiguously; auto-start task will not be registered automatically. Inspect with: wsl -d $Distro -u root -- systemctl list-unit-files | grep actions.runner" -ForegroundColor Yellow
         } else {
             Write-Host "Service unit: $serviceUnit"
             Register-RunnerAutoStart -TaskName $TaskName -Distro $Distro -ServiceUnit $serviceUnit
@@ -1169,7 +1237,7 @@ if ($Uninstall) {
         Write-Host "No runner registration ('.runner') at '$WorkDir' in '$WslDistro'." -ForegroundColor Yellow
         Write-Host "Checking for partial-install residue (interrupted install, or a prior failed config.sh)..." -ForegroundColor Yellow
 
-        $residue = Get-PartialInstallResidue -Distro $WslDistro -WorkDir $WorkDir -TaskName $TaskName
+        $residue = Get-PartialInstallResidue -Distro $WslDistro -WorkDir $WorkDir -TaskName $TaskName -RepoSlug $RepoSlug
         if (-not $residue.Found) {
             Write-Host "Nothing to uninstall: no registration, no work dir, no auto-start task, no service unit." -ForegroundColor Green
             exit 0

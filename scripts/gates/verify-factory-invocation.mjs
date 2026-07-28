@@ -271,6 +271,34 @@ async function collectTsFiles(absoluteDir, relativeRoot) {
   return files;
 }
 
+// Corpus-narrowing guard. The zero-match tripwires catch a scan that finds
+// NOTHING, but a branch-controlled workflow could point GATE_SCAN_DIR /
+// GATE_SOURCE_DIR at one small clean file (the committed fixtures are ideal
+// ammunition) and the gate would pass having inspected none of the production
+// corpus — "at least one relevant node" is not "the intended corpus".
+// Contract (external review, 2026-07-29):
+//   - a root under scripts/gates/fixtures is ALWAYS refused without
+//     GATE_FIXTURE_MODE=1 — there is no production reason to scan fixtures;
+//   - under CI=true, ANY non-default root requires GATE_FIXTURE_MODE=1, so a
+//     production CI invocation runs against the canonical roots or dies. The
+//     gate's own test suite sets GATE_FIXTURE_MODE=1 when it spawns us against
+//     temp dirs, which keeps tests green in CI while a workflow quietly adding
+//     that variable to a production job is a visible, greppable diff (and the
+//     branch-can-edit-its-own-workflow class is tracked separately).
+const FIXTURE_MODE = process.env.GATE_FIXTURE_MODE === '1';
+function assertRootAllowed(label, absPath, isDefault) {
+  if (FIXTURE_MODE) return;
+  const rel = path.relative(ROOT, absPath).split(path.sep).join('/');
+  if (rel === 'scripts/gates/fixtures' || rel.startsWith('scripts/gates/fixtures/')) {
+    console.error(`[FAIL] ${GATE_ID}: ${label} points at the committed fixture tree (${rel}) without GATE_FIXTURE_MODE=1 — a fixtures-only "pass" inspects none of the production corpus. Fail closed.`);
+    process.exit(1);
+  }
+  if (process.env.CI === 'true' && !isDefault) {
+    console.error(`[FAIL] ${GATE_ID}: ${label} overridden to ${rel} in CI without GATE_FIXTURE_MODE=1 — a narrowed corpus can be arbitrarily clean. Production CI runs use the canonical roots. Fail closed.`);
+    process.exit(1);
+  }
+}
+
 async function main() {
   ts = await loadTypeScript();
 
@@ -280,6 +308,7 @@ async function main() {
   const sourceDirAbs = sourceDirOverride
     ? path.resolve(sourceDirOverride)
     : path.resolve(ROOT, SOURCE_REL_DIR_DEFAULT);
+  assertRootAllowed('GATE_SOURCE_DIR', sourceDirAbs, !sourceDirOverride);
 
   if (!existsSync(sourceDirAbs)) {
     console.error(`[FAIL] ${GATE_ID}: GATE_SOURCE_DIR ${sourceDirAbs} does not exist — misconfiguration, fail closed`);
@@ -299,6 +328,7 @@ async function main() {
   let scanDirAbs;
   if (scanDirOverride) {
     scanDirAbs = path.resolve(scanDirOverride);
+    assertRootAllowed('GATE_SCAN_DIR', scanDirAbs, false);
     if (!existsSync(scanDirAbs)) {
       console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR ${scanDirAbs} does not exist — misconfiguration, fail closed`);
       process.exit(1);

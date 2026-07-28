@@ -193,6 +193,25 @@ async function collectTsFiles(absoluteDir, relativeRoot) {
   return files;
 }
 
+// Corpus-narrowing guard — see the sibling gate for the full rationale
+// (external review, 2026-07-29). Fixture roots always need GATE_FIXTURE_MODE=1;
+// under CI=true any non-default root does too. Otherwise a branch-controlled
+// env: block can point the scan at one clean file and collect a green that
+// inspected none of server/routes.
+const FIXTURE_MODE = process.env.GATE_FIXTURE_MODE === '1';
+function assertRootAllowed(label, absPath, isDefault) {
+  if (FIXTURE_MODE) return;
+  const rel = path.relative(ROOT, absPath).split(path.sep).join('/');
+  if (rel === 'scripts/gates/fixtures' || rel.startsWith('scripts/gates/fixtures/')) {
+    console.error(`[FAIL] ${GATE_ID}: ${label} points at the committed fixture tree (${rel}) without GATE_FIXTURE_MODE=1 — a fixtures-only "pass" inspects none of the production corpus. Fail closed.`);
+    process.exit(1);
+  }
+  if (process.env.CI === 'true' && !isDefault) {
+    console.error(`[FAIL] ${GATE_ID}: ${label} overridden to ${rel} in CI without GATE_FIXTURE_MODE=1 — a narrowed corpus can be arbitrarily clean. Production CI runs use the canonical roots. Fail closed.`);
+    process.exit(1);
+  }
+}
+
 async function main() {
   ts = await loadTypeScript();
 
@@ -201,6 +220,7 @@ async function main() {
   let scanDirAbs;
   if (scanDirOverride) {
     scanDirAbs = path.resolve(scanDirOverride);
+    assertRootAllowed('GATE_SCAN_DIR', scanDirAbs, false);
     if (!existsSync(scanDirAbs)) {
       console.error(`[FAIL] ${GATE_ID}: GATE_SCAN_DIR ${scanDirAbs} does not exist — misconfiguration, fail closed`);
       process.exit(1);

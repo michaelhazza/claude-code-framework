@@ -158,7 +158,16 @@ import { fileURLToPath } from 'node:url';
 const ARCHIVE_AFTER_DAYS = Number(process.env.BOARD_SYNC_ARCHIVE_AFTER_DAYS ?? 14);
 const ARCHIVE_AFTER_MS = ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
 
-const UPDATED_AT_MARKER = /<!-- board-sync:v1 updated_at=(\S+) -->/;
+const UPDATED_AT_MARKER = /<!-- board-sync:v1(?: key=\S+)? updated_at=(\S+) -->/;
+// The identity key travels IN THE BODY, written atomically with item-create.
+// Field values (`Build Repo`, `Slug`) are applied by separate item-edit calls
+// that can fail after the item exists; a card that lost that race used to be
+// invisible to the upsert (no fields -> "not one of ours" -> skipped) and the
+// sync then created ANOTHER card — one new duplicate per run, forever, under
+// any persistent field/permission error (external review, 2026-07-29). The
+// body key makes such orphans recognisable, so they are adopted and healed
+// instead of multiplied.
+const KEY_MARKER = /<!-- board-sync:v1 key=(\S+) updated_at=\S+ -->/;
 
 // Single source of truth for the repo field's display name. It is NOT 'Repo':
 // that name is reserved in Projects v2 and createProjectV2Field rejects it
@@ -215,9 +224,16 @@ export function extractUpdatedAtFromBody(body) {
 /** Card body: hidden updated_at marker, then the human-readable
  *  branch/PR/blockers/updated_at/summary fields the contract assigns to
  *  the body rather than to custom fields. */
-export function buildCardBody(record) {
+export function buildCardBody(record, key = null) {
   const lines = [];
-  lines.push(`<!-- board-sync:v1 updated_at=${record.updated_at} -->`);
+  // The key rides in the marker so identity survives even when the field-value
+  // edits after item-create fail — see KEY_MARKER for the duplicate-card bug
+  // this prevents. Old cards without a key in the body keep working: field
+  // values remain the primary identity source and the marker regexes accept
+  // both shapes.
+  lines.push(key
+    ? `<!-- board-sync:v1 key=${key} updated_at=${record.updated_at} -->`
+    : `<!-- board-sync:v1 updated_at=${record.updated_at} -->`);
   lines.push(`**Branch:** ${record.branch}`);
   lines.push(`**PR:** ${record.pr === null || record.pr === undefined ? 'none' : `#${record.pr}`}`);
   lines.push(`**Blockers:** ${record.blockers.length}`);
@@ -238,7 +254,7 @@ export function mapRecordToCard(record, repository) {
   return {
     key: buildCardKey(repo, record.slug),
     title: `${record.slug}: ${record.title}`,
-    body: buildCardBody(record),
+    body: buildCardBody(record, buildCardKey(repo, record.slug)),
     fields: {
       [REPO_FIELD_NAME]: repo,
       Slug: record.slug,
@@ -455,12 +471,28 @@ export function readItemFieldValue(item, fieldName) {
 // unexported when the 'Repo' -> 'Build Repo' rename silently broke it, which
 // is why board-sync.test.mjs could only assert the write key and the
 // divergence survived a full test run.
+/** The body-marker identity, or null. Shape: `<repo>::<slug>`. */
+export function extractKeyFromBody(body) {
+  if (typeof body !== 'string') return null;
+  const match = body.match(KEY_MARKER);
+  if (!match) return null;
+  const sep = match[1].indexOf('::');
+  if (sep <= 0 || sep === match[1].length - 2) return null;
+  return { repo: canonicaliseRepo(match[1].slice(0, sep)), slug: match[1].slice(sep + 2) };
+}
+
 export function normaliseItem(item) {
   const body = item.body ?? item.content?.body ?? '';
+  // Field values are the primary identity; the body key is the fallback that
+  // makes a partially-created card (item-create succeeded, field edits failed)
+  // recognisable instead of invisible. An adopted orphan then flows through
+  // the normal update path, which re-writes its fields — self-healing rather
+  // than one duplicate per sync.
+  const bodyKey = extractKeyFromBody(body);
   return {
     id: item.id,
-    repo: canonicaliseRepo(readItemFieldValue(item, REPO_FIELD_NAME)),
-    slug: readItemFieldValue(item, 'Slug'),
+    repo: canonicaliseRepo(readItemFieldValue(item, REPO_FIELD_NAME)) ?? bodyKey?.repo ?? null,
+    slug: readItemFieldValue(item, 'Slug') ?? bodyKey?.slug ?? null,
     updated_at: extractUpdatedAtFromBody(body),
     body,
   };
@@ -501,7 +533,23 @@ function createCard(boardCtx, fields, card) {
     'project', 'item-create', String(boardCtx.number), '--owner', boardCtx.owner,
     '--title', card.title, '--body', card.body, '--format', 'json',
   ]);
-  setFieldValues(boardCtx, fields, created.id, card.fields);
+  try {
+    setFieldValues(boardCtx, fields, created.id, card.fields);
+  } catch (err) {
+    // Compensate: a card whose field writes failed has no field identity, and
+    // an unrecognisable card used to mean one fresh duplicate per sync under a
+    // persistent field/permission error. Two layers of defence, deliberately
+    // redundant: archive the partial item now (best effort), and even if THIS
+    // archive also fails, the body key written atomically at item-create makes
+    // the orphan adoptable on the next run instead of invisible.
+    try {
+      archiveItem(boardCtx.owner, boardCtx.number, created.id);
+      console.warn(`[board-sync] field writes failed after creating ${card.key} — archived the partial card (${created.id}) to prevent duplicates: ${err.message}`);
+    } catch (archiveErr) {
+      console.warn(`[board-sync] field writes AND compensating archive failed for ${card.key} (${created.id}) — the body key will let the next sync adopt it: ${archiveErr.message}`);
+    }
+    throw err;
+  }
 }
 
 function updateCard(boardCtx, fields, itemId, card) {

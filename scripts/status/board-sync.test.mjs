@@ -14,6 +14,7 @@ import {
   canonicaliseRepo,
   chooseSurvivor,
   decideCardAction,
+  extractKeyFromBody,
   extractUpdatedAtFromBody,
   mapRecordToCard,
   normaliseItem,
@@ -404,5 +405,56 @@ describe('decideCardAction — accept-then-archive invariant', () => {
       expect(a.skipped, status).toBe(true);
       expect(a.archive, status).toBe(false);
     }
+  });
+});
+
+// Regression: external review, 2026-07-29. item-create succeeds, the field
+// edits fail -> the card had NO field identity, syncBoard skipped it as "not
+// one of ours", and every subsequent sync created another duplicate. The
+// identity key now rides in the body marker (written atomically with
+// item-create), so such orphans are recognisable and adopted.
+describe('orphan adoption via the body key', () => {
+  const record = baseRecord({ status: 'BUILDING', updated_at: '2026-07-29T00:00:00Z' });
+
+  it('the key is written into the body marker at card construction', () => {
+    const card = mapRecordToCard(record, 'Owner/Repo');
+    expect(card.body).toContain('<!-- board-sync:v1 key=owner/repo::dev-pipeline-v2 updated_at=2026-07-29T00:00:00Z -->');
+  });
+
+  it('extractUpdatedAtFromBody still parses the keyed marker (regex compat)', () => {
+    const card = mapRecordToCard(record, 'Owner/Repo');
+    expect(extractUpdatedAtFromBody(card.body)).toBe('2026-07-29T00:00:00Z');
+  });
+
+  it('a field-less orphan with a body key normalises to full identity — the reported bug', () => {
+    const card = mapRecordToCard(record, 'Owner/Repo');
+    // Simulate the partial create: item exists with title/body, NO field values.
+    const orphan = { id: 'PVTI_orphan', body: card.body };
+    const n = normaliseItem(orphan);
+    expect(n.repo).toBe('owner/repo');
+    expect(n.slug).toBe('dev-pipeline-v2');
+    // Same upsert key as a healthy card -> adopted and healed, not duplicated.
+    expect(buildCardKey(n.repo, n.slug)).toBe(card.key);
+  });
+
+  it('field values remain the PRIMARY identity when both are present', () => {
+    const card = mapRecordToCard(record, 'Owner/Repo');
+    const item = { id: 'PVTI_x', [REPO_FIELD_NAME]: 'other/repo', Slug: 'other-slug', body: card.body };
+    const n = normaliseItem(item);
+    expect(n.repo).toBe('other/repo');
+    expect(n.slug).toBe('other-slug');
+  });
+
+  it('legacy bodies without a key still normalise (fields only), and a bare marker parses', () => {
+    const legacyBody = '<!-- board-sync:v1 updated_at=2026-07-20T00:00:00Z -->\nolder card';
+    const n = normaliseItem({ id: 'PVTI_old', [REPO_FIELD_NAME]: 'Owner/Repo', Slug: 's', body: legacyBody });
+    expect(n.repo).toBe('owner/repo');
+    expect(n.updated_at).toBe('2026-07-20T00:00:00Z');
+    expect(extractKeyFromBody(legacyBody)).toBe(null);
+  });
+
+  it('a malformed body key is rejected, not half-parsed', () => {
+    expect(extractKeyFromBody('<!-- board-sync:v1 key=nodelimiter updated_at=2026-07-29T00:00:00Z -->')).toBe(null);
+    expect(extractKeyFromBody('<!-- board-sync:v1 key=repoonly:: updated_at=2026-07-29T00:00:00Z -->')).toBe(null);
   });
 });

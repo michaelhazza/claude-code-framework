@@ -48,6 +48,49 @@ const BEGIN_MARKER = '<!-- STATUS:GENERATED:BEGIN -->';
 const END_MARKER = '<!-- STATUS:GENERATED:END -->';
 const LEGACY_COMMENT_PREFIX = '<!-- mission-control';
 
+// Compiled ajv validator, or `false` when ajv/the schema are unavailable.
+// Resolved once, lazily. See validateRecordShape for the contract.
+let compiledValidator = null;
+
+async function getSchemaValidator() {
+  if (compiledValidator !== null) return compiledValidator;
+  try {
+    const [{ default: Ajv }, { default: addFormats }] = await Promise.all([
+      import('ajv'),
+      import('ajv-formats').catch(() => ({ default: null })),
+    ]);
+    const schemaPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'schemas', 'build-status.schema.json');
+    const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+    const ajv = new Ajv({ allErrors: false, strict: false });
+    if (addFormats) addFormats(ajv);
+    compiledValidator = ajv.compile(schema);
+  } catch {
+    compiledValidator = false; // No ajv / no schema — structural fallback below.
+  }
+  return compiledValidator;
+}
+
+/**
+ * Returns an error string for a key-complete but malformed record, or null.
+ * Schema-first (ajv when importable), with a structural floor covering exactly
+ * the dereferences buildBody/compareRecords perform — so even without ajv, no
+ * malformed record can crash the run and silently drop every healthy build.
+ */
+async function validateRecordShape(data) {
+  const validate = await getSchemaValidator();
+  if (validate) {
+    if (validate(data)) return null;
+    const err = validate.errors?.[0];
+    return `schema-invalid: ${err ? `${err.instancePath || '(root)'} ${err.message}` : 'unknown validation error'}`;
+  }
+  // Structural floor (no ajv available): the crash vectors, not the full schema.
+  if (!Array.isArray(data.blockers)) return 'blockers must be an array';
+  if (typeof data.summary !== 'string') return 'summary must be a string';
+  if (typeof data.updated_at !== 'string') return 'updated_at must be a string';
+  if (typeof data.phase !== 'string') return 'phase must be a string';
+  return null;
+}
+
 const REQUIRED_KEYS = [
   'contract_version',
   'slug',
@@ -172,6 +215,22 @@ async function collectRecords(root) {
           `unrecognised status ${JSON.stringify(data.status)} — expected one of ` +
           `${[...Object.keys(STATUS_PRIORITY), ...TERMINAL_STATUSES].join(', ')}`,
       });
+      continue;
+    }
+
+    // Type/shape validation — key-complete is not schema-valid. A record with
+    // every required KEY but a malformed VALUE (`"blockers": null`) used to
+    // sail past the presence check and crash buildBody on `.length` — the
+    // whole run exited non-zero and wrote NOTHING, so one bad build dir took
+    // every healthy build's status down with it, the opposite of this module's
+    // fail-loud INVALID contract (external review, 2026-07-29; also PR-012).
+    // Full JSON-Schema validation when ajv is importable (both current repos
+    // ship it); a minimal structural check of exactly the fields the renderer
+    // dereferences when it is not — this file is stdlib-only BY DESIGN, so ajv
+    // is an enhancement, never a hard dependency.
+    const shapeError = await validateRecordShape(data);
+    if (shapeError) {
+      invalids.push({ dir: dirName, error: shapeError });
       continue;
     }
 
