@@ -1,0 +1,71 @@
+# ci-light-suite.yml — this repo's LIGHT suite callee (dev-pipeline-v2 C24, row 45).
+#
+# WHAT THIS IS
+# The (c2) reusable-workflow mechanism (ADR-0052, spec §7.5): the framework
+# template owns the gate CONTRACT and each repo owns a `workflow_call` CALLEE
+# holding its own suite. This is the framework repo's own light callee — the
+# framework consuming its own templates.
+#
+# Called by both light-lane callers:
+#   - .github/workflows/ci-light.yml   -> strict: '0'
+#   - .github/workflows/merge-gate.yml -> strict: '1'
+#
+# COMMAND SURFACE — authored from what this repo ACTUALLY runs, never copied
+# from a consumer's values. This repo has NO `lint` and NO `typecheck` script;
+# its real scripts are test/test:sync/test:scripts/test:hooks/validate/
+# eval:routing. The fast advisory subset is therefore `validate` plus the two
+# cheap sweeps, not lint/typecheck.
+#
+# The `strict` input is accepted and unused: none of these steps has a strict
+# variant. Accepting it anyway keeps the CALLER template byte-identical across
+# every adopting repo, which is the whole point of the shared contract.
+
+name: ci-light-suite
+
+on:
+  workflow_call:
+    inputs:
+      tested_sha:
+        description: 'The exact commit to test. Required - the caller resolves it and reports on it.'
+        required: true
+        type: string
+      strict:
+        description: "Accepted for caller-contract parity; this repo's light steps have no strict variant."
+        required: false
+        default: '0'
+        type: string
+
+jobs:
+  light:
+    name: Validate + secret sweep + JSON validity
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Callee contract 1: test the commit the CALLER certifies.
+          ref: ${{ inputs.tested_sha }}
+          # Kept at 0 for parity with the heavy callee. Cheap here, and it means
+          # a step promoted from the heavy lane to this one does not silently
+          # lose the history its diff-based gates need.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned toolchain
+        run: npm ci
+
+      - name: Framework validation (frontmatter, schemas, markdown links)
+        run: npm run validate
+
+      - name: Secret sweep (provider-shaped tokens in tracked files)
+        run: node scripts/check-secrets.cjs
+
+      - name: Manifest / settings JSON validity
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('manifest.json','utf8')); console.log('manifest ok')"
+          node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8')); console.log('settings ok')"
+          node -e "JSON.parse(require('fs').readFileSync('.claude/hooks/package.json','utf8')); console.log('hooks pkg ok')"

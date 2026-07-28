@@ -1,0 +1,131 @@
+# suite.yml — this repo's HEAVY suite callee (dev-pipeline-v2 C24, row 43).
+#
+# WHAT THIS IS
+# The (c2) reusable-workflow mechanism (ADR-0052, spec §7.5). The framework
+# template owns the gate CONTRACT; this file holds the framework repo's own full
+# suite. Called by .github/workflows/merge-gate.yml.
+#
+# PROVENANCE
+# The steps are the `test` job from the deleted `ci.yml`, lifted byte-for-byte:
+# test:sync -> test:scripts -> test:hooks -> validate -> eval:routing ->
+# check-rule-ledger.js -> check-secrets.cjs -> JSON validity -> version
+# consistency. Mapping the merge gate to anything less would make the adopted
+# suite WEAKER than the one it replaces, which is the failure this adoption
+# exists to avoid.
+#
+# ONE DELIBERATE BEHAVIOUR CHANGE — the schema-changelog gate no longer skips.
+# In `ci.yml` that gate was conditional on `origin/main` being resolvable and
+# printed "schema changelog gate skipped (origin/main not available)" then
+# continued GREEN. Under a gate that checks out an explicit SHA, that is a
+# fast-exit path: the gate would report success having verified nothing, and a
+# schema change could ship without its CHANGELOG entry. Three things now hold
+# together: `fetch-depth: 0` is preserved, `origin/main` is explicitly fetched,
+# and an unresolvable `origin/main` is a HARD FAILURE rather than a skip. Spec
+# §16 calls for exactly this restructuring of fast-exit paths into loud ones.
+
+name: suite
+
+on:
+  workflow_call:
+    inputs:
+      tested_sha:
+        description: 'The exact commit to test. Required - the caller resolves it and reports on it.'
+        required: true
+        type: string
+
+jobs:
+  test:
+    name: Framework test suites
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Callee contract 1: test the commit the CALLER certifies, not a
+          # default ref, or the suite verifies a different commit than the gate
+          # reports on.
+          ref: ${{ inputs.tested_sha }}
+          # Load-bearing, not hygiene: the schemas-vs-CHANGELOG gate below diffs
+          # origin/main. A shallow checkout makes that diff find nothing.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned toolchain
+        run: npm ci
+
+      - name: Sync-engine suites (tests/)
+        run: npm run test:sync
+
+      - name: Scripts suites (scripts/)
+        run: npm run test:scripts
+
+      - name: Hook suites (.claude/hooks/)
+        run: npm run test:hooks
+
+      - name: Framework validation (frontmatter, schemas, markdown links)
+        run: npm run validate
+
+      - name: Skill-routing evals
+        run: npm run eval:routing
+
+      - name: Rule-classification ledger coverage (file + heading + anchor + ladder keywords)
+        run: node scripts/check-rule-ledger.js
+
+      - name: Secret sweep (provider-shaped tokens in tracked files)
+        run: node scripts/check-secrets.cjs
+
+      - name: Manifest / settings JSON validity
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('manifest.json','utf8')); console.log('manifest ok')"
+          node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8')); console.log('settings ok')"
+          node -e "JSON.parse(require('fs').readFileSync('.claude/hooks/package.json','utf8')); console.log('hooks pkg ok')"
+
+      - name: Version consistency
+        run: |
+          FV=$(cat .claude/FRAMEWORK_VERSION)
+          MV=$(node -p "require('./manifest.json').frameworkVersion")
+          if [ "$FV" != "$MV" ]; then echo "::error::FRAMEWORK_VERSION ($FV) != manifest.frameworkVersion ($MV)"; exit 1; fi
+          if ! grep -q "^## ${FV}" .claude/CHANGELOG.md; then echo "::error::CHANGELOG missing heading for ${FV}"; exit 1; fi
+          echo "version consistency ok ($FV)"
+
+          # Every manifest removedFiles path must actually be absent from the
+          # tree — a lingering file would be re-shipped to consumers while
+          # sync simultaneously tells them to delete it.
+          node -e "
+            const { existsSync } = require('fs');
+            const removed = require('./manifest.json').removedFiles || [];
+            const present = removed.map(r => r.path).filter(p => existsSync(p));
+            if (present.length) {
+              console.error('::error::removedFiles entries still present in the tree: ' + present.join(', '));
+              process.exit(1);
+            }
+            console.log('removedFiles absence ok (' + removed.length + ' entries checked)');
+          "
+
+          # If any schema changed relative to origin/main, schemas/CHANGELOG.md
+          # must change too (D10 schema-version discipline).
+          #
+          # This gate USED to skip green when origin/main was unresolvable. Under
+          # an explicit-SHA checkout that made it a fast-exit path: green having
+          # verified nothing. It now fetches the ref and fails hard if it still
+          # cannot resolve, so "skipped" is no longer a silent pass.
+          git fetch --no-tags --depth=0 origin main >/dev/null 2>&1 || \
+            git fetch --no-tags origin main >/dev/null 2>&1 || true
+          if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+            echo "::error::origin/main is not resolvable, so the schemas-vs-CHANGELOG gate cannot run. Refusing to report success for a gate that verified nothing."
+            exit 1
+          fi
+          SCHEMA_CHANGES=$(git diff --name-only origin/main -- 'schemas/*.json')
+          if [ -n "$SCHEMA_CHANGES" ]; then
+            if git diff --quiet origin/main -- schemas/CHANGELOG.md; then
+              echo "::error::schemas/*.json changed ($SCHEMA_CHANGES) but schemas/CHANGELOG.md was not updated"
+              exit 1
+            fi
+            echo "schema changelog gate ok (schemas changed WITH changelog update)"
+          else
+            echo "schema changelog gate ok (no schema changes vs origin/main)"
+          fi

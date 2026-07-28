@@ -878,7 +878,8 @@ function Install-Runner {
     Write-Host "  1. Resolve latest actions/runner release version (gh api, Windows side)"
     Write-Host "  2. Inside '$Distro': create '$WorkDir', download + extract the runner tarball"
     Write-Host "  3. Inside '$Distro': ./config.sh --url https://github.com/$Repo --name $RunnerName --labels $LabelsCsv --work _work --unattended"
-    Write-Host "  4. Inside '$Distro': sudo ./svc.sh install && sudo ./svc.sh start"
+    Write-Host "  4. Inside '$Distro' AS ROOT (not sudo -- a non-interactive shell cannot answer a password prompt):"
+    Write-Host "     ./svc.sh install <default-user> && ./svc.sh start"
     Write-Host "  5. Register a Task Scheduler auto-start task ('$TaskName')"
     Write-Host "  6. Verify via gh api repos/$Repo/actions/runners"
 
@@ -913,8 +914,32 @@ function Install-Runner {
         $configResult = Invoke-WslBash -Distro $Distro -Command $configCmd
         if ($configResult.ExitCode -ne 0) { throw "config.sh registration failed:`n$($configResult.Output)" }
 
-        $serviceCmd = "cd $quotedWorkDir && sudo ./svc.sh install && sudo ./svc.sh start"
-        $serviceResult = Invoke-WslBash -Distro $Distro -Command $serviceCmd
+        # Run the service install AS ROOT, never via `sudo`.
+        #
+        # `sudo ./svc.sh install` is issued through a NON-INTERACTIVE `bash -lc`,
+        # which cannot answer a password prompt. On any distro whose default user
+        # lacks passwordless sudo -- the Ubuntu default -- this stalls or fails at
+        # exactly this step, AFTER config.sh has already registered the runner with
+        # GitHub. The result is the partial-install state: a registered runner with
+        # no service, permanently `offline`, putting a never-satisfied check on
+        # every gated PR. Observed on the reference machine, where `sudo -n true`
+        # returns "a password is required".
+        #
+        # `wsl -u root` needs no password and is deterministic, so the elevation
+        # cannot depend on the distro's sudoers policy. svc.sh needs the target
+        # user explicitly here, because running as root makes it default to root
+        # and the runner must not execute jobs as root.
+        # `id -un` deliberately, not `printf %s "$USER"`: no payload in this file
+        # may contain a double quote (a quoted payload does not survive the argv
+        # hop to bash), and this form needs no quoting at all.
+        $runAsUserProbe = Invoke-WslBash -Distro $Distro -Command 'id -un'
+        $runAsUser = $runAsUserProbe.Output.Trim()
+        if ([string]::IsNullOrWhiteSpace($runAsUser) -or $runAsUser -eq 'root') {
+            throw "Could not determine the distro's non-root default user (got '$runAsUser'). Refusing to install the runner service, because it would run jobs as root."
+        }
+        $quotedRunAsUser = ConvertTo-BashSingleQuoted $runAsUser
+        $serviceCmd = "cd $quotedWorkDir && ./svc.sh install $quotedRunAsUser && ./svc.sh start"
+        $serviceResult = Invoke-WslBash -Distro $Distro -Command $serviceCmd -AsRoot
         if ($serviceResult.ExitCode -ne 0) { throw "svc.sh install/start failed:`n$($serviceResult.Output)" }
 
         $unitLookup = Invoke-WslBash -Distro $Distro -Command "systemctl list-unit-files --no-legend 2>/dev/null | grep '^actions\.runner\.' | awk '{print `$1}' | head -n1"
@@ -960,7 +985,23 @@ function Repair-Runner {
     try {
         $quotedWorkDir = ConvertTo-BashSingleQuoted $WorkDir
         $quotedRemovalToken = ConvertTo-BashSingleQuoted $plainRemovalToken
-        $removeCmd = "cd $quotedWorkDir && (sudo ./svc.sh stop || true) && (sudo ./svc.sh uninstall || true) && ./config.sh remove --token $quotedRemovalToken"
+        # Split deliberately into two invocations with DIFFERENT privilege.
+        #
+        # svc.sh needs root (same reason as the install path: a non-interactive
+        # `bash -lc` cannot answer a sudo password prompt, so `sudo` stalls on a
+        # distro without passwordless sudo and leaves a half-removed service).
+        # config.sh must NOT run as root -- it rewrites the runner's own config
+        # and credential files, and doing that as root leaves them root-owned,
+        # so a later re-install by the runner user fails on permissions.
+        # Collapsing both into one root call would trade one silent breakage for
+        # another.
+        $svcStopCmd = "cd $quotedWorkDir && (./svc.sh stop || true) && (./svc.sh uninstall || true)"
+        $svcStopResult = Invoke-WslBash -Distro $Distro -Command $svcStopCmd -AsRoot
+        if ($svcStopResult.ExitCode -ne 0) {
+            Write-Host "svc.sh stop/uninstall reported a non-zero exit; continuing to deregistration so the GitHub-side runner is not orphaned:`n$($svcStopResult.Output)" -ForegroundColor Yellow
+        }
+
+        $removeCmd = "cd $quotedWorkDir && ./config.sh remove --token $quotedRemovalToken"
         $removeResult = Invoke-WslBash -Distro $Distro -Command $removeCmd
         if ($removeResult.ExitCode -ne 0) { throw "Removal failed:`n$($removeResult.Output)" }
     } finally {
@@ -1003,7 +1044,23 @@ function Uninstall-Runner {
     try {
         $quotedWorkDir = ConvertTo-BashSingleQuoted $WorkDir
         $quotedRemovalToken = ConvertTo-BashSingleQuoted $plainRemovalToken
-        $removeCmd = "cd $quotedWorkDir && (sudo ./svc.sh stop || true) && (sudo ./svc.sh uninstall || true) && ./config.sh remove --token $quotedRemovalToken"
+        # Split deliberately into two invocations with DIFFERENT privilege.
+        #
+        # svc.sh needs root (same reason as the install path: a non-interactive
+        # `bash -lc` cannot answer a sudo password prompt, so `sudo` stalls on a
+        # distro without passwordless sudo and leaves a half-removed service).
+        # config.sh must NOT run as root -- it rewrites the runner's own config
+        # and credential files, and doing that as root leaves them root-owned,
+        # so a later re-install by the runner user fails on permissions.
+        # Collapsing both into one root call would trade one silent breakage for
+        # another.
+        $svcStopCmd = "cd $quotedWorkDir && (./svc.sh stop || true) && (./svc.sh uninstall || true)"
+        $svcStopResult = Invoke-WslBash -Distro $Distro -Command $svcStopCmd -AsRoot
+        if ($svcStopResult.ExitCode -ne 0) {
+            Write-Host "svc.sh stop/uninstall reported a non-zero exit; continuing to deregistration so the GitHub-side runner is not orphaned:`n$($svcStopResult.Output)" -ForegroundColor Yellow
+        }
+
+        $removeCmd = "cd $quotedWorkDir && ./config.sh remove --token $quotedRemovalToken"
         $removeResult = Invoke-WslBash -Distro $Distro -Command $removeCmd
         if ($removeResult.ExitCode -ne 0) { throw "Removal failed:`n$($removeResult.Output)" }
     } finally {

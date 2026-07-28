@@ -32,6 +32,21 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.47.0 — 2026-07-28
+
+**Highlights:** Fixes the defect that stopped the first real runner install dead, and adds this repo's own `workflow_call` suite callees. Both came out of installing a self-hosted runner for real, on real hardware, for the first time.
+
+**Fixed:**
+- `scripts/runner/install-runner.ps1` — **the install could never complete the service step on a stock Ubuntu.** It ran `sudo ./svc.sh install` through a **non-interactive** `bash -lc`, which cannot answer a password prompt. On any distro whose default user lacks passwordless sudo — the Ubuntu default — the install stalls there, **after** `config.sh` has already registered the runner with GitHub. Result: a registered runner with no service, permanently `offline`, putting a never-satisfied check on every gated PR. Observed exactly this on the reference machine (`sudo -n true` → "a password is required"). Service install/start and service stop/uninstall now run through `wsl -u root`, which needs no password and cannot depend on the distro's sudoers policy. The removal path is deliberately **split by privilege**: `svc.sh` as root, `config.sh remove` as the runner user, because running `config.sh` as root leaves its config and credential files root-owned and a later re-install then fails on permissions. Collapsing both into one root call would trade one silent breakage for another. `svc.sh install` is passed the target user explicitly, since running it as root would otherwise default the service to root and the runner must not execute jobs as root. The printed plan and `-WhatIf` now say "AS ROOT (not sudo)" so the preview matches what executes.
+
+**Added:**
+- `.github/workflows/suite.yml` and `.github/workflows/ci-light-suite.yml` — this repo's own heavy and light `workflow_call` callees under the (c2) mechanism (ADR-0052), authored from its **actual** command surface: `test:sync` → `test:scripts` → `test:hooks` → `validate` → `eval:routing` → `check-rule-ledger.js` → `check-secrets.cjs` → JSON validity → version consistency. This repo has no `lint` or `typecheck` script, so the light lane is `validate` + secret sweep + JSON validity rather than lint/typecheck.
+  - The heavy callee makes one **deliberate behaviour change**: the schemas-vs-CHANGELOG gate used to print `schema changelog gate skipped (origin/main not available)` and continue **green**. Under an explicit-SHA checkout that is a fast-exit path — green having verified nothing, letting a schema change ship without its CHANGELOG entry. It now fetches the ref and **fails hard** if `origin/main` still cannot be resolved.
+  - Both callees are `workflow_call`-only, so they never self-trigger.
+- `.claude/project-registries.json` — created from the shipped template with this repo's own `ci_templates` values.
+
+**Not done, and why — the trust boundary refused it.** This release does **not** register a runner for this repo and does **not** delete its `ci.yml`. `install-runner.ps1`'s new private-repo precondition **correctly refused**: `claude-code-framework` is a **public** repo, and spec §7.5 pins the runner trust boundary to private repos only. A persistent self-hosted runner on a public repo lets any fork PR execute attacker-authored workflow code on the operator's machine as a docker-group (root-equivalent) user with `/mnt/*` access to the whole Windows drive. The two callees ship because they are inert without a caller; the rendered callers are deliberately withheld, since a workflow targeting `[self-hosted, linux]` with no runner queues forever. Resolving this needs an operator decision, recorded in the consuming repo's `tasks/todo.md`.
+
 ## 2.46.0 — 2026-07-28
 
 **Highlights:** Acts on an external Codex review of the v2.45.x surface. The headline fix turns a rule that existed **only as prose** into a single enforced implementation: every Codex-using agent resolved the binary with a PATH-first lookup that contradicted the contract's own newer-of requirement. Also fixes a board-sync bug where a stale terminal record archived a **newer active** card, a silent-drop in the status generator, and an uninstall path that could not clean up the exact partial-install state this build's own runner spike produced.
