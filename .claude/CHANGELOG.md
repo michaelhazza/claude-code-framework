@@ -32,6 +32,40 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.44.0 — 2026-07-28
+
+**Highlights:** Development Pipeline v2 — the orchestrated multi-vendor pipeline. Every Codex review tier now invokes the CLI through one canonical contract with full repository context; two new review tiers (plan, brief) close the gaps at the plan and brief stages; a Codex-owned verify phase becomes a real gate at Phase 3 entry; per-build `status.json` replaces the hand-merged current-focus pointer and feeds a GitHub Projects board; and CI moves to self-hosted templates with the full suite gated at exactly two checkpoints per build. Ships alongside two auth-guard gate ports and the guards-for-the-guards meta-validator.
+
+**Added:**
+- `references/codex-invocation-contract.md` — the single source every Codex tier cites. Read-only review mode (`codex exec -s read-only`, artefact by path, explicit grounding instruction) and a separately-named write-enabled mode for verify-phase test authoring, so no tier infers write access from the read-only shape. Newer-of PATH-vs-npm-shim binary resolution. Fail-closed sandbox clause: no fallback accepting read-only means STOP and record a REVIEW_GAP, never an unsandboxed invocation.
+- `.claude/agents/plan-reviewer.md` — Codex plan tier, cloned from spec-reviewer, reviewing `tasks/builds/<slug>/plan.md` with plan/spec drift as its primary hunt target. Cap 5 per plan lifetime.
+- `.claude/agents/brief-reviewer.md` — inline playbook: Codex grounding pass then a ChatGPT right-thing-to-build pass. Single round per brief revision, advisory, never a gate. No Claude tier at the brief stage by design.
+- `.claude/agents/verify-phase.md` — the stage-6 gate. Design → author (bounded by the consuming repo's declared testing posture) → run → fix loop (test defects fixed by Codex, app defects routed to Claude; Codex never edits production code) → report. Re-entry resumes from the persisted plan; stale-input mismatch refuses resume.
+- `schemas/build-status.schema.json` — the `build-status.v1` contract. Closed status/phase enums, an open `gates` map with a closed value enum, `gate_evidence` with `run_ids[]`.
+- `scripts/status/generate-current-focus.mjs` — lists every non-terminal build inside `STATUS:GENERATED` markers, ordered by status priority; atomic writes; duplicate markers are a hard error; invalid records surface as `INVALID:` lines rather than vanishing.
+- `scripts/status/board-sync.mjs` — one draft card per build on an account-level Projects v2 board, keyed `{repository, slug}` with the repo lowercased. Non-blocking by design; the sole fail-closed case is a slug/directory mismatch, which would corrupt another build's card.
+- `templates/github-workflows/{ci-light,merge-gate}.yml` — callers owning the gate contract; each repo supplies its suite through a `workflow_call` callee. Event-conditional commit identity, provenance echo, live label re-query, and a merge-guard that observes the suites' actual results.
+- `scripts/adopt-ci-templates.mjs` — fail-closed renderer. Per-target requirements, presence-not-truthiness boolean checks, path targets must exist, and bare `{{TOKEN}}` substitution that leaves GitHub Actions expressions untouched.
+- `scripts/runner/install-runner.ps1` — per-repo runner registration inside WSL2, with wrong-repo detection that errors rather than skipping, `--repair`/`--uninstall`, and boot auto-start.
+- `scripts/gates/verify-factory-invocation.mjs`, `scripts/gates/verify-duplicate-registrations.mjs` — generic ports of two silent-override detectors, warning-first with an env flip to blocking, plus fixture self-tests.
+- `scripts/gates/verify-gate-syntax.sh` — guards for the guards. A closed, enumerated extension-routing table so the failure branch is only reachable by deliberate fall-through. Not a counted gate: the library is 8 gates + 1 meta-validator.
+
+**Changed:**
+- `spec-reviewer` and `dual-reviewer` now cite the invocation contract instead of embedding divergent command lines; the stdin pipe and `codex review`-on-diff are gone.
+- All three coordinators upsert `status.json` at every phase transition and run the generator; feature- and finalisation-coordinator also sync the board. `status.json` is authoritative; `.phase` is a derived projection rewritten on disagreement.
+- `feature-coordinator` gains a `plan-reviewer` step between the Claude and ChatGPT plan tiers, and a mandatory turn-discipline rule: a chunk-completion report never ends a turn.
+- `finalisation-coordinator` gains the verify-phase step at Phase 3 entry, a conditional Codex confirmation pass, an 8-row merge-refusal table keyed on the PR head SHA as the enforcement of record, and a `runner_live` conditional that retires G5 only where a real merge gate replaced it.
+- `.claude/hooks/phase-lock.js` — `status.json` admitted to the spec/plan allowlists; the governing slug is derived from the path being written; the `build_slug` fallback is scoped to the generated marker region when it exists. Pre-migration behaviour is byte-identical.
+- `references/test-gate-policy.md` — narrow carve-out naming verify-phase as the sole additional agent permitted the full local suite.
+- `references/iteration-caps.md` — registers the plan-reviewer, brief-reviewer and verify-phase fix-loop caps.
+- `ci-gate-integrity` and `wire-it-through` skills gain the silent-override registry lessons.
+- `package.json` — `typescript` added as a devDependency, pinned `^5` because the v7 rewrite removed the classic Compiler API the two new gates use.
+
+**Fixed:**
+- `phase-lock.js` resolved the governing slug from the first `build_slug:` match anywhere in `current-focus.md`, so a frozen legacy block could hijack resolution and — when that slug had no `.phase` — silently disable phase enforcement entirely.
+- `config-protection.js` no longer gates `package.json` (standing operator pre-approval); every other protected surface is unchanged.
+- The three ChatGPT review agents now carry a mandatory next-round artifact discipline, so a manual or parallel review round always hands over the updated artifact, refreshed context, pinned hash and next prompt.
+
 ## 2.43.3 — 2026-07-17
 
 **Highlights:** patch — ESM-consumer compatibility for the secret scanner and vitest-convention adoption for the anchors test, the third and final fix in the 2.43.x consumer-gate series. `scripts/check-secrets.js` is CommonJS, so consumers with `"type": "module"` parsed it as ESM and both the CLI and its test suite crashed ("require is not defined"); renamed to `scripts/check-secrets.cjs`, which pins CJS in every consumer. `scripts/__tests__/generate-architecture-anchors.test.ts` was written on node:test, which vitest-only consumers collect as an empty suite; the vitest conversion automation-v1 had already made locally is adopted upstream (with explicit 120s timeouts on the three CLI-spawn tests — the spawns exceed vitest's 5s default on slower machines).
