@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.44.3 — 2026-07-28
+
+**Highlights:** Patch. Fixes a work-dir resolution defect in `scripts/runner/install-runner.ps1` found by running the installer on real hardware: a self-hosted runner installed itself into the calling repo's working tree instead of the WSL2 distro's home directory. Any repo that adopted v2.44.0–v2.44.2 and ran the installer should check for a literal `~` directory at its root.
+
+**Fixed:**
+- `scripts/runner/install-runner.ps1` — `$WorkDir` defaulted to `~/actions-runner/<slug>` and was then single-quoted into every `bash -lc` payload (the injection defence added in the same release). Bash does not expand `~` inside single quotes, so `mkdir -p '~/actions-runner/...'` created a **literal** directory named `~` relative to bash's working directory — which, for `wsl.exe` launched from a Windows directory, is that directory under `/mnt/c`. Observed on a pilot repo: 666 MB of runner extracted into the working tree, where the runner's own symlinks then made `git add -A` fail with `Function not implemented`. The same quoting reached `Get-ExistingRunnerConfig`'s `.runner` probe and the `rm -rf` in repair/uninstall, so the idempotency guard could miss an existing install and uninstall could leave the orphan behind. The distro's real `$HOME` is now read once and `~` resolved up-front, keeping the quoting defence intact while every downstream site operates on an absolute, CWD-independent path. Relative and `~user` forms fail closed with a message naming the `/mnt/c` trap instead of being guessed at. Resolution runs after the `-WhatIf` early-exit, because reading `$HOME` starts the WSL2 VM and `-WhatIf` documents that it never does. `-WhatIf` could not have caught the original bug: the preview prints the unexpanded string, which reads as correct.
+
+**Added:**
+- `scripts/runner/install-runner.test.mjs` — regression suite. Executes the real `Resolve-DistroWorkDir` extracted from the `.ps1` via the PowerShell AST, so the logic under test is the shipped logic rather than a copy; source invariants cover the wiring a pure-function test cannot see (resolver runs before the main flow passes `$WorkDir` onward, resolution stays after the `-WhatIf` exit, file stays ASCII-only). Skips cleanly where no PowerShell host exists, so it stays green on Linux runners.
+
 ## 2.44.2 — 2026-07-28
 
 **Highlights:** Patch. Promotes three spec-review rules that had been living as an un-upstreamed local delta in a consuming repo, surfaced when v2.44.1 sync flagged the file as customised.

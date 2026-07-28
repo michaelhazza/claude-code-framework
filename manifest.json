@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.44.2",
+  "frameworkVersion": "2.44.3",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
