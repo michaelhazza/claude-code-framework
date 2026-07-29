@@ -36,11 +36,21 @@
  * it either.
  *
  * The floor implements: required, type (including the oneOf/anyOf nullable
- * shapes), enum, const, minLength, and one level of recursion into
- * arrays-of-objects (the `blockers[]` shape the card renderer dereferences).
- * It does NOT implement `format` or `additionalProperties: false` — both are
- * pinned as known divergences in status-contract.test.mjs rather than left to
- * a reader's assumption, and neither can crash a renderer or corrupt a write.
+ * shapes), enum, const, minLength, `format: date-time`, and one level of
+ * recursion into arrays-of-objects (the `blockers[]` shape the card renderer
+ * dereferences). It does NOT implement `additionalProperties: false`, which is
+ * pinned as a known divergence in status-contract.test.mjs rather than left to
+ * a reader's assumption; an unknown extra key cannot crash a renderer or
+ * corrupt a write.
+ *
+ * `format` was ALSO pinned as an acceptable divergence for one round, on the
+ * stated grounds that a malformed timestamp produced only a wrong-looking
+ * card. That was wrong, and the pin encoded the error as intended behaviour
+ * (external review round 6). See checkFormat below for the three board-sync
+ * paths that read `updated_at` as load-bearing data. The lesson generalises:
+ * a divergence pin asserts "this cannot hurt us", which is a claim about
+ * every consumer of the field, and it needs the same verification as any
+ * other such claim.
  *
  * enum and const are not optional niceties here (external review round 5).
  * board-sync has no status check of its own, unlike the generator, so a
@@ -138,7 +148,68 @@ function permittedTypes(propSchema) {
  *  column. The same omission accepted `contract_version: "build-status.v1"`
  *  against a `const` of v2, i.e. a record written under a superseded contract.
  */
+// RFC 3339 date-time. Deliberately stricter than Date.parse, which accepts a
+// much broader set (bare '2026', '29 Jul 2026', and other Date-constructor
+// forms) than JSON Schema's `date-time` permits. The trailing Date.parse check
+// then rejects well-shaped but impossible values such as 2026-02-31.
+const RFC3339_DATE_TIME = /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
+
+/** `format: date-time`, including inside the oneOf nullable shapes.
+ *
+ *  NOT presentation-only, which is what the round-5 write-up wrongly claimed
+ *  when it pinned this as an acceptable divergence (external review round 6).
+ *  `updated_at` is load-bearing in three places, all verified in board-sync:
+ *
+ *   - shouldSkipStale compares timestamps as PLAIN STRINGS. A malformed value
+ *     sorting high defeats stale-write protection: '2026-07-29T10:00:00Z' >
+ *     'zzzz' is false, so an older record overwrites a newer card. A value
+ *     sorting low does the reverse and suppresses legitimate updates.
+ *   - chooseSurvivor orders duplicates by the same string comparison, so the
+ *     malformed card wins survivor selection and the real one is archived.
+ *   - shouldArchive computes `now - new Date(updated_at)`, which is NaN for a
+ *     malformed value, and `NaN >= threshold` is false — so terminal cards
+ *     never age out.
+ *
+ *  And the damage compounds: the bad value is written back into the card body,
+ *  poisoning every subsequent comparison.
+ */
+function checkFormat(value, propSchema, at, key) {
+  if (typeof value !== 'string') return null; // null branch of a nullable field
+
+  // The keyword may sit on the property, or inside a oneOf/anyOf branch that
+  // accepts strings — which is how every nullable timestamp in this schema is
+  // declared (`cleared_at`, and any future sibling).
+  const branches = [propSchema, ...(propSchema.oneOf ?? propSchema.anyOf ?? [])];
+  const wantsDateTime = branches.some(
+    (b) => b?.format === 'date-time' && (b.type === undefined || b.type === 'string')
+  );
+  if (!wantsDateTime) return null;
+
+  if (!RFC3339_DATE_TIME.test(value) || !isRealCalendarDate(value)) {
+    return `${at}${key} must be an RFC 3339 date-time`;
+  }
+  return null;
+}
+
+/** True when the Y-M-D of an RFC 3339 string is a date that actually exists.
+ *  Date.parse alone is not enough: it silently ROLLS OVER, so '2026-02-31'
+ *  becomes 3 March and parses finite. ajv-formats rejects it, so accepting it
+ *  here would put the two validation paths back out of step. */
+function isRealCalendarDate(value) {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  const asUtc = new Date(Date.UTC(year, month - 1, day));
+  return (
+    Number.isFinite(asUtc.getTime())
+    && asUtc.getUTCFullYear() === year
+    && asUtc.getUTCMonth() === month - 1
+    && asUtc.getUTCDate() === day
+  );
+}
+
 function checkVocabulary(value, propSchema, at, key) {
+  const formatError = checkFormat(value, propSchema, at, key);
+  if (formatError) return formatError;
+
   if (Object.prototype.hasOwnProperty.call(propSchema, 'const') && value !== propSchema.const) {
     return `${at}${key} must equal ${JSON.stringify(propSchema.const)}`;
   }

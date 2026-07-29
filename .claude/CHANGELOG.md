@@ -32,6 +32,31 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.58.0 — 2026-07-29
+
+**Highlights:** Round-6 external review, and the final round of this build. One finding: **a "known divergence" pin turned out to be encoding a real defect as intended behaviour.** The round-5 release deliberately did not implement `format: date-time` in the Ajv-free floor, on the stated grounds that a malformed timestamp produced "a wrong-looking card, not a bad write". That reasoning was wrong, and because it was written into a passing test with an explanatory failure message, it would have looked deliberate and correct to every future reader.
+
+**Fixed — `scripts/status/status-contract.mjs` (high) — `updated_at` is load-bearing in three places, all verified in `board-sync.mjs` before fixing:**
+- **`shouldSkipStale` compares timestamps as plain strings.** `'2026-07-29T10:00:00Z' > 'zzzz'` is **false**, so a malformed value sorting high defeats stale-write protection entirely: an older record overwrites a newer card. A value sorting low does the reverse and silently suppresses legitimate updates.
+- **`chooseSurvivor` orders duplicates by the same string comparison,** so the malformed card wins survivor selection and the legitimate one is archived.
+- **`shouldArchive` computes `now - new Date(updated_at)`,** which is `NaN` for a malformed value, and `NaN >= threshold` is false — terminal cards never age out.
+
+And the damage compounds: the bad value is written back into the card body, poisoning every subsequent comparison. `format: date-time` is now enforced generically, including inside the `oneOf` nullable shapes where the keyword sits in a *branch* rather than on the property (`blocker.cleared_at`), and on nested `blocker.raised_at`.
+
+**Stricter than `Date.parse` on two axes, both load-bearing for path equivalence:**
+- `Date.parse` accepts far more than RFC 3339 (`'29 Jul 2026'` parses fine). A regex pins the RFC 3339 shape.
+- `Date.parse` silently **rolls over** impossible dates, so `2026-02-31` becomes 3 March and parses finite. `ajv-formats` rejects it. A `Date.parse`-only check would therefore have put the two validation paths straight back out of step — the exact class of gap this test suite exists to prevent. `isRealCalendarDate` round-trips the Y-M-D components.
+
+**Changed — the divergence pin is now coverage.** Malformed `updated_at`, malformed `cleared_at`, malformed `raised_at`, and the calendar-rollover case are all in the Ajv-vs-floor agreement set. `additionalProperties: false` remains the single pinned divergence, and it is genuinely inert: an unknown extra key cannot crash a renderer or corrupt a write.
+
+**The generalisable lesson, recorded in `KNOWLEDGE.md`:** a divergence pin asserts *"this cannot hurt us"*, which is a claim about **every consumer of the field**, not a claim about the validator. It needs the same verification as any other such claim — read the consumers. Pinning is still the right mechanism; the round-5 pin failed because the reasoning behind it was never checked against `board-sync`, not because pinning is wrong.
+
+**Test-suite flakiness (pre-existing, not introduced here — routed to `tasks/todo.md`, not fixed in this release):** four consecutive full runs produced two clean greens (691/691, exit 0), one run where all 691 tests passed but the process exited 1 on a post-run `ERR_IPC_CHANNEL_CLOSED` teardown crash in the tinypool worker pool, and one run with two failures in `resolve-codex-bin` and `check-shipped-source` — both spawn-heavy files, both untouched by this release, both green in isolation and on a stashed clean tree. This is the spawn-heavy flake class already recorded in `KNOWLEDGE.md`, now presenting as a worker-teardown crash rather than a timeout. It will make CI red roughly half the time until addressed.
+
+Verification for this release: 691/691 tests, exit 0.
+
+---
+
 ## 2.57.0 — 2026-07-29
 
 **Highlights:** Round-5 external review. Two findings. The high-severity one **reopened the split-brain board defect from round 3** through a different door, and it landed because a claim made in the review handoff was wrong: the round-5 prompt asserted that an out-of-enum status was "separately caught by the generator's own status check". The generator does have one. **`board-sync` does not** — it relies entirely on `validateRecordShape`. Verified in the code before fixing.

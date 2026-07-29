@@ -233,6 +233,17 @@ describe('validateRecordShape — Ajv available', () => {
       validRecord({ phase: 'not-a-phase' }),
       validRecord({ classification: 'Enormous' }),
       validRecord({ blockers: [validBlocker({ text: '' })] }),
+      // Formats — promoted out of the known-divergence pin in round 6, where
+      // the pin turned out to be encoding a real defect as intended behaviour.
+      validRecord({ updated_at: 'zzzz' }),
+      validRecord({ updated_at: '2026-07-29' }),
+      validRecord({ updated_at: '2026-07-29T00:00:00.123Z' }),
+      validRecord({ blockers: [validBlocker({ cleared_at: 'zzzz' })] }),
+      validRecord({ blockers: [validBlocker({ cleared_at: null })] }),
+      validRecord({ blockers: [validBlocker({ raised_at: 'zzzz' })] }),
+      // Calendar rollover: Date.parse accepts this (it becomes 3 March) but
+      // ajv-formats rejects it, so a Date.parse-only floor would diverge.
+      validRecord({ updated_at: '2026-02-31T00:00:00Z' }),
     ];
     const ajvVerdicts = [];
     for (const record of cases) ajvVerdicts.push(await withAjv.validateRecordShape(record) === null);
@@ -265,16 +276,88 @@ describe('known divergences between Ajv and the floor', () => {
     ).toBeNull();
   });
 
-  it('the floor does not enforce string formats', async () => {
-    // Neither path is load-bearing here: the renderer prints updated_at as
-    // text, and the stale-card comparison is a plain string comparison on ISO
-    // timestamps. A malformed timestamp produces a wrong-looking card, not a
-    // crash or a bad write.
-    const withoutAjv = await loadWithoutAjv();
-    expect(
-      await withoutAjv.validateRecordShape(validRecord({ updated_at: 'not-a-date' })),
-      'floor now rejects malformed date-times — move this case into the agreement set'
-    ).toBeNull();
+});
+
+// ---------------------------------------------------------------------------
+// format: date-time. External review round 6.
+//
+// This was pinned as an ACCEPTABLE divergence for one round, on the stated
+// grounds that a malformed timestamp produced only a wrong-looking card. That
+// reasoning was wrong, and the pin encoded it as intended behaviour. All three
+// consumers below were verified in board-sync.mjs before this was fixed:
+//
+//   shouldSkipStale  compares timestamps as PLAIN STRINGS
+//   chooseSurvivor   orders duplicates by the same string comparison
+//   shouldArchive    does `now - new Date(updated_at)`, which is NaN
+// ---------------------------------------------------------------------------
+
+describe('validateRecordShape — date-time formats (Ajv unavailable)', () => {
+  it('rejects a malformed updated_at — the reported defect', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    for (const bad of ['zzzz', 'not-a-date', '2026-07-29', '', 'Jul 29 2026']) {
+      const error = await validateRecordShape(validRecord({ updated_at: bad }));
+      expect(error, `updated_at: ${JSON.stringify(bad)}`).toBeTruthy();
+      expect(error).toContain('updated_at');
+    }
+  });
+
+  it('rejects the specific value that defeats stale-write protection', async () => {
+    // 'zzzz' sorts ABOVE any ISO timestamp under plain string comparison, so
+    // shouldSkipStale returns false and an older record overwrites a newer
+    // card. Named explicitly so the case survives any future refactor of the
+    // loop above.
+    const { validateRecordShape } = await loadWithoutAjv();
+    expect('2026-07-29T10:00:00Z' > 'zzzz', 'the string-ordering premise').toBe(false);
+    expect(await validateRecordShape(validRecord({ updated_at: 'zzzz' }))).toBeTruthy();
+  });
+
+  it('accepts legitimate RFC 3339 forms', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    for (const good of [
+      '2026-07-29T00:00:00Z',
+      '2026-07-29T00:00:00.123Z',
+      '2026-07-29T00:00:00+10:00',
+      '2026-07-29T00:00:00-05:30',
+      '2026-07-29t00:00:00z',
+    ]) {
+      expect(await validateRecordShape(validRecord({ updated_at: good })), good).toBeNull();
+    }
+  });
+
+  it('rejects well-shaped but impossible dates', async () => {
+    // The regex alone accepts these; the Date.parse check is what rejects them.
+    const { validateRecordShape } = await loadWithoutAjv();
+    expect(await validateRecordShape(validRecord({ updated_at: '2026-02-31T00:00:00Z' }))).toBeTruthy();
+    expect(await validateRecordShape(validRecord({ updated_at: '2026-13-01T00:00:00Z' }))).toBeTruthy();
+  });
+
+  it('is stricter than Date.parse, which accepts far more than RFC 3339', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    // Date.parse happily reads this; JSON Schema's date-time does not.
+    expect(Number.isFinite(Date.parse('29 Jul 2026')), 'the premise').toBe(true);
+    expect(await validateRecordShape(validRecord({ updated_at: '29 Jul 2026' }))).toBeTruthy();
+  });
+
+  it('enforces date-time inside the nullable oneOf shapes', async () => {
+    // blocker.cleared_at is `oneOf [{string, date-time}, {null}]`, so the
+    // keyword sits in a BRANCH, not on the property. null must still pass.
+    const { validateRecordShape } = await loadWithoutAjv();
+    expect(await validateRecordShape(
+      validRecord({ blockers: [validBlocker({ cleared_at: null })] })
+    )).toBeNull();
+    expect(await validateRecordShape(
+      validRecord({ blockers: [validBlocker({ cleared_at: '2026-07-29T00:00:00Z' })] })
+    )).toBeNull();
+    expect(await validateRecordShape(
+      validRecord({ blockers: [validBlocker({ cleared_at: 'zzzz' })] })
+    )).toContain('cleared_at');
+  });
+
+  it('enforces date-time on nested blocker.raised_at', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    expect(await validateRecordShape(
+      validRecord({ blockers: [validBlocker({ raised_at: 'zzzz' })] })
+    )).toContain('raised_at');
   });
 });
 
