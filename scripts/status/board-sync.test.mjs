@@ -12,6 +12,7 @@ import {
   BOARD_FIELDS_TO_CREATE,
   buildCardBody,
   buildCardKey,
+  buildDraftContentEditArgs,
   canonicaliseRepo,
   checkBoardContract,
   checkBoardHygiene,
@@ -309,6 +310,70 @@ describe('upsert key: read side matches write side', () => {
     expect(normalised.repo).toBe('michaelhazza/automation-v1');
     expect(normalised.slug).toBe('dev-pipeline-v2');
     expect(normalised.updated_at).toBe('2026-07-28T00:00:00Z');
+  });
+
+  // ---------------------------------------------------------------------------
+  // REGRESSION (v2.60.1, found by running the sync twice against a live board
+  // during the cryptotrackr pilot): a card carries TWO non-interchangeable ids.
+  // Field-value edits address the project item (`PVTI_…`); title/body edits
+  // address the draft-issue content (`DI_…`) and gh refuses anything else. The
+  // update path passed the item id to both, and because gh failures on the sync
+  // path are recorded-but-non-blocking by contract, the symptom was invisible:
+  // creates worked, every UPDATE silently no-opped, so the board froze at each
+  // build's first-seen state. normaliseItem had dropped content.id entirely, so
+  // the correct id was not even in scope at the call site.
+  // ---------------------------------------------------------------------------
+  it('normaliseItem retains the draft-issue content id, which is NOT the item id', () => {
+    const item = {
+      id: 'PVTI_item',
+      content: { type: 'DraftIssue', id: 'DI_content', body: '' },
+      'build Repo': 'owner/repo',
+      slug: 's',
+      body: '',
+    };
+    const normalised = normaliseItem(item);
+    expect(normalised.id).toBe('PVTI_item');
+    expect(normalised.contentId).toBe('DI_content');
+    expect(normalised.contentId).not.toBe(normalised.id);
+  });
+
+  it('normaliseItem reports a missing content id as null rather than guessing', () => {
+    expect(normaliseItem({ id: 'PVTI_x', body: '' }).contentId).toBe(null);
+    expect(normaliseItem({ id: 'PVTI_x', content: { type: 'Issue' }, body: '' }).contentId).toBe(null);
+  });
+
+  it('buildDraftContentEditArgs addresses the edit by the DI_ content id', () => {
+    expect(buildDraftContentEditArgs('DI_abc', { title: 'a: b', body: 'text' })).toEqual([
+      'project', 'item-edit', '--id', 'DI_abc',
+      '--title', 'a: b', '--body', 'text', '--format', 'json',
+    ]);
+  });
+
+  it('buildDraftContentEditArgs sends title AND body in ONE call', () => {
+    // updateProjectV2DraftIssue treats an omitted field as a blanking request,
+    // so a body-only edit fails with "Title can't be blank". One invocation
+    // carrying both is the only shape that works — pinned here because the
+    // two-call version passed every unit test and failed against a live board.
+    const args = buildDraftContentEditArgs('DI_abc', { title: 't', body: 'b' });
+    expect(args).toContain('--title');
+    expect(args).toContain('--body');
+    expect(args.filter((a) => a === '--id')).toHaveLength(1);
+  });
+
+  it('buildDraftContentEditArgs refuses a project-item id — the exact shape of the defect', () => {
+    expect(buildDraftContentEditArgs('PVTI_item', { title: 't', body: 'b' })).toBe(null);
+    expect(buildDraftContentEditArgs(null, { title: 't', body: 'b' })).toBe(null);
+    expect(buildDraftContentEditArgs(undefined, { title: 't', body: 'b' })).toBe(null);
+  });
+
+  it('buildDraftContentEditArgs refuses a blank title rather than blanking the card', () => {
+    expect(buildDraftContentEditArgs('DI_abc', { title: '', body: 'b' })).toBe(null);
+    expect(buildDraftContentEditArgs('DI_abc', {})).toBe(null);
+    // A missing body is legal (empty string), a missing title is not.
+    expect(buildDraftContentEditArgs('DI_abc', { title: 't' })).toEqual([
+      'project', 'item-edit', '--id', 'DI_abc',
+      '--title', 't', '--body', '', '--format', 'json',
+    ]);
   });
 
   it('a card written by mapRecordToCard round-trips through the gh key shape to the SAME key', () => {

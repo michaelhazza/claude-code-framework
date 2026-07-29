@@ -48,7 +48,13 @@
 //     -> per --help: "only a single field value can be updated per
 //     invocation" for project-item field edits, so upserting a card's
 //     custom fields costs one item-edit call per field. Draft-issue
-//     title/body edits use --id alone (no --project-id/--field-id needed).
+//     title/body edits use --id alone (no --project-id/--field-id needed)
+//     BUT that --id must be the draft-issue CONTENT id (`DI_…`), not the
+//     project-item id (`PVTI_…`) the field edits take: gh refuses with "ID
+//     must be the ID of the draft issue content which is prefixed with
+//     `DI_`". Confirmed against a live board (gh 2.87.3) during the
+//     cryptotrackr pilot, where the wrong id made every UPDATE a silent
+//     no-op. See buildDraftContentEditArgs + normaliseItem's contentId.
 //   gh project item-list <number> --owner <login> --format json [-L <n>]
 //     -> list existing cards to resolve the {Build Repo, Slug} upsert key.
 //   gh project item-archive <number> --id <item-id> --owner <login>
@@ -129,9 +135,12 @@
 // functions (no fs, no gh, no Date.now()) — canonicaliseRepo, buildCardKey,
 // validateSlugMatchesDir, extractUpdatedAtFromBody, buildCardBody,
 // mapRecordToCard, chooseSurvivor, shouldSkipStale, shouldArchive,
-// parseOwnerRepoFromGitUrl. All `gh` invocation is isolated below in the
-// thin I/O layer (ghJson + its callers). Tests exercise only the pure
-// functions and never shell out to `gh`.
+// parseOwnerRepoFromGitUrl, buildDraftContentEditArgs. All `gh` invocation is
+// isolated below in the thin I/O layer (ghJson + its callers). Tests exercise
+// only the pure functions and never shell out to `gh` — which is why the
+// which-id-goes-where rule lives in a pure arg-builder: an argv choice made
+// inline inside the I/O layer is untestable, and that is exactly where the
+// silent-update defect hid.
 //
 // Usage:
 //   node scripts/status/board-sync.mjs [--root <dir>] [--repo <owner/name>]
@@ -520,11 +529,53 @@ export function normaliseItem(item) {
   const bodyKey = extractKeyFromBody(body);
   return {
     id: item.id,
+    // A card has TWO ids and they are not interchangeable: `id` is the
+    // project-item id (`PVTI_…`) that field-value edits address, while
+    // `contentId` is the draft-issue content id (`DI_…`) that title/body edits
+    // require. Retaining it here is what lets updateCard address each edit
+    // correctly; dropping it is what made every update fail (see
+    // buildDraftContentEditArgs).
+    contentId: item.content?.id ?? null,
     repo: canonicaliseRepo(readItemFieldValue(item, REPO_FIELD_NAME)) ?? bodyKey?.repo ?? null,
     slug: readItemFieldValue(item, 'Slug') ?? bodyKey?.slug ?? null,
     updated_at: extractUpdatedAtFromBody(body),
     body,
   };
+}
+
+/**
+ * Builds the single argv that edits a draft card's title AND body together.
+ *
+ * Two live-verified gh constraints are encoded here, both of which a separate
+ * per-field call gets wrong:
+ *
+ * 1. WHICH ID. `gh project item-edit` takes DIFFERENT ids for its two jobs: a
+ *    field-value edit addresses the PROJECT ITEM (`PVTI_…`, with --project-id
+ *    and --field-id), while a title/body edit addresses the DRAFT ISSUE
+ *    CONTENT (`DI_…`) and refuses anything else with "ID must be the ID of the
+ *    draft issue content which is prefixed with `DI_`".
+ * 2. TOGETHER, IN ONE CALL. A draft-issue edit maps to the
+ *    `updateProjectV2DraftIssue` mutation, which treats an omitted field as a
+ *    blanking request: editing the body alone fails with "GraphQL: Title can't
+ *    be blank". So --title and --body must travel in the SAME invocation.
+ *
+ * Because the sync path records gh failures as non-blocking warnings, neither
+ * constraint surfaced as an error: card CREATION kept working while every card
+ * UPDATE silently no-opped, so a board went permanently stale after the first
+ * sync of a build. Both were found by running the sync twice against a live
+ * board (gh 2.87.3) during the cryptotrackr pilot.
+ *
+ * Exported so a test pins both rules rather than a comment. Returns null when
+ * no usable content id is available, which the caller treats as "skip
+ * title/body, still write the fields" rather than as a failure.
+ */
+export function buildDraftContentEditArgs(contentId, card) {
+  if (typeof contentId !== 'string' || !contentId.startsWith('DI_')) return null;
+  if (!card || typeof card.title !== 'string' || card.title === '') return null;
+  return [
+    'project', 'item-edit', '--id', contentId,
+    '--title', card.title, '--body', card.body ?? '', '--format', 'json',
+  ];
 }
 
 function fetchExistingItems(owner, number) {
@@ -581,10 +632,21 @@ function createCard(boardCtx, fields, card) {
   }
 }
 
-function updateCard(boardCtx, fields, itemId, card) {
-  execFileSync('gh', ['project', 'item-edit', '--id', itemId, '--title', card.title, '--format', 'json'], { encoding: 'utf8' });
-  execFileSync('gh', ['project', 'item-edit', '--id', itemId, '--body', card.body, '--format', 'json'], { encoding: 'utf8' });
-  setFieldValues(boardCtx, fields, itemId, card.fields);
+function updateCard(boardCtx, fields, item, card) {
+  // Field values go FIRST, deliberately. `Status` IS the board column — the
+  // single most load-bearing value on the card — so a later title/body failure
+  // must not be able to leave the column stale. (Before this ordering, a
+  // title-edit failure aborted the whole update and the column never moved.)
+  setFieldValues(boardCtx, fields, item.id, card.fields);
+
+  const contentArgs = buildDraftContentEditArgs(item.contentId, card);
+  if (!contentArgs) {
+    console.warn(
+      `[board-sync] no draft-issue content id for ${card.key} — field values updated, title/body left unchanged`
+    );
+    return;
+  }
+  execFileSync('gh', contentArgs, { encoding: 'utf8' });
 }
 
 function archiveItem(owner, number, itemId) {
@@ -829,7 +891,7 @@ async function syncBoard(root, repository, boardConfig) {
             `(no update, and no archival: a record too stale to apply is too stale to archive on)`
         );
       } else if (action.update) {
-        updateCard(boardCtx, fields, survivor.id, card);
+        updateCard(boardCtx, fields, survivor, card);
       }
 
       if (action.archive && survivor) {
