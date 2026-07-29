@@ -32,6 +32,31 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.57.0 — 2026-07-29
+
+**Highlights:** Round-5 external review. Two findings. The high-severity one **reopened the split-brain board defect from round 3** through a different door, and it landed because a claim made in the review handoff was wrong: the round-5 prompt asserted that an out-of-enum status was "separately caught by the generator's own status check". The generator does have one. **`board-sync` does not** — it relies entirely on `validateRecordShape`. Verified in the code before fixing.
+
+**Fixed — `scripts/status/status-contract.mjs` (high) — the schema-derived floor ignored `enum` and `const`:**
+The round-4 floor enforced `required` and `type` but no vocabulary constraints, so `status: "TESTNG"` passed as a string. `checkBoardContract` also passed, because the *board* was correctly provisioned. The card body was then written saying `TESTNG`, `setFieldValues` found no matching option, warned, skipped the Status field, and the card disagreed with its own column — the round-3 defect, reached from local data instead of board state. The same omission accepted `contract_version: "build-status.v1"` against a `const` of v2, i.e. a record written under a superseded contract. Now enforced generically, including inside `blockers[]` and on items fragments that carry vocabulary directly.
+
+**Also fixed, found by the extended agreement test rather than by review:** `minLength` was a further divergence — Ajv rejected an empty blocker `text`, the floor accepted it. Closed. Any gap between the two paths makes "which validator happened to load" a correctness variable.
+
+**Changed — the Ajv-vs-floor agreement test was passing over a subset that excluded the bug:**
+Its case set only covered rules the floor already implemented, so the two paths "agreed" precisely where they could not disagree. Extended with the vocabulary cases. This is the third instance in this build of a test that asserted the implementation rather than the contract, and it is now the specific thing to check when reviewing any equivalence test here.
+
+**Added — known divergences are pinned, not described:**
+The floor implements `required`, `type` (with the `oneOf`/`anyOf` nullable shapes), `enum`, `const`, `minLength`, and one level into arrays-of-objects. It does not implement `format` or `additionalProperties: false`. Both gaps now have tests asserting the current behaviour, with failure messages instructing a future reader to move the case into the agreement set if the gap is ever closed. A comment claiming equivalence is what produced this finding; a test that fails when the claim stops being true does not.
+
+**Fixed — `scripts/runner/install-runner.test.mjs` (low) — a vacuous test:**
+`"'/home/mike/a\b/runsvc.sh'"` puts a *backspace control character* in a JavaScript string, not a backslash followed by `b`. The expectation contained the identical character, so the assertion held without ever supplying a literal backslash, and a future parser change stripping backslashes would have kept it green. Escaped properly, plus an explicit assertion that the input contains a reverse solidus and not `\b`, so it cannot silently degrade again.
+
+**Fixed — `scripts/runner/install-runner.ps1` (low, availability) — unquoted escaped whitespace:**
+Surfaced while writing the test the reviewer asked for. systemd processes backslash escapes in unquoted words too, so `/home/mike/runner\ installs/repo/runsvc.sh` was truncated to `/home/mike/runner\`. Safe rather than dangerous — a trailing backslash matches no canonical directory, so the caller refuses — but it is the same availability bug as the quoted case fixed in 2.56.0: the installer declines to manage a runner it installed itself. A new test asserts the general property that every ambiguous or escaped form resolves to the correct full path or to empty, never to a truncated non-empty path, because wrong-path is what feeds a stop/disable/delete decision.
+
+Full suite green: 29 vitest files / 685 tests, plus 14 node:test and 14 plain-node suites.
+
+---
+
 ## 2.56.0 — 2026-07-29
 
 **Highlights:** Round-4 external review. Three findings plus one lower-severity issue, and the streak holds: all four are defects in code written in the last two versions. Two share a single root cause worth naming — **a guard that reports "fine" when it cannot actually tell.** `checkBoardContract` returned "contract valid" when the schema was unreadable, and `validateRecordShape`'s Ajv-free floor returned "valid" for records it had never really inspected. Both were introduced by the round-3 fixes that were supposed to make these failures visible.

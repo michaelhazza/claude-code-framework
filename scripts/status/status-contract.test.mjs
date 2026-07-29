@@ -159,6 +159,46 @@ describe('validateRecordShape — Ajv unavailable (the structural floor)', () =>
       expect(await validateRecordShape(value)).toContain('must be a JSON object');
     }
   });
+
+  // -------------------------------------------------------------------------
+  // Vocabulary (enum / const). External review round 5.
+  //
+  // A types-only floor accepted `status: "TESTNG"` because it is a string, and
+  // board-sync has NO status check of its own (unlike the generator, which
+  // tests STATUS_PRIORITY membership). So the typo reached the board: the card
+  // body was written saying TESTNG, setFieldValues found no such option,
+  // warned, skipped the field, and the card disagreed with its own column —
+  // reopening the exact split-brain defect checkBoardContract was written for.
+  // -------------------------------------------------------------------------
+
+  it('rejects a status outside the enum — the reopened split-brain defect', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    const error = await validateRecordShape(validRecord({ status: 'TESTNG' }));
+    expect(error).toBeTruthy();
+    expect(error).toContain('status');
+    // The message names the legitimate values, so the operator can see the typo.
+    expect(error).toContain('TESTING');
+  });
+
+  it('accepts every legitimate status', async () => {
+    const { validateRecordShape, readStatusEnum } = await loadWithoutAjv();
+    for (const status of await readStatusEnum()) {
+      expect(await validateRecordShape(validRecord({ status })), status).toBeNull();
+    }
+  });
+
+  it('rejects a superseded contract_version — const, not just type', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    const error = await validateRecordShape(validRecord({ contract_version: 'build-status.v1' }));
+    expect(error).toBeTruthy();
+    expect(error).toContain('contract_version');
+  });
+
+  it('rejects out-of-enum phase and classification', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    expect(await validateRecordShape(validRecord({ phase: 'not-a-phase' }))).toContain('phase');
+    expect(await validateRecordShape(validRecord({ classification: 'Enormous' }))).toContain('classification');
+  });
 });
 
 describe('validateRecordShape — Ajv available', () => {
@@ -168,17 +208,31 @@ describe('validateRecordShape — Ajv available', () => {
     expect(await validateRecordShape(validRecord({ blockers: [null] }))).toBeTruthy();
   });
 
-  it('agrees with the floor on the round-4 regression cases', async () => {
+  it('agrees with the floor across structure AND vocabulary', async () => {
     // The two paths must not disagree about validity, or which one happened to
     // load becomes a correctness variable.
+    //
+    // Round 5: the first version of this test only covered cases the floor
+    // already implemented, so the paths "agreed" over a subset that excluded
+    // every enum and const rule — which is precisely where they diverged. The
+    // vocabulary cases below are the ones that were missing.
     const withAjv = await loadWithAjv();
     const cases = [
+      // Structure
       validRecord(),
       validRecord({ blockers: [validBlocker()] }),
       validRecord({ blockers: [null] }),
       validRecord({ title: 42 }),
       validRecord({ pr: '733' }),
       validRecord({ gates: [] }),
+      // Vocabulary
+      validRecord({ status: 'TESTNG' }),
+      validRecord({ status: 'TESTING' }),
+      validRecord({ status: 'ABANDONED' }),
+      validRecord({ contract_version: 'build-status.v1' }),
+      validRecord({ phase: 'not-a-phase' }),
+      validRecord({ classification: 'Enormous' }),
+      validRecord({ blockers: [validBlocker({ text: '' })] }),
     ];
     const ajvVerdicts = [];
     for (const record of cases) ajvVerdicts.push(await withAjv.validateRecordShape(record) === null);
@@ -188,6 +242,39 @@ describe('validateRecordShape — Ajv available', () => {
     for (const record of cases) floorVerdicts.push(await withoutAjv.validateRecordShape(record) === null);
 
     expect(floorVerdicts).toEqual(ajvVerdicts);
+  });
+});
+
+describe('known divergences between Ajv and the floor', () => {
+  // The floor implements required, type, oneOf/anyOf, enum, const and
+  // minLength. It does NOT implement `format` or `additionalProperties: false`.
+  // Pinned here rather than left as a comment: if someone later assumes the two
+  // paths are equivalent, this names exactly where they are not — and if a
+  // future change closes one of these gaps, this test fails and tells them to
+  // move the case up into the agreement set.
+  it('the floor does not enforce additionalProperties: false', async () => {
+    const withAjv = await loadWithAjv();
+    const record = validRecord();
+    record.an_unknown_key = 'x';
+    expect(await withAjv.validateRecordShape(record)).toBeTruthy();
+
+    const withoutAjv = await loadWithoutAjv();
+    expect(
+      await withoutAjv.validateRecordShape(record),
+      'floor now rejects unknown keys — move this case into the agreement set'
+    ).toBeNull();
+  });
+
+  it('the floor does not enforce string formats', async () => {
+    // Neither path is load-bearing here: the renderer prints updated_at as
+    // text, and the stale-card comparison is a plain string comparison on ISO
+    // timestamps. A malformed timestamp produces a wrong-looking card, not a
+    // crash or a bad write.
+    const withoutAjv = await loadWithoutAjv();
+    expect(
+      await withoutAjv.validateRecordShape(validRecord({ updated_at: 'not-a-date' })),
+      'floor now rejects malformed date-times — move this case into the agreement set'
+    ).toBeNull();
   });
 });
 

@@ -817,8 +817,27 @@ function Get-SystemdExecPath {
     $quote = $value[0]
 
     if ($quote -ne '"' -and $quote -ne "'") {
-        # Unquoted: the path runs to the first whitespace.
-        return ($value -split '\s+')[0]
+        # Unquoted: the path runs to the first UNESCAPED whitespace. systemd
+        # processes backslash escapes in unquoted words too, so a plain split
+        # on whitespace turned '/home/mike/runner\ installs/repo/runsvc.sh'
+        # into '/home/mike/runner\'. That truncation is safe (a trailing
+        # backslash matches no canonical directory, so the caller refuses) but
+        # it is the same availability bug as the quoted case: the installer
+        # declines to manage a runner it installed itself.
+        $sbU = New-Object System.Text.StringBuilder
+        $j = 0
+        while ($j -lt $value.Length) {
+            $c = $value[$j]
+            if ($c -eq '\' -and ($j + 1) -lt $value.Length) {
+                [void]$sbU.Append($value[$j + 1])
+                $j += 2
+                continue
+            }
+            if ([char]::IsWhiteSpace($c)) { break }
+            [void]$sbU.Append($c)
+            $j++
+        }
+        return $sbU.ToString()
     }
 
     $sb = New-Object System.Text.StringBuilder

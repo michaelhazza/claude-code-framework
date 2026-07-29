@@ -34,6 +34,20 @@
  * makes the schema file itself a hard runtime requirement, which it already
  * was in practice: readStatusEnum() cannot resolve the board's columns without
  * it either.
+ *
+ * The floor implements: required, type (including the oneOf/anyOf nullable
+ * shapes), enum, const, minLength, and one level of recursion into
+ * arrays-of-objects (the `blockers[]` shape the card renderer dereferences).
+ * It does NOT implement `format` or `additionalProperties: false` — both are
+ * pinned as known divergences in status-contract.test.mjs rather than left to
+ * a reader's assumption, and neither can crash a renderer or corrupt a write.
+ *
+ * enum and const are not optional niceties here (external review round 5).
+ * board-sync has no status check of its own, unlike the generator, so a
+ * types-only floor let `status: "TESTNG"` through to the board: the card body
+ * was written saying TESTNG, setFieldValues found no such option, warned,
+ * skipped the field, and the card disagreed with its own column -- reopening
+ * the exact split-brain defect checkBoardContract exists to prevent.
  */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -112,8 +126,40 @@ function permittedTypes(propSchema) {
   return [];
 }
 
-/** Generic required-keys + declared-types check against a schema fragment.
- *  Returns an error string, or null. `at` prefixes the path in messages. */
+/** `const` and `enum` for one property. Returns an error string, or null.
+ *
+ *  These are VOCABULARY constraints, and leaving them out reopened the exact
+ *  split-brain defect the board contract check was written to close (external
+ *  review round 5). `status: "TESTNG"` is a string, so a types-only floor
+ *  accepted it; board-sync has no status check of its own — unlike the
+ *  generator, which tests membership of STATUS_PRIORITY — so the typo reached
+ *  the board, the card body was written saying TESTNG, setFieldValues found no
+ *  such option, warned, skipped the field, and the card disagreed with its own
+ *  column. The same omission accepted `contract_version: "build-status.v1"`
+ *  against a `const` of v2, i.e. a record written under a superseded contract.
+ */
+function checkVocabulary(value, propSchema, at, key) {
+  if (Object.prototype.hasOwnProperty.call(propSchema, 'const') && value !== propSchema.const) {
+    return `${at}${key} must equal ${JSON.stringify(propSchema.const)}`;
+  }
+  // Object.is, not includes: NaN never equals itself under ===, and -0/+0
+  // compare equal when they are distinct JSON-schema values.
+  if (Array.isArray(propSchema.enum) && !propSchema.enum.some((c) => Object.is(c, value))) {
+    return `${at}${key} must be one of ${propSchema.enum.join(', ')}`;
+  }
+  // minLength was the last divergence the Ajv-vs-floor agreement test found.
+  // An empty blocker text is not a crash, but it renders as a blank bullet on
+  // the card, and any gap between the two paths makes "which validator loaded"
+  // a correctness variable.
+  if (typeof propSchema.minLength === 'number' && typeof value === 'string'
+      && value.length < propSchema.minLength) {
+    return `${at}${key} must be at least ${propSchema.minLength} character(s)`;
+  }
+  return null;
+}
+
+/** Generic required-keys + declared-types + vocabulary check against a schema
+ *  fragment. Returns an error string, or null. `at` prefixes the path. */
 function checkAgainstFragment(value, fragment, at) {
   const missing = (fragment.required ?? []).filter(
     (key) => !Object.prototype.hasOwnProperty.call(value, key)
@@ -127,6 +173,9 @@ function checkAgainstFragment(value, fragment, at) {
       return `${at}${key} must be ${types.join(' or ')}`;
     }
 
+    const vocabularyError = checkVocabulary(value[key], propSchema, at, key);
+    if (vocabularyError) return vocabularyError;
+
     // One level into arrays-of-objects. This is not general recursion: it is
     // exactly the `blockers[]` shape, whose elements the card renderer
     // dereferences and whose malformed elements were the reported crash.
@@ -136,6 +185,10 @@ function checkAgainstFragment(value, fragment, at) {
         if (itemTypes.length > 0 && !itemTypes.some((t) => matchesJsonType(element, t))) {
           return `${at}${key}[${i}] must be ${itemTypes.join(' or ')}`;
         }
+        // An items fragment can carry enum/const directly (array-of-scalars),
+        // as well as nested inside its own properties via the recursion below.
+        const itemVocabularyError = checkVocabulary(element, propSchema.items, `${at}${key}`, `[${i}]`);
+        if (itemVocabularyError) return itemVocabularyError;
         if (element !== null && typeof element === 'object') {
           const nested = checkAgainstFragment(element, propSchema.items, `${at}${key}[${i}].`);
           if (nested) return nested;

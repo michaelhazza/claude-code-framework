@@ -521,8 +521,19 @@ describe.skipIf(!PS)('Get-SystemdExecPath (executed from the real .ps1)', () => 
   it('backslash escapes are processed inside double quotes only', () => {
     // systemd processes \" inside double quotes; inside single quotes the
     // backslash is literal.
+    //
+    // The single-quote case was VACUOUS on first writing (external review round
+    // 5): `"'/home/mike/a\b/runsvc.sh'"` puts a backspace control character in
+    // the string, not a backslash followed by b, and the expectation contained
+    // the identical character — so the assertion held without ever supplying a
+    // literal backslash. Escaped properly below, and asserted explicitly so the
+    // input cannot silently degrade again.
     expect(execPath('"/home/mike/a\\"b/runsvc.sh"')).toBe('/home/mike/a"b/runsvc.sh');
-    expect(execPath("'/home/mike/a\b/runsvc.sh'")).toBe('/home/mike/a\b/runsvc.sh');
+
+    const singleQuoted = "'/home/mike/a\\b/runsvc.sh'";
+    expect(singleQuoted).toContain('\\'); // a real REVERSE SOLIDUS, not \b
+    expect(singleQuoted).not.toContain('\b');
+    expect(execPath(singleQuoted)).toBe('/home/mike/a\\b/runsvc.sh');
   });
 
   it('an unterminated quote returns empty, so the caller refuses', () => {
@@ -530,6 +541,32 @@ describe.skipIf(!PS)('Get-SystemdExecPath (executed from the real .ps1)', () => 
     // stop/disable/delete decision.
     expect(execPath('"/home/mike/unterminated')).toBe('');
     expect(execPath("'/home/mike/unterminated")).toBe('');
+  });
+
+  it('unquoted escaped whitespace is honoured, not truncated', () => {
+    // systemd processes backslash escapes in unquoted words too. Splitting on
+    // raw whitespace produced '/home/mike/runner\' — safe (a trailing
+    // backslash matches no canonical directory, so the caller refuses) but the
+    // same availability bug as the quoted case: the installer declines to
+    // manage a runner it installed itself. (External review round 5.)
+    expect(execPath('/home/mike/runner\\ installs/repo/runsvc.sh'))
+      .toBe('/home/mike/runner installs/repo/runsvc.sh');
+    expect(execPath('/home/mike/runner\\ installs/repo/runsvc.sh --once'))
+      .toBe('/home/mike/runner installs/repo/runsvc.sh');
+  });
+
+  it('never returns a truncated path that could match the wrong directory', () => {
+    // The dangerous outcome class is a WRONG path, not an empty one: the result
+    // feeds a stop/disable/delete decision. Every ambiguous or escaped form must
+    // resolve to either the correct full path or to empty.
+    for (const input of [
+      '"/home/mike/unterminated',
+      "'/home/mike/unterminated",
+      '"',
+      "'",
+    ]) {
+      expect(execPath(input), input).toBe('');
+    }
   });
 
   it('empty and whitespace-only input return empty', () => {
