@@ -110,7 +110,20 @@ const REQUIRED_KEYS = [
 
 // Lower value = higher display priority. Terminal statuses (MERGED,
 // ABANDONED) are deliberately absent — they are excluded from the block.
-const STATUS_PRIORITY = { MERGE_READY: 0, REVIEWING: 1, BUILDING: 2, PLANNING: 3 };
+// Lower value = higher display priority. Ordered by pipeline progress, so the
+// build closest to landing sorts to the top of the generated block — that is
+// the one whose state the operator most often needs.
+// Widened to build-status.v2 (2026-07-29): SPECIFYING split out of PLANNING,
+// and TESTING/FINALISING split out of the old catch-all REVIEWING span.
+const STATUS_PRIORITY = {
+  MERGE_READY: 0,
+  FINALISING: 1,
+  TESTING: 2,
+  REVIEWING: 3,
+  BUILDING: 4,
+  PLANNING: 5,
+  SPECIFYING: 6,
+};
 
 // The terminal half of the schema's status enum (schemas/build-status.schema.json).
 // Named explicitly so "terminal, deliberately excluded" is distinguishable from

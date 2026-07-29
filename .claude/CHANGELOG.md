@@ -32,6 +32,31 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.54.0 — 2026-07-29
+
+**Highlights:** Implements the board-status vocabulary the operator approved — `build-status.v2`, 6 statuses → 9. The docs described it; this makes the code do it. **Schema change with a `contract_version` bump; migration is a no-op because there were zero `status.json` files and zero board cards at the time of the change.**
+
+**Changed — `schemas/build-status.schema.json` (`build-status.v1` → `v2`):**
+
+`SPECIFYING PLANNING BUILDING REVIEWING TESTING FINALISING MERGE_READY MERGED ABANDONED`
+
+Three additions, each closing a case where the board could not describe the work:
+- **`SPECIFYING`** — `PLANNING` previously meant both "working out *what* to build" and "sizing the build plan". Different activities, separated by a mandatory operator approval gate, and the operator's most frequent question ("is it still deciding the spec, or is it planning the work?") was unanswerable from the board.
+- **`TESTING`** — Codex authoring the frontend/backend tests, running the full suite and iterating to green was invisible inside the Phase 3 span. Often the longest single stretch of a build, and indistinguishable from "green, final checks running".
+- **`FINALISING`** — was not a status at all; `REVIEWING` silently carried the entire finalisation phase through to `MERGE_READY`.
+
+**Changed — transitions.** Forward chain is now `SPECIFYING → PLANNING → BUILDING → REVIEWING → TESTING → FINALISING → MERGE_READY → MERGED`, with an ownership table naming the coordinator and step for every edge. Consequences worth stating:
+- **Phase 2 now ENTERS at `PLANNING`, not `BUILDING`** — plan authoring is Phase 2 work, so `spec-coordinator` hands over at `PLANNING` and `feature-coordinator` writes `BUILDING` at Step 5, **after** the operator approves the plan. Entry guards updated on both sides.
+- `finalisation-coordinator` gains two write-sites: `REVIEWING → TESTING` at **Step 4a** (written *before* invoking verify-phase, deliberately — a board that only updated on completion would show `REVIEWING` for hours of test work) and `TESTING → FINALISING` at **Step 5**, gated on the verify suite actually being green.
+- Back-edges are now `MERGE_READY → FINALISING` and `FINALISING → TESTING`. Choosing between them is a judgement about *where the work goes*: a red CI check on unchanged code returns to `FINALISING`; a defect needing a code or test change returns to `TESTING`. Both still require a blocker entry in the same write.
+- `spec-coordinator`'s "PLANNING lock" is now the **SPECIFYING lock** throughout (10 references migrated).
+
+**Changed — `board-sync.mjs`:** the `Status` single-select options list matches the enum in pipeline order (these *are* the board columns, left to right), and the `--init` guidance now derives the option names from the field spec instead of hard-coding a list that could silently drift.
+
+**Tests:** +2 contract tests asserting the board's option list is exactly the schema enum, in order, and that the three new values plus the `v2` contract version are present. This pair is the guard against the two halves drifting — a status the board lacks cannot be written to a card, which would break publishing for that state only. Existing fixtures migrated `v1` → `v2` (9 tests failed on the bump, correctly — they were pinned to the contract). Full suite green.
+
+**Operator action required, once:** the live board's `Status` field options must be updated in the **web UI** to match. There is no `gh` subcommand that edits single-select options, so this is the one genuinely manual step; `board-sync --init` prints the expected list.
+
 ## 2.53.0 — 2026-07-29
 
 **Highlights:** Frontend test scope becomes the tester's judgement rather than a rule written months earlier — bounded by *how* to test and *what to be accountable for*, not by *how much*. Plus a false-positive fix in the review-artifact hook, caught by its own first day of real use.

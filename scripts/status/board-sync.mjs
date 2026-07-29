@@ -186,7 +186,14 @@ const BOARD_FIELDS_TO_CREATE = [
   {
     name: 'Status',
     dataType: 'SINGLE_SELECT',
-    options: ['PLANNING', 'BUILDING', 'REVIEWING', 'MERGE_READY', 'MERGED', 'ABANDONED'],
+    // build-status.v2 order — these ARE the board columns, left to right, so the
+    // sequence is the pipeline order and not alphabetical. Must stay in step
+    // with schemas/build-status.schema.json's status enum; a value the board
+    // lacks cannot be written to a card.
+    options: [
+      'SPECIFYING', 'PLANNING', 'BUILDING', 'REVIEWING', 'TESTING',
+      'FINALISING', 'MERGE_READY', 'MERGED', 'ABANDONED',
+    ],
   },
 ];
 
@@ -574,8 +581,9 @@ async function runInit(owner, title) {
     if (existingFields[fieldSpec.name]) {
       console.log(
         `[board-sync] --init: field "${fieldSpec.name}" already exists — reusing. If this is the ` +
-          'default "Status" field, confirm its options match PLANNING/BUILDING/REVIEWING/MERGE_READY/' +
-          'MERGED/ABANDONED via the web UI (no field-edit subcommand exists to do this from the CLI).'
+          `default "Status" field, confirm its options match ${(fieldSpec.options || []).join('/')} ` +
+          'via the web UI (no field-edit subcommand exists to do this from the CLI, so this is the ' +
+          'one genuinely manual step). A status the board lacks cannot be written to a card.'
       );
       continue;
     }

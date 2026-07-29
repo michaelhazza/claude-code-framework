@@ -1,5 +1,22 @@
 # Schema CHANGELOG
 
+## build-status.v2 (2026-07-29, framework 2.54.0)
+
+**`build-status.schema.json` — `status` enum widened 6 → 9; `contract_version` bumped `build-status.v1` → `build-status.v2`.**
+
+Before: `PLANNING BUILDING REVIEWING MERGE_READY MERGED ABANDONED`
+After: `SPECIFYING PLANNING BUILDING REVIEWING TESTING FINALISING MERGE_READY MERGED ABANDONED`
+
+Three values added, driven by the operator's board being unable to answer "what is actually happening right now":
+
+- **`SPECIFYING`** — deciding *what* to build. Previously collapsed into `PLANNING` alongside build-plan sizing, which are different activities separated by a mandatory operator approval gate. This was the single most confusing thing about v1: the board could not distinguish "we are still working out what this is" from "we know what it is and are sizing the work".
+- **`TESTING`** — Codex designs and authors the frontend/backend tests, runs the full suite, and iterates to green (the verify phase). Previously invisible inside `FINALISING`, so the board could not distinguish "tests are being built" from "tests are green and final checks are running". Operationally these are separate stages with different owners and very different durations.
+- **`FINALISING`** — external review, doc-sync, capability registration, compound learning, cleanup, CI parity. Previously not a status at all; `REVIEWING` silently carried through the whole of Phase 3 until `MERGE_READY`.
+
+**Migration:** none required. The board (`projects/2`) had **0 items** and no `status.json` file existed in any repo at the time of the change — verified before shipping. This was deliberately done at the only moment it would be free.
+
+**Consumers must:** update the board's `Status` single-select options to match (no `gh` subcommand edits single-select options — it is a web-UI step, noted in `board-sync.mjs`'s `--init` guidance), and treat `contract_version: build-status.v1` records as absent rather than migrating them, since none exist.
+
 > 2.28.x–2.30.0 — no schema changes (verified against `git log -- schemas/`; last change shipped in 2.27.0).
 
 ## Reconciliation pass (2026-07-05, framework 2.27.0)

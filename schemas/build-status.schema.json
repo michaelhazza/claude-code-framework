@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "build-status.schema.json",
   "title": "BuildStatus",
-  "description": "Contract for tasks/builds/<slug>/status.json (contract_version build-status.v1). Producer: the coordinator owning the current phase (spec/feature/finalisation), written at every phase transition. Consumers: scripts/status/generate-current-focus.mjs, scripts/status/board-sync.mjs, human readers.",
+  "description": "Contract for tasks/builds/<slug>/status.json (contract_version build-status.v2). Producer: the coordinator owning the current phase (spec/feature/finalisation), written at every phase transition. Consumers: scripts/status/generate-current-focus.mjs, scripts/status/board-sync.mjs, human readers.",
   "$comment": "Transition enforcement (previous->next legality, terminal immutability, the two blocker-gated back-edges MERGE_READY->REVIEWING and REVIEWING->BUILDING) is coordinator discipline in v1. JSON Schema validates one status.json document in isolation and cannot express cross-write or cross-document rules. A dedicated transition-validator module is a named deferred hardening, built the first time a bad transition is observed in any repo.",
   "type": "object",
   "additionalProperties": false,
@@ -25,7 +25,7 @@
   "properties": {
     "contract_version": {
       "type": "string",
-      "const": "build-status.v1"
+      "const": "build-status.v2"
     },
     "slug": {
       "type": "string",
@@ -39,17 +39,38 @@
     },
     "classification": {
       "type": "string",
-      "enum": ["Trivial", "Standard", "Significant", "Major"]
+      "enum": [
+        "Trivial",
+        "Standard",
+        "Significant",
+        "Major"
+      ]
     },
     "phase": {
       "type": "string",
-      "enum": ["spec", "plan", "build", "review", "finalise"],
+      "enum": [
+        "spec",
+        "plan",
+        "build",
+        "review",
+        "finalise"
+      ],
       "description": "Closed set. Must agree with .claude/hooks/phase-lock.js's VALID_PHASES."
     },
     "status": {
       "type": "string",
-      "enum": ["PLANNING", "BUILDING", "REVIEWING", "MERGE_READY", "MERGED", "ABANDONED"],
-      "description": "Per-build status. NONE is not a per-build state — it exists only in the generated current-focus pointer when no build is active."
+      "enum": [
+        "SPECIFYING",
+        "PLANNING",
+        "BUILDING",
+        "REVIEWING",
+        "TESTING",
+        "FINALISING",
+        "MERGE_READY",
+        "MERGED",
+        "ABANDONED"
+      ],
+      "description": "Per-build status — the operator-facing board column. Ordered by pipeline progress. SPECIFYING (deciding what to build) is distinct from PLANNING (sizing the build plan): they are different activities separated by a mandatory operator gate, and collapsing them was the single most confusing thing about the v1 vocabulary. TESTING (Codex authors tests + runs the full suite + iterates to green) is distinct from FINALISING (external review, docs, learning, CI parity) so the board can tell 'tests are being built' from 'tests are green, final checks running'. NONE is not a per-build state — it exists only in the generated current-focus pointer when no build is active."
     },
     "branch": {
       "type": "string",
@@ -57,8 +78,12 @@
     },
     "pr": {
       "oneOf": [
-        { "type": "integer" },
-        { "type": "null" }
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
       ],
       "description": "GitHub PR number, or null until a PR exists."
     },
@@ -66,7 +91,13 @@
       "type": "object",
       "$comment": "OPEN map keyed by gate-id (CSR-005) — a coordinator can record a new gate without a schema amendment. Initial key set: s0, duplication_check, g1, g2, g4, g5, verify, merge_gate.",
       "additionalProperties": {
-        "enum": ["pass", "fail", "incomplete", "proceed", null]
+        "enum": [
+          "pass",
+          "fail",
+          "incomplete",
+          "proceed",
+          null
+        ]
       }
     },
     "gate_evidence": {
@@ -75,20 +106,31 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["sha", "run_ids", "url", "completed_at"],
+        "required": [
+          "sha",
+          "run_ids",
+          "url",
+          "completed_at"
+        ],
         "properties": {
           "sha": {
             "type": "string"
           },
           "run_ids": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "One entry per uploaded run — e.g. the verify gate records one release-control testRunId per uploaded lane (JUnit, Playwright); the merge gate records the one workflow run id. Empty array allowed."
           },
           "url": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "null" }
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "completed_at": {
@@ -103,16 +145,39 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "text", "raised_by", "raised_at", "cleared_at"],
+        "required": [
+          "id",
+          "text",
+          "raised_by",
+          "raised_at",
+          "cleared_at"
+        ],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "text": { "type": "string", "minLength": 1 },
-          "raised_by": { "type": "string", "minLength": 1 },
-          "raised_at": { "type": "string", "format": "date-time" },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "raised_by": {
+            "type": "string",
+            "minLength": 1
+          },
+          "raised_at": {
+            "type": "string",
+            "format": "date-time"
+          },
           "cleared_at": {
             "oneOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }

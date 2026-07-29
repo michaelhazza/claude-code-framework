@@ -107,7 +107,7 @@ build. New builds post-v2.13.0 adoption get the markers automatically.
 
 ## Status contract (status.json)
 
-At the two terminal phase transitions this coordinator owns — `REVIEWING → MERGE_READY` (composed Step 9, written Step 10.1, before the label) and `MERGE_READY → MERGED` (Step 12.4, the post-merge main-patch) — upsert `tasks/builds/{slug}/status.json` (contract: `schemas/build-status.schema.json`, shape in spec §8.1), then run:
+At each phase transition this coordinator owns — `REVIEWING → TESTING` (Step 4a), `TESTING → FINALISING` (Step 5), `FINALISING → MERGE_READY` (composed Step 9, written Step 10.1, before the label) and `MERGE_READY → MERGED` (Step 12.4, the post-merge main-patch) — upsert `tasks/builds/{slug}/status.json` (contract: `schemas/build-status.schema.json`, shape in spec §8.1), then run:
 
 ```bash
 node scripts/status/generate-current-focus.mjs
@@ -120,9 +120,12 @@ The generator and `board-sync.mjs` run together at every such write, including t
 
 **Verify-phase writes its own gate.** `verify-phase` (Step 4a) already upserts `status.json.gates.verify` and `status.json.gate_evidence.verify` as part of its own contract (§8.3) — this coordinator READS those fields (Step 4a, Step 11.5 rows 1-2), it never re-derives or re-writes them.
 
-**The three transitions this coordinator actually exercises (spec §8.1 transition matrix):**
-- **Forward: `REVIEWING → MERGE_READY`** — composed in Step 9, written to disk in Step 10.1 (before the `ready-to-merge` label is applied, so the labeled head SHA already contains the write — no new SHA between the gate run and the merge, per spec §13's terminal-fact write location).
-- **Back-edge: `MERGE_READY → REVIEWING`** — the ONE back-edge this coordinator exercises, fired by Step 11.5 on any refusal-table row and by Step 11's existing label-pull discipline on a red CI check (spec §13's "merge-gate failure or pulled label"). **REQUIRES a blocker entry recorded in the same write** (spec §8.1) — see Step 11.5 for the exact write shape.
+**The transitions this coordinator actually exercises (spec §8.1 transition matrix, `build-status.v2`):**
+- **Forward: `REVIEWING → TESTING`** — written at **Step 4a**, as the verify phase begins. Phase 3 previously carried `REVIEWING` all the way to `MERGE_READY`, which made the board unable to distinguish "Codex is authoring and running the suite" (often the longest single stretch of a build) from "everything is green, final checks running". Steps 1–4 are short prep (sync, regression guard, PR check) and remain `REVIEWING`; the status moves when test work actually starts.
+- **Forward: `TESTING → FINALISING`** — written at **Step 5**, once the verify-phase suite is green and any required Codex confirmation pass has completed. Everything from the ChatGPT PR review onward is finalisation work.
+- **Forward: `FINALISING → MERGE_READY`** — composed in Step 9, written to disk in Step 10.1 (before the `ready-to-merge` label is applied, so the labeled head SHA already contains the write — no new SHA between the gate run and the merge, per spec §13's terminal-fact write location).
+- **Back-edge: `MERGE_READY → FINALISING`** — fired by Step 11.5 on any refusal-table row and by Step 11's label-pull discipline on a red CI check (spec §13's "merge-gate failure or pulled label"). **REQUIRES a blocker entry recorded in the same write** (spec §8.1) — see Step 11.5 for the exact write shape.
+- **Back-edge: `FINALISING → TESTING`** — used when a late failure is a genuine test or production defect rather than a gate/CI problem, i.e. the work belongs back in the verify-phase fix loop. Same blocker-entry requirement. Choosing between the two back-edges is a judgement about *where the work goes*, not about severity: a red CI check on unchanged code is `→ FINALISING`; a defect needing a code or test change is `→ TESTING`.
 - **Terminal: `MERGE_READY → MERGED`** — written in Step 12.4, the existing post-merge main-patch step, alongside `gates.merge_gate` evidence when `runner_live: true` (omitted/unchanged when pre-runner, since no merge-gate run exists to evidence). This is a documentation write on `main`, not a second entry of build code — "main entered exactly once" refers to the build's code, and this preserves it (spec §13). `MERGED` is terminal — no further transition follows.
 
 **Board-sync is non-blocking.** A `board-sync.mjs` failure is recorded in `progress.md` and never blocks a build — the board is a view, not a gate.
@@ -320,6 +323,8 @@ PR: https://github.com/.../<number>
 
 **Insertion point (spec §7.2):** after S2 sync (Step 2) + G4 regression guard (Step 3), before `chatgpt-pr-review` (Step 5).
 
+**FIRST, write the status transition `REVIEWING → TESTING`** — before invoking `verify-phase`, not after. Upsert `status.json` with `status: TESTING` per § Status contract, then run the generator and `board-sync.mjs`. This is deliberately the first action of the step: test design, authoring and the suite fix loop are frequently the longest single stretch of a build, and a board that only updates on completion would show `REVIEWING` for hours of test work. Writing it up front is what makes the column honest.
+
 Dispatch `verify-phase` as a sub-agent, passing the build slug from the handoff:
 
 ```
@@ -352,6 +357,8 @@ Never treat a `fail`/`incomplete` verdict as advisory — stage 6 is a gate (spe
 Record the outcome as one line in `tasks/builds/{slug}/progress.md`: `Codex confirmation pass (stage 6): <clean | concerns: {summary}>`. This pass is **advisory** — it never blocks Step 5 on its own — but a `concerns` outcome is folded into the `chatgpt-pr-review` kickoff context in Step 5, the same way `spec_deviations` already is, so the human reviewer sees it.
 
 ## Step 5 — chatgpt-pr-review
+
+**FIRST, write the status transition `TESTING → FINALISING`.** Precondition: Step 4a reported the verify-phase gate green **and** any required Codex confirmation pass (Step 4b) has completed. Upsert `status.json` with `status: FINALISING` per § Status contract, then run the generator and `board-sync.mjs`. Do NOT make this write if the verify gate did not pass — a build whose suite is not green has not left `TESTING`, and moving it on would be the board asserting something untrue.
 
 Invoke `chatgpt-pr-review` as a sub-agent. MODE = **manual**. **INVOCATION CONTEXT = `coordinator-invoked` — state this explicitly in the kickoff message.** In this context the sub-agent's own finalisation steps 10–12 (merge main, `ready-to-merge` label, CI monitor/auto-merge) are forbidden per its INVOCATION CONTEXT contract — THIS coordinator owns branch sync (Step 8b), the label (Step 10), CI watching (Step 11), and the merge (Step 12). If the sub-agent's return message claims it merged or labelled the PR, treat that as a contract violation: verify actual PR state with `gh pr view` before proceeding, and record the violation in progress.md.
 
@@ -582,7 +589,7 @@ Commit fixes locally as you go (normal commit discipline; never `--no-verify`). 
 
 **Precondition: Step 8c (G5) reported green, OR Step 8c was validly skipped (`runner_live: true`, recorded per its own conditional).** Do not compose MERGE_READY state for a build whose applicable pre-runner-mode local parity gate has not passed.
 
-Also compose — in memory only, same deferred-write rule as below — the new `tasks/builds/{slug}/status.json` content: `status: MERGE_READY` (per § Status contract above). This is the write-site named in that section as the "Forward: `REVIEWING → MERGE_READY`" transition.
+Also compose — in memory only, same deferred-write rule as below — the new `tasks/builds/{slug}/status.json` content: `status: MERGE_READY` (per § Status contract above). This is the write-site named in that section as the "Forward: `FINALISING → MERGE_READY`" transition.
 
 Compose — but do NOT yet write to disk — the new mission-control block for `tasks/current-focus.md`:
 
@@ -604,7 +611,7 @@ The explicit clearing of `active_spec`, `active_plan`, `build_slug`, `branch` is
 
 The `last_merge_ready_*` fields are added so the audit trail survives — they record what just shipped, in case CI or merge fails and the operator needs to recover context.
 
-Compose the matching prose body for the same file. Status enum transitions `REVIEWING → MERGE_READY`.
+Compose the matching prose body for the same file. Status enum transitions `FINALISING → MERGE_READY` (v2: the status left `REVIEWING` back at Step 4a when the verify phase began).
 
 **Do NOT touch `tasks/current-focus.md` on disk yet.** Step 9 only prepares the new content in memory. The actual write happens in Step 10 — handoff.md first, then current-focus.md — BEFORE the ready-to-merge label is applied (so CI fires exactly once, on the final post-Phase-3 commit).
 

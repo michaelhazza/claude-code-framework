@@ -34,7 +34,7 @@ function rmrf(dir) {
 /** Baseline valid, active status.json record. Callers override fields. */
 function baseRecord(slug, overrides = {}) {
   return {
-    contract_version: 'build-status.v1',
+    contract_version: 'build-status.v2',
     slug,
     title: `Title for ${slug}`,
     classification: 'Standard',
@@ -96,7 +96,7 @@ describe('build-status.schema.json', () => {
     const validate = ajv.compile(schema);
 
     const exampleInstance = {
-      contract_version: 'build-status.v1',
+      contract_version: 'build-status.v2',
       slug: 'dev-pipeline-v2',
       title: 'Development Pipeline v2',
       classification: 'Major',

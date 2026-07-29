@@ -27,7 +27,7 @@ import {
 
 function baseRecord(overrides = {}) {
   return {
-    contract_version: 'build-status.v1',
+    contract_version: 'build-status.v2',
     slug: 'dev-pipeline-v2',
     title: 'Development Pipeline v2',
     classification: 'Major',
@@ -456,5 +456,31 @@ describe('orphan adoption via the body key', () => {
   it('a malformed body key is rejected, not half-parsed', () => {
     expect(extractKeyFromBody('<!-- board-sync:v1 key=nodelimiter updated_at=2026-07-29T00:00:00Z -->')).toBe(null);
     expect(extractKeyFromBody('<!-- board-sync:v1 key=repoonly:: updated_at=2026-07-29T00:00:00Z -->')).toBe(null);
+  });
+});
+
+// build-status.v2 (2026-07-29): the board's Status options and the schema enum
+// are two halves of one contract — a status the board lacks cannot be written
+// to a card, so a silent drift here breaks publishing for that state only.
+describe('board Status options match the schema enum (v2)', () => {
+  it('option list is exactly the schema status enum, in pipeline order', async () => {
+    const fsMod = await import('node:fs');
+    const schema = JSON.parse(fsMod.readFileSync(new URL('../../schemas/build-status.schema.json', import.meta.url), 'utf8'));
+    const src = fsMod.readFileSync(new URL('./board-sync.mjs', import.meta.url), 'utf8');
+    const start = src.indexOf("name: 'Status',");
+    expect(start, 'Status field spec not found').toBeGreaterThan(-1);
+    const optIdx = src.indexOf('options: [', start);
+    const block = src.slice(optIdx, src.indexOf(']', optIdx));
+    const options = [...block.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
+    expect(options).toEqual(schema.properties.status.enum);
+  });
+
+  it('the three v2 additions are present', async () => {
+    const fsMod = await import('node:fs');
+    const schema = JSON.parse(fsMod.readFileSync(new URL('../../schemas/build-status.schema.json', import.meta.url), 'utf8'));
+    for (const added of ['SPECIFYING', 'TESTING', 'FINALISING']) {
+      expect(schema.properties.status.enum, added).toContain(added);
+    }
+    expect(schema.properties.contract_version.const).toBe('build-status.v2');
   });
 });

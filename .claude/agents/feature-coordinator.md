@@ -29,7 +29,7 @@ Read in this order before doing anything else:
 1. `CLAUDE.md` — task management workflow, agent fleet, review pipeline
 2. `architecture.md` — system architecture, conventions, service contracts (if present; skip when the repo has not authored one)
 3. `DEVELOPMENT_GUIDELINES.md` — build discipline, RLS rules, schema invariants, §8 rules (if present; skip when absent)
-4. `tasks/current-focus.md` — verify `status: BUILDING`
+4. `tasks/current-focus.md` — verify `status: PLANNING` (v2: Phase 2 now ENTERS at plan authoring; BUILDING is set by this coordinator at the plan gate, Step 5)
 5. `tasks/builds/{slug}/handoff.md` — restore Phase 1 context (spec path, slug, branch, any Phase 1 decisions)
 6. The spec at the path named in the handoff
 7. `tasks/lessons.md` — avoid repeating past mistakes
@@ -37,7 +37,7 @@ Read in this order before doing anything else:
 
 **Reasoning discipline:** read `.claude/skills/fable-mode/SKILL.md` once during context loading and apply its gates at the adjudication-heavy steps — applying review findings (Steps 3b, 4), the plan-gate recommendation (Step 5), and NON_CONFORMANT triage (Step 8). Mechanical steps (branch sync, G1/G2 gates, builder dispatch) do not need it.
 
-**Entry guard:** If `tasks/current-focus.md` status is not `BUILDING`, refuse and tell the operator the expected state. Do not proceed.
+**Entry guard:** If `tasks/current-focus.md` status is not `PLANNING`, refuse and tell the operator the expected state. Do not proceed. (v2 change: this was `BUILDING`. Phase 1 now hands over at `PLANNING` because plan authoring is Phase 2 work, and `BUILDING` is written here at Step 5 once the operator approves the plan.)
 
 **Time-source invariant:** every timestamp written by this coordinator (snapshots, logs, commit summaries, progress writes) must be UTC ISO 8601 generated from `date -u` at execution time. Never substitute git commit time, DB time, or client-side time. Never mix sources within a run.
 
@@ -54,7 +54,30 @@ The generator and `board-sync.mjs` run together at every such write.
 
 **Precedence.** `status.json` is **authoritative** for build state. `.phase` is a **derived projection** — its content equals `status.phase` — written in the **same coordinator step** as the `status.json` write. On disagreement, `status.json` wins and the coordinator **rewrites `.phase`** to match.
 
-**Transition matrix (binding playbook rule — v1 enforcement is coordinator discipline; JSON Schema cannot enforce cross-field transition legality, spec §8.1).** Forward chain: `PLANNING → BUILDING → REVIEWING → MERGE_READY → MERGED`. Two named back-edges, each **REQUIRING a blocker entry recorded in the same write**: `MERGE_READY → REVIEWING`, `REVIEWING → BUILDING`. `ABANDONED` is reachable from any non-`MERGED` state. `MERGED` and `ABANDONED` are **terminal** — any further transition is a contract violation.
+**Transition matrix (binding playbook rule — v1 enforcement is coordinator discipline; JSON Schema cannot enforce cross-field transition legality, spec §8.1).**
+
+Forward chain (`build-status.v2`, widened 2026-07-29):
+
+```
+SPECIFYING → PLANNING → BUILDING → REVIEWING → TESTING → FINALISING → MERGE_READY → MERGED
+```
+
+Who owns each edge:
+
+| Edge | Written by | At |
+|---|---|---|
+| `→ SPECIFYING` | spec-coordinator | Phase 1 entry |
+| `SPECIFYING → PLANNING` | spec-coordinator | Step 10, handing off to Phase 2 |
+| `PLANNING → BUILDING` | feature-coordinator | Step 5, **after the operator approves the plan** |
+| `BUILDING → REVIEWING` | feature-coordinator | Step 11, after G2 |
+| `REVIEWING → TESTING` | finalisation-coordinator | Step 4a, verify phase begins |
+| `TESTING → FINALISING` | finalisation-coordinator | Step 5, suite green |
+| `FINALISING → MERGE_READY` | finalisation-coordinator | Step 9 |
+| `MERGE_READY → MERGED` | finalisation-coordinator | Step 12.4 |
+
+Back-edges, each **REQUIRING a blocker entry recorded in the same write**: `MERGE_READY → FINALISING`, `FINALISING → TESTING` (a late failure sends work back to the suite), `REVIEWING → BUILDING`. `ABANDONED` is reachable from any non-`MERGED` state. `MERGED` and `ABANDONED` are **terminal** — any further transition is a contract violation.
+
+> **Why `SPECIFYING` and `TESTING` exist (v2).** `PLANNING` previously covered both "working out what to build" and "sizing the build" — different activities with a mandatory operator gate between them, which made the board unable to answer the operator's most common question. `TESTING` was previously invisible inside the Phase 3 span, so "Codex is writing and running the suite" looked identical to "everything is green, final checks running". Both splits exist to make the board describe the work truthfully.
 
 **Hand-editing the generated current-focus block is a policy violation.** Never hand-edit the region between `<!-- STATUS:GENERATED:BEGIN -->` and `<!-- STATUS:GENERATED:END -->` in `tasks/current-focus.md` — the next `generate-current-focus.mjs` run overwrites it by design. The historical prose below the markers is untouched by the generator and remains this coordinator's to edit (Step 11).
 

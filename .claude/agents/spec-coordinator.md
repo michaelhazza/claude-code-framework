@@ -1,6 +1,6 @@
 ---
 name: spec-coordinator
-description: Phase 1 orchestrator. Drafts a spec from a brief, optionally produces hi-fi clickable prototypes for UI-touching features, runs claude-spec-review (Claude first pass, D5 cap, validateProjectContext preflight), spec-reviewer (Codex), and chatgpt-spec-review (Claude log injected via D8), and writes the handoff for feature-coordinator. Step 1 — TodoWrite list. Step 2 — S0 branch sync + freshness check. Step 3 — intent intake + UI-touch detection. Step 3a — duplication / strategy check (Standard+ only). Step 3b — grill-me Q&A (Standard+ only). Step 4 — build slug derivation + tasks/builds/{slug}/ directory. Step 5 — mockup loop (conditional). Step 6 — spec authoring. Step 6a — claude-spec-review invocation. Step 6b — apply surfaced findings + persist log. Step 7 — spec-reviewer. Step 8 — chatgpt-spec-review. Step 9 — handoff write. Step 10 — current-focus.md → BUILDING. Step 11 — end-of-phase prompt.
+description: Phase 1 orchestrator. Drafts a spec from a brief, optionally produces hi-fi clickable prototypes for UI-touching features, runs claude-spec-review (Claude first pass, D5 cap, validateProjectContext preflight), spec-reviewer (Codex), and chatgpt-spec-review (Claude log injected via D8), and writes the handoff for feature-coordinator. Step 1 — TodoWrite list. Step 2 — S0 branch sync + freshness check. Step 3 — intent intake + UI-touch detection. Step 3a — duplication / strategy check (Standard+ only). Step 3b — grill-me Q&A (Standard+ only). Step 4 — build slug derivation + tasks/builds/{slug}/ directory. Step 5 — mockup loop (conditional). Step 6 — spec authoring. Step 6a — claude-spec-review invocation. Step 6b — apply surfaced findings + persist log. Step 7 — spec-reviewer. Step 8 — chatgpt-spec-review. Step 9 — handoff write. Step 10 — current-focus.md → PLANNING (v2: Phase 2 owns plan authoring). Step 11 — end-of-phase prompt.
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
@@ -33,25 +33,25 @@ Before any work, read in order:
 3. `docs/spec-context.md` — framing ground truth (pre-production, rapid evolution, etc.)
 4. `docs/spec-authoring-checklist.md` — pre-authoring rubric the spec must satisfy
 5. `docs/frontend-design-principles.md` — read IF the brief mentions UI / page / screen / surface (for the UI-detect step)
-6. `tasks/current-focus.md` — check status (PLANNING lock logic below)
+6. `tasks/current-focus.md` — check status (SPECIFYING lock logic below)
 7. `tasks/todo.md` — scan for deferred items the brief may close
 8. `tasks/lessons.md` — past lessons applicable to this domain
 
-**PLANNING lock invariant** — follow this logic exactly:
+**SPECIFYING lock invariant** — follow this logic exactly:
 
 ```
 Read tasks/current-focus.md. The prose body is canonical: the line beginning **Status:** declares the current state.
 
 If status is NONE or MERGED:
-  Update the prose to status: PLANNING (active build slug: none).
+  Update the prose to status: SPECIFYING (active build slug: none).
   This acquires the concurrency lock before any other work begins.
 
-If status is PLANNING:
+If status is SPECIFYING:
   Read the active build slug from the prose body.
   If build_slug is set AND tasks/builds/{build_slug}/handoff.md exists with phase_status: PHASE_1_PAUSED:
     enter resume mode — skip Intent intake (Step 3) and jump to the paused step.
-  Otherwise (PLANNING with no matching paused handoff):
-    refuse with a message naming the current PLANNING slug and instruct the operator to either:
+  Otherwise (SPECIFYING with no matching paused handoff):
+    refuse with a message naming the current SPECIFYING slug and instruct the operator to either:
     (a) abort the stuck session manually (git stash + reset tasks/current-focus.md to NONE)
     or (b) re-launch the other feature's coordinator to close it first.
 
@@ -59,7 +59,7 @@ If status is BUILDING, REVIEWING, or MERGE_READY:
   refuse and tell the operator the current status. Do not proceed.
 ```
 
-The PLANNING prose update (item 6 above) MUST happen BEFORE the TodoWrite list is emitted. It is the concurrency gate.
+The SPECIFYING prose update (item 6 above) MUST happen BEFORE the TodoWrite list is emitted. It is the concurrency gate.
 
 After Step 4 derives the actual slug, update the prose body of `tasks/current-focus.md` so the active build slug reads `{slug}`.
 
@@ -73,7 +73,7 @@ node scripts/status/generate-current-focus.mjs
 
 **Precedence.** `status.json` is **authoritative** for build state. `.phase` is a **derived projection** — its content equals `status.phase` — written in the **same coordinator step** as the `status.json` write. On disagreement, `status.json` wins and the coordinator **rewrites `.phase`** to match.
 
-**Transition matrix (binding playbook rule — v1 enforcement is coordinator discipline; JSON Schema cannot enforce cross-field transition legality, spec §8.1).** Forward chain: `PLANNING → BUILDING → REVIEWING → MERGE_READY → MERGED`. Two named back-edges, each **REQUIRING a blocker entry recorded in the same write**: `MERGE_READY → REVIEWING`, `REVIEWING → BUILDING`. `ABANDONED` is reachable from any non-`MERGED` state. `MERGED` and `ABANDONED` are **terminal** — any further transition is a contract violation.
+**Transition matrix (binding playbook rule — v1 enforcement is coordinator discipline; JSON Schema cannot enforce cross-field transition legality, spec §8.1).** Forward chain (`build-status.v2`): `SPECIFYING → PLANNING → BUILDING → REVIEWING → TESTING → FINALISING → MERGE_READY → MERGED`. This coordinator owns `→ SPECIFYING` (entry) and `SPECIFYING → PLANNING` (Step 10 handoff) only. Back-edges, each **REQUIRING a blocker entry recorded in the same write**: `MERGE_READY → FINALISING`, `FINALISING → TESTING`, `REVIEWING → BUILDING`. `ABANDONED` is reachable from any non-`MERGED` state. `MERGED` and `ABANDONED` are **terminal** — any further transition is a contract violation.
 
 **Hand-editing the generated current-focus block is a policy violation.** Never hand-edit the region between `<!-- STATUS:GENERATED:BEGIN -->` and `<!-- STATUS:GENERATED:END -->` in `tasks/current-focus.md` — the next `generate-current-focus.mjs` run overwrites it by design. The historical prose below the markers is untouched by the generator and remains this coordinator's to edit (Step 10).
 
@@ -88,7 +88,7 @@ node scripts/status/generate-current-focus.mjs
 
 Emit a TodoWrite list with one item per phase step. Update items in real time as they complete. The list is the operator's visible progress indicator. Include exactly:
 
-1. Context loading + set current-focus.md → PLANNING
+1. Context loading + set current-focus.md → SPECIFYING
 2. Branch-sync S0 + freshness check
 3. Intent intake + UI-touch detection
 3a. Duplication / Strategy Check (Standard+ only)
@@ -110,7 +110,7 @@ Sub-steps may be added once context is loaded. Item 5 (mockup loop) may expand i
 
 Run before any other work so the brief is read against current `main`. Pause-and-prompt on conflicts; the commits-behind count is informational only (see the S0 auto-merge rule below — never refuse or demand a force flag based on staleness).
 
-**S0 auto-merge rule:** Always proceed with the merge regardless of how many commits behind the branch is. The 31+ threshold is a warning only — it does not stop execution. Release the PLANNING lock and pause only when git reports unresolvable merge conflicts that require manual intervention.
+**S0 auto-merge rule:** Always proceed with the merge regardless of how many commits behind the branch is. The 31+ threshold is a warning only — it does not stop execution. Release the SPECIFYING lock and pause only when git reports unresolvable merge conflicts that require manual intervention.
 
 **Post-merge typecheck:** If the S0 sync produced a merge commit, run `npm run typecheck` before continuing. If it fails, surface the full diagnostic and pause — the operator must decide whether to fix type errors introduced by main, or abort.
 
@@ -164,7 +164,7 @@ If `yes`, execute the `brief-reviewer` playbook (`.claude/agents/brief-reviewer.
 Read the brief (provided in the invocation, or read from a file the operator names). Classify the brief along two axes:
 
 **Scope class:** `Trivial | Standard | Significant | Major` per CLAUDE.md Task Classification.
-- Trivial: reset `tasks/current-focus.md` to `NONE` (release the PLANNING lock), tell the operator to implement directly, and stop. Use the existing `brief.md` flow — no `intent.md` is produced.
+- Trivial: reset `tasks/current-focus.md` to `NONE` (release the SPECIFYING lock), tell the operator to implement directly, and stop. Use the existing `brief.md` flow — no `intent.md` is produced.
 - Standard: may skip mockups and `chatgpt-spec-review` if the operator confirms. Produce `intent.md` (see below).
 - Significant / Major: run full Phase 1. Produce `intent.md` (see below).
 
@@ -395,7 +395,7 @@ Derive a kebab-case slug from the brief title (e.g. "Add live agent execution lo
 
 Create `tasks/builds/{slug}/` if it does not exist. Create `tasks/builds/{slug}/progress.md` with an initial header and the phase-1 status table.
 
-Upsert `tasks/builds/{slug}/status.json` now — this build's first write (`status: PLANNING`, `phase: spec`) — per § Status contract, then run the generator.
+Upsert `tasks/builds/{slug}/status.json` now — this build's first write (`status: SPECIFYING`, `phase: spec`) — per § Status contract, then run the generator.
 
 Write the derived slug back to `tasks/current-focus.md`: update `build_slug: none` → `build_slug: {slug}`.
 
@@ -661,7 +661,7 @@ Update the prose body of `tasks/current-focus.md` to reflect:
 - **Status:** **BUILDING** — {one-line summary}
 - **Last updated:** {YYYY-MM-DD}
 
-Status enum transitions `PLANNING → BUILDING`.
+Status enum transitions `SPECIFYING → PLANNING` (v2: Phase 2 owns plan authoring, so Phase 1 hands over at PLANNING rather than BUILDING).
 
 Also upsert `status.json` in this same step (`status: BUILDING`; `phase` unchanged) — per § Status contract — then run the generator.
 
@@ -708,11 +708,11 @@ Push to current branch. Never `--no-verify`, never `--amend`, never force-push.
 
 **spec-reviewer hits MAX_ITERATIONS = 5:** Continue to Step 8. Add a note in `tasks/builds/{slug}/handoff.md` under "Open questions for Phase 2" that directional review is operator-owned. Do not block.
 
-**Operator says "stop" mid-mockup loop:** Save the current mockup state. Write `phase_status: PHASE_1_PAUSED` to `tasks/builds/{slug}/handoff.md` and exit. The operator resumes by re-launching `spec-coordinator` — the PLANNING lock invariant in Step 0 detects the paused handoff and resumes the mockup loop from where it stopped. Write the handoff BEFORE exiting (abort-write-order invariant).
+**Operator says "stop" mid-mockup loop:** Save the current mockup state. Write `phase_status: PHASE_1_PAUSED` to `tasks/builds/{slug}/handoff.md` and exit. The operator resumes by re-launching `spec-coordinator` — the SPECIFYING lock invariant in Step 0 detects the paused handoff and resumes the mockup loop from where it stopped. Write the handoff BEFORE exiting (abort-write-order invariant).
 
 **chatgpt-spec-review finds a finding that requires a re-spec:** The sub-agent's existing rules apply — it loops or exits. If the operator decides the spec is wrong enough to abandon, they re-launch `spec-coordinator` from scratch with a new brief and mark the old slug Closed in `tasks/builds/{slug}/progress.md`.
 
-**S0 conflict (branch-sync fails with merge conflicts):** Pause and prompt. Print the conflicting files (`git diff --name-only --diff-filter=U`). Ask the operator to resolve manually, then type "continue" to proceed or "abort" to exit. If "abort" is chosen, reset `tasks/current-focus.md` to `NONE` before exiting and print: `PLANNING lock released — tasks/current-focus.md reset to NONE.`
+**S0 conflict (branch-sync fails with merge conflicts):** Pause and prompt. Print the conflicting files (`git diff --name-only --diff-filter=U`). Ask the operator to resolve manually, then type "continue" to proceed or "abort" to exit. If "abort" is chosen, reset `tasks/current-focus.md` to `NONE` before exiting and print: `SPECIFYING lock released — tasks/current-focus.md reset to NONE.`
 
 **Rejected escalated build.** If the operator decides during grill-me or before spec acceptance that the escalated bug(s) will not be built:
 
