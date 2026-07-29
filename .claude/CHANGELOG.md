@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.53.0 — 2026-07-29
+
+**Highlights:** Frontend test scope becomes the tester's judgement rather than a rule written months earlier — bounded by *how* to test and *what to be accountable for*, not by *how much*. Plus a false-positive fix in the review-artifact hook, caught by its own first day of real use.
+
+**Changed:**
+- `.claude/agents/verify-phase.md` — **a posture may now DELEGATE scope, not only dictate it.** Previously the phase treated any breadth beyond the posture's named classes as an unauthorised expansion, so a posture that *hands* the tester a decision would still have been read at its narrowest "out of caution". It now obeys what the posture actually says: prescriptive lines remain boundaries, delegating lines are exercised. Discretion is over *what to cover* — never over *how carelessly* or *what to leave unsaid*. The Design prompt gains two required outputs when scope is delegated: **SCOPE RATIONALE** (surfaces chosen and why they earn their maintenance cost) and **DELIBERATE GAPS** (what was not covered and why, including anything automated tests cannot honestly judge, which routes to UAT instead of being approximated by a brittle assertion). Standing instruction: optimise for defects caught per test maintained, never for count or coverage percentage — a suite that fails on every cosmetic change costs more than it returns, and the operator pays that cost later, not the agent.
+- `.claude/hooks/review-artifact-nudge.js` — **a bare tool name is no longer handoff intent.** The first day of live use produced a false positive on the operator's own message: "can we set it up so Codex uses its discretion…" matched `spec` + a passing mention of `codex`. In a codebase whose pipeline discusses these tools constantly that pattern was far too broad. Intent now requires the artifact to be directed *at* the tool ("to/into/**for** ChatGPT", "Codex review") rather than merely discussed near it. The observed false positive and two true positives it initially broke (`prepare the brief for ChatGPT`, `create a handoff for codex`) are all now in the test matrix.
+
+**Consumer-side companion (automation-v1, not shipped by this release):** `docs/spec-context.md` replaces `frontend_tests: vitest_dom_tests_for_critical_flows` with `tester_discretion_within_adopted_frameworks` plus a `frontend_test_mandate` block carrying hard limits (adopted frameworks only; Playwright stays focused and non-PR-gating; never weaken a passing assertion to go green), a quality bar (assert behaviour not implementation; no blanket component snapshots; a test must fail for exactly one understandable reason), and accountability clauses. The operator was hand-prompting broader coverage on every build, which is the tell that the prescriptive line was wrong: the reader of the diff judges scope better than a months-old rule.
+
 ## 2.52.0 — 2026-07-29
 
 **Highlights:** Aligns `verify-phase` with the operator's proven manual practice — the "build the tests, run them, loop until it's genuinely working, then hand me something I can UAT" goal. The loop already existed; two things it did not do explicitly are now required.

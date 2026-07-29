@@ -49,7 +49,17 @@ const HANDOFF_INTENT_PATTERNS = [
   /\b(external|outside|independent)\s+(review|reviewer|opinion)\b/i,
   /\bfor\s+(a\s+|final\s+|external\s+)?review\b/i,
   /\breview\s+(file|bundle|package|artifact|artefact)\b/i,
-  /\b(chat\s?gpt|gpt-?\d|openai|codex|gemini|another (model|tool|ai))\b/i,
+  // A tool NAME alone is not handoff intent. This originally matched a bare
+  // mention of `codex`/`chatgpt`, which fires constantly in a codebase whose
+  // pipeline discusses those tools in ordinary conversation — e.g. "can Codex
+  // decide the frontend test scope?" tripped it via `spec` + `codex`. The name
+  // must now be paired with a verb that means "hand it over".
+  // Directed AT the tool ("to/into/for ChatGPT"), which is handoff intent,
+  // rather than merely ABOUT it. Covers "prepare the brief for ChatGPT" and
+  // "create a handoff for codex" without matching "does the spec say Codex
+  // owns the plan review?".
+  /\b(to|into|for)\s+(chat\s?gpt|gpt-?\d|openai|codex|gemini)\b/i,
+  /\b(chat\s?gpt|gpt-?\d|openai|codex|gemini)\s+(review|to review)\b/i,
   /\b(give|get|send|hand|export|generate|produce|create|prepare)\s+(me|us)\b/i,
   /\b(link|attach)\s+(me\s+)?(the|a|that|this)\b/i,
   /\bso i can (copy|paste|share|send|upload)\b/i,

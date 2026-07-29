@@ -56,6 +56,8 @@ const TRIGGERS = [
   'create a handoff for codex',
   'link me the plan',
   'generate the PR diff for an independent opinion',
+  'send the diff to ChatGPT',
+  'ChatGPT review of the spec please',
 ];
 
 // ── Must NOT fire: artifact noun without handoff intent ─────────────────────
@@ -66,6 +68,9 @@ const NON_TRIGGERS = [
   'the brief mentioned a runner',
   'update the spec to 45 rows',
   'what does pr-check.yml do?',
+  // Real false positive observed 2026-07-29: 'spec' + a bare 'Codex' mention.
+  'can we set it up so Codex uses its discretion on what frontend tests to build, rather than dictating it in the spec?',
+  'does the spec say Codex owns the plan review?',
 ];
 
 console.log('review-artifact-nudge.test.js');
