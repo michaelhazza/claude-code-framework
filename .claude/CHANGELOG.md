@@ -32,6 +32,24 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.60.1 — 2026-07-29
+
+**Highlights:** Patch. `board-sync.mjs` could not UPDATE a card on a real Projects v2 board, only create one. Two `gh project item-edit` constraints were violated at once, and the script's own fail-open contract (gh failures are recorded, non-blocking) hid both: creates worked, every update silently no-opped, so a board froze at each build's first-seen state and never moved a column again. Found by running the sync twice against a live board during the cryptotrackr pilot adoption, which is exactly the class of defect no amount of review catches: the second constraint only surfaced after the first was fixed.
+
+**Fixed:**
+- `scripts/status/board-sync.mjs` — a draft card has TWO non-interchangeable ids. Field-value edits address the project item (`PVTI_…`); title/body edits address the draft-issue content (`DI_…`) and gh refuses anything else ("ID must be the ID of the draft issue content which is prefixed with `DI_`"). `updateCard` passed the item id to all three calls and `normaliseItem` never retained `content.id`, so the correct id was not even in scope at the call site. `normaliseItem` now returns `contentId` (null when absent, never guessed).
+- `scripts/status/board-sync.mjs` — title and body must travel in ONE invocation. A draft-issue edit maps to `updateProjectV2DraftIssue`, which treats an omitted field as a blanking request, so a body-only edit fails with "GraphQL: Title can't be blank". The new pure `buildDraftContentEditArgs(contentId, card)` emits a single argv carrying both, refuses a `PVTI_` id, and refuses a blank title rather than blanking a live card.
+- `scripts/status/board-sync.mjs` — `updateCard` now writes field values BEFORE title/body. `Status` is the board column, the most load-bearing value on the card; previously a title-edit throw aborted the update before any field was written, so a failed cosmetic edit also froze the column.
+
+**Changed:**
+- `scripts/status/board-sync.mjs` header docs: the gh command-surface notes claimed title/body edits "use --id alone" without saying WHICH id, and the pure-function inventory now lists `buildDraftContentEditArgs`. The which-id-goes-where rule deliberately lives in an exported pure arg-builder: an argv choice made inline inside the I/O layer is untestable, and that is precisely where this defect hid.
+
+**Tests:** +7 regression tests (68 in `board-sync.test.mjs`, 120 across the status lane). They pin the id choice, the single-invocation shape, the `PVTI_` refusal and the blank-title refusal. Note the honest limit: the two-call version passed every unit test and still failed against a live board, so the single-call rule is pinned by an argv assertion, not by a mock.
+
+**No migration.** Consumers pick this up with `/claudeupdate`; no consumer state or board data changes shape. A board already created by `--init` on 2.60.0 needs no repair, its cards simply start updating.
+
+---
+
 ## 2.60.0 — 2026-07-29
 
 **Highlights:** The framework's own `CI` workflow was **`disabled_manually`**. It had not run once in the last sixteen pushes — every release from 2.44.x through 2.59.0 landed on `main` with **zero automated verification**. The only thing checking anything was a human running `node scripts/run-tests.js all` by hand. This release runs every CI step, fixes what they found, makes the suite reliable, and re-enables the workflow.
