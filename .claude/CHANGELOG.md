@@ -32,6 +32,46 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.60.0 — 2026-07-29
+
+**Highlights:** The framework's own `CI` workflow was **`disabled_manually`**. It had not run once in the last sixteen pushes — every release from 2.44.x through 2.59.0 landed on `main` with **zero automated verification**. The only thing checking anything was a human running `node scripts/run-tests.js all` by hand. This release runs every CI step, fixes what they found, makes the suite reliable, and re-enables the workflow.
+
+### The suite exited non-zero on a fully passing run, about half the time
+
+Reproduced deterministically, then root-caused: not a test, but Vitest's worker-to-main reporting RPC missing its birpc deadline (60s, not exposed as config), which Vitest raises as an **unhandled error**:
+
+```
+Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+ Test Files  29 passed (29)
+      Tests  691 passed (691)
+```
+
+A green suite that exits 1 is the worst available signal — `npm test` reports FAILED, every gate downstream reports FAILED, and the only explanation names an internal RPC call rather than any test. It is also precisely the shape that trains the reflex of re-running until green.
+
+**Fixed — `scripts/runner/install-runner.test.mjs`: 79.6s → 3.6s.** It spawned a fresh PowerShell per case; a cold PowerShell start on Windows costs over a second, and at 20+ cases the file was four times slower than the next-slowest and long enough to hold a worker past the deadline by itself. All three AST helpers now share **one** PowerShell process (`psBatch()`), with inputs passed as a **JSON file** — not inlined into the script text and not via argv, because half these cases deliberately contain quote characters and backslashes that do not survive the JS → argv → PowerShell-parser hop. Declared input lists are exhaustive and lookups **fail loud** on an undeclared value, so a new case cannot quietly reintroduce a per-case spawn (this fired immediately on an input I had missed).
+
+With that load gone, the two files that had failed *only* under full-suite parallel load — `resolve-codex-bin` and `check-shipped-source` — stopped failing. They were never broken; they were losing a CPU race. Measured in isolation, one gate invocation costs 856ms; under the old load it inflated roughly sixfold.
+
+**`maxWorkers: 8` is the secondary half, and the intuition is wrong in both directions.** Measured: default ~16 workers with the 79.6s file → ~50% of runs exit 1; `maxWorkers: 6` → 2 of 3 exit 1; `maxWorkers: 3` → 2 of 2 exit 1 with *more* timeouts, because a smaller pool lengthens the chain of files one worker runs back-to-back; `maxWorkers: 8` with the 3.6s file → 3 of 3 green, 0 timeouts. **Do not respond to a recurrence by lowering the worker count — find the slow file.** The config comment records the numbers and says so.
+
+Whole-suite wall clock: 148s worst case → 66-74s. Verified with **three consecutive full runs**, per the standing rule that one green proves nothing about a flaky suite.
+
+### Fixed — rule-ledger drift: 71 findings
+
+`references/rule-classification.md` had fallen behind this build's agent work: 4 behavioural files with no ledger row (`brief-reviewer`, `plan-reviewer`, `verify-phase`, `review-artifact-nudge.js`), 67 headings unlisted, and 4 anchors pointing at headings that had since been renamed (`dual-reviewer` max iterations 3 → 5, two `finalisation-coordinator` steps, the `test-gate-policy` G5 carve-out). Rows were generated from the checker's own output so the work-list cannot disagree with the gate, and the renamed anchors were recomputed with the **checker's own `slugify`** rather than a hand-written guess. Now `PASS` on all four passes.
+
+### Fixed — a D10 schema-discipline violation that the disabled gate let through
+
+v2.55.0 changed `schemas/build-status.schema.json` with **no** `schemas/CHANGELOG.md` entry. CI's D10 gate would have blocked that push. Entry added retrospectively, and it carries the more important point: the D10 check diffs against `origin/main`, so **once a violating commit is pushed the gate goes quiet about it permanently**. Finding it needed `git log -- schemas/`, not a re-run.
+
+### Re-enabled
+
+`gh workflow enable CI`. Every step verified locally first: `test:sync`, `test:scripts`, `test:hooks`, `validate`, `eval:routing`, `check-rule-ledger`, `check-secrets`, JSON validity, version consistency, `removedFiles` absence, and the D10 schema gate.
+
+**The generalisable lesson, recorded in `KNOWLEDGE.md`:** a disabled gate is indistinguishable from a passing gate at every place a human or agent looks. Sixteen releases reported green because nothing reported at all.
+
+---
+
 ## 2.59.0 — 2026-07-29
 
 **Highlights:** Found by running the merge gate for real on the first PR to use it, not by review. The label resolver swallowed every failure mode into a single answer, and that answer was "not ready".

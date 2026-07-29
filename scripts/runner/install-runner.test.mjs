@@ -27,6 +27,7 @@
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,42 +46,56 @@ function findPowerShell() {
 
 const PS = findPowerShell();
 
+// Every (path, home) pair the cases below exercise. Batched into the single
+// PowerShell run described at psBatch(); lookups fail loud on an undeclared
+// pair so a new case cannot quietly reintroduce a per-case spawn.
+const WORKDIR_INPUTS = [
+  ['~/actions-runner/michaelhazza-automation-v1', '/home/mike'],
+  ['~/actions-runner/x', '/home/mike'],
+  ['~', '/home/mike'],
+  ['~', '/home/mike//'],
+  ['/', '/home/mike'],
+  ['/mnt', '/home/mike'],
+  ['/mnt/c/files/Claude/automation-v1', '/home/mike'],
+  ['/opt/runner', '/home/mike'],
+  ['actions-runner/foo', '/home/mike'],
+  ['~/actions-runner', '/home/mike/'],
+  ['~/actions-runner', 'home/mike'],
+  ['~/actions-runner/owner-repo', '/home/mike'],
+  ['~root/actions-runner', '/home/mike'],
+  ['~//', '/home/mike'],
+  ['~/./', '/home/mike'],
+  ['~/actions-runner/../../../mnt/c', '/home/mike'],
+  ['~/actions-runner//owner-repo/./', '/home/mike'],
+  ['/home/mike/x/../../../mnt/c/files/repo', '/home/mike'],
+];
+
 /**
- * Extracts Resolve-DistroWorkDir from the real .ps1 using the PowerShell
- * parser, defines it in a clean session, and calls it. Returns either the
- * resolved path or the thrown message -- exactly what an operator would hit.
+ * Verdict of the REAL Resolve-DistroWorkDir for a declared (path, home) pair:
+ * either the resolved path or the thrown message -- exactly what an operator
+ * would hit. Extracted from the .ps1 via PowerShell's own parser, so the logic
+ * under test is the shipped logic and not a copy.
  */
 function resolveWorkDir(inputPath, homeDir) {
-  const ps = `
-$ErrorActionPreference = 'Stop'
-$src = Get-Content -LiteralPath ${JSON.stringify(SCRIPT)} -Raw
-$ast = [System.Management.Automation.Language.Parser]::ParseInput($src, [ref]$null, [ref]$null)
-$fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Resolve-DistroWorkDir' }, $true)
-if (-not $fn) { Write-Output 'ERR::function Resolve-DistroWorkDir not found'; exit 0 }
-. ([scriptblock]::Create($fn.Extent.Text))
-try {
-  $out = Resolve-DistroWorkDir -Path ${JSON.stringify(inputPath)} -HomeDir ${JSON.stringify(homeDir)}
-  Write-Output "OK::$out"
-} catch {
-  Write-Output "ERR::$($_.Exception.Message)"
-}
-`;
-  const res = spawnSync(PS, ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8' });
-  const line = (res.stdout || '').split(/\r?\n/).find((l) => l.startsWith('OK::') || l.startsWith('ERR::'));
-  if (!line) throw new Error(`no verdict from PowerShell. stdout=${res.stdout} stderr=${res.stderr}`);
+  const key = `${inputPath} ${homeDir}`;
+  const table = psBatch().workDir;
+  if (!Object.prototype.hasOwnProperty.call(table, key)) {
+    throw new Error(
+      `pair ${JSON.stringify([inputPath, homeDir])} is not in WORKDIR_INPUTS — add it there rather than spawning again`
+    );
+  }
+  const entry = table[key];
   // "Function not found" is a HARNESS failure, not a refusal by the function
   // under test. Returned as an ordinary { ok: false } it satisfied every
   // assertion below that only checks `.ok === false`, so deleting the resolver
   // outright would still have left part of this suite green.
-  if (line.startsWith('ERR::function Resolve-DistroWorkDir not found')) {
+  if (entry.missing) {
     throw new Error(
       'harness failure: Resolve-DistroWorkDir could not be extracted from install-runner.ps1 — ' +
         'the function is missing or renamed, so nothing below tested the real resolver.'
     );
   }
-  return line.startsWith('OK::')
-    ? { ok: true, value: line.slice(4) }
-    : { ok: false, message: line.slice(5) };
+  return entry.ok ? { ok: true, value: entry.value ?? '' } : { ok: false, message: entry.message ?? '' };
 }
 
 describe.skipIf(!PS)('Resolve-DistroWorkDir (executed from the real .ps1)', () => {
@@ -396,23 +411,125 @@ if ($errors -and $errors.Count -gt 0) { Write-Output "ERR::$($errors[0].Message)
   });
 });
 
-/** Executes the real Test-SystemdStateStopped from the .ps1 via the AST. */
-function isStopped(state) {
+// ---------------------------------------------------------------------------
+// AST-execution harness: ONE PowerShell process for every case in this file.
+//
+// WHY IT IS BATCHED
+// Each helper used to spawn its own PowerShell. A cold PowerShell start on
+// Windows is well over a second, and with 20 cases this file took 79.6s — the
+// slowest in the repo by a factor of four, and long enough to be a primary
+// cause of Vitest's worker-to-main reporting RPC missing its 60s birpc
+// deadline. That surfaced as `[vitest-worker]: Timeout calling "onTaskUpdate"`
+// raised as an UNHANDLED error, which exits non-zero while the summary line
+// still reads all-tests-passed. Roughly half of all full runs failed that way,
+// on a suite where every assertion held.
+//
+// Inputs travel as a JSON FILE, not inlined into the script text and not via
+// argv. Half the cases here deliberately contain quote characters and
+// backslashes, and those do not survive the JS -> argv -> PowerShell-parser hop
+// intact; an earlier version of this harness passed one value per env var to
+// dodge that, which does not scale past one input. ConvertFrom-Json has no such
+// hazard.
+//
+// The declared input lists are deliberately exhaustive and lookups FAIL LOUD on
+// an undeclared value. A fallback to a fresh spawn would silently reintroduce
+// the cost this batching exists to remove.
+// ---------------------------------------------------------------------------
+
+const STOPPED_INPUTS = [
+  'deactivating', 'inactive', 'failed', 'unknown',
+  'active', 'activating', 'reloading',
+  '', '   ', 'banana', 'inactive (dead)',
+];
+
+const EXEC_PATH_INPUTS = [
+  '/home/mike/runner/repo/runsvc.sh',
+  '/home/mike/runner/repo/runsvc.sh --once',
+  '"/home/mike/runner installs/repo/runsvc.sh"',
+  '"/home/mike/runner installs/repo/runsvc.sh" --once --check',
+  "'/home/mike/runner installs/repo/runsvc.sh'",
+  '"/home/mike/a\\"b/runsvc.sh"',
+  "'/home/mike/a\\b/runsvc.sh'",
+  '/home/mike/runner\\ installs/repo/runsvc.sh',
+  '/home/mike/runner\\ installs/repo/runsvc.sh --once',
+  '"/home/mike/unterminated',
+  "'/home/mike/unterminated",
+  '"',
+  "'",
+  '',
+  '   ',
+];
+
+let psBatchCache = null;
+
+/** Runs every declared input through the real functions in ONE PowerShell process. */
+function psBatch() {
+  if (psBatchCache) return psBatchCache;
+
+  const inputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'runner-ast-')), 'inputs.json');
+  fs.writeFileSync(inputPath, JSON.stringify({
+    stopped: STOPPED_INPUTS,
+    execStart: EXEC_PATH_INPUTS,
+    // Objects, not nested arrays: PowerShell UNROLLS nested arrays in the
+    // pipeline, so a [path, home] pair arrived as two separate strings and
+    // $pair[0] indexed the first CHARACTER of one of them.
+    workDir: WORKDIR_INPUTS.map(([p, home]) => ({ path: p, home })),
+  }));
+
   const ps = `
 $ErrorActionPreference = 'Stop'
 $src = Get-Content -LiteralPath ${JSON.stringify(SCRIPT)} -Raw
 $ast = [System.Management.Automation.Language.Parser]::ParseInput($src, [ref]$null, [ref]$null)
-$fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-SystemdStateStopped' }, $true)
-if (-not $fn) { Write-Output 'ERR::not found'; exit 0 }
-. ([scriptblock]::Create($fn.Extent.Text))
-$state = ${JSON.stringify(state)}
-$verdict = Test-SystemdStateStopped -State $state
-Write-Output "OK::$verdict"
+$missing = @{}
+foreach ($name in @('Test-SystemdStateStopped', 'Get-SystemdExecPath', 'Resolve-DistroWorkDir')) {
+  $target = $name
+  $fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $target }.GetNewClosure(), $true)
+  if (-not $fn) { $missing[$name] = $true; continue }
+  . ([scriptblock]::Create($fn.Extent.Text))
+}
+$inputs = Get-Content -LiteralPath ${JSON.stringify(inputPath)} -Raw | ConvertFrom-Json
+
+$stopped = @{}
+if (-not $missing['Test-SystemdStateStopped']) {
+  foreach ($s in $inputs.stopped) { $stopped[[string]$s] = [bool](Test-SystemdStateStopped -State $s) }
+}
+$exec = @{}
+if (-not $missing['Get-SystemdExecPath']) {
+  foreach ($e in $inputs.execStart) { $exec[[string]$e] = [string](Get-SystemdExecPath -ExecStart $e) }
+}
+$workDir = @{}
+foreach ($pair in $inputs.workDir) {
+  $key = [string]$pair.path + ' ' + [string]$pair.home
+  if ($missing['Resolve-DistroWorkDir']) { $workDir[$key] = @{ missing = $true }; continue }
+  try {
+    $out = Resolve-DistroWorkDir -Path $pair.path -HomeDir $pair.home
+    $workDir[$key] = @{ ok = $true; value = [string]$out }
+  } catch {
+    $workDir[$key] = @{ ok = $false; message = [string]$_.Exception.Message }
+  }
+}
+Write-Output ("OK::" + (@{ stopped = $stopped; exec = $exec; workDir = $workDir } | ConvertTo-Json -Compress -Depth 6))
 `;
-  const res = spawnSync(PS, ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8' });
+
+  const res = spawnSync(PS, ['-NoProfile', '-NonInteractive', '-Command', ps], {
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
   const line = (res.stdout || '').split(/\r?\n/).find((l) => l.startsWith('OK::') || l.startsWith('ERR::'));
-  if (!line || line.startsWith('ERR::')) throw new Error(`no verdict: ${res.stdout} ${res.stderr}`);
-  return line.slice(4).trim() === 'True';
+  if (!line || line.startsWith('ERR::')) {
+    throw new Error(`AST batch failed: ${line || '(no marker)'}\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+  }
+  psBatchCache = JSON.parse(line.slice(4));
+  return psBatchCache;
+}
+
+/** Verdict of the real Test-SystemdStateStopped for a declared state. */
+function isStopped(state) {
+  const table = psBatch().stopped;
+  if (!Object.prototype.hasOwnProperty.call(table, state)) {
+    throw new Error(`state ${JSON.stringify(state)} is not in STOPPED_INPUTS — add it there rather than spawning again`);
+  }
+  return table[state] === true;
 }
 
 describe.skipIf(!PS)('Test-SystemdStateStopped (executed from the real .ps1)', () => {
@@ -468,28 +585,14 @@ describe('install-runner.ps1 ownership proof is an AND, not an OR', () => {
   });
 });
 
-/** Executes the real Get-SystemdExecPath from the .ps1 via the AST. */
+/** Result of the real Get-SystemdExecPath for a declared ExecStart value. */
 function execPath(execStart) {
-  const ps = `
-$ErrorActionPreference = 'Stop'
-$src = Get-Content -LiteralPath ${JSON.stringify(SCRIPT)} -Raw
-$ast = [System.Management.Automation.Language.Parser]::ParseInput($src, [ref]$null, [ref]$null)
-$fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-SystemdExecPath' }, $true)
-if (-not $fn) { Write-Output 'ERR::not found'; exit 0 }
-. ([scriptblock]::Create($fn.Extent.Text))
-$result = Get-SystemdExecPath -ExecStart $env:EXECSTART_UNDER_TEST
-Write-Output "OK::$result"
-`;
-  // The value travels in the environment, not inlined into the script text:
-  // every interesting case here CONTAINS quote characters, and those do not
-  // survive the JS -> argv -> PowerShell-parser hop intact.
-  const res = spawnSync(PS, ['-NoProfile', '-NonInteractive', '-Command', ps], {
-    encoding: 'utf8',
-    env: { ...process.env, EXECSTART_UNDER_TEST: execStart },
-  });
-  const line = (res.stdout || '').split(/\r?\n/).find((l) => l.startsWith('OK::') || l.startsWith('ERR::'));
-  if (!line || line.startsWith('ERR::')) throw new Error(`no verdict: ${res.stdout} ${res.stderr}`);
-  return line.slice(4).trim();
+  const table = psBatch().exec;
+  if (!Object.prototype.hasOwnProperty.call(table, execStart)) {
+    throw new Error(`ExecStart ${JSON.stringify(execStart)} is not in EXEC_PATH_INPUTS — add it there rather than spawning again`);
+  }
+  // ConvertTo-Json renders an empty PowerShell string as null.
+  return table[execStart] ?? '';
 }
 
 describe.skipIf(!PS)('Get-SystemdExecPath (executed from the real .ps1)', () => {

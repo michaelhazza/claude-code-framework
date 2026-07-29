@@ -1,5 +1,15 @@
 # Schema CHANGELOG
 
+## build-status.v2 — documentation correction (2026-07-29, framework 2.55.0)
+
+**`build-status.schema.json` — `$comment` only. No change to `contract_version`, the `status` enum, or any validation behaviour. Nothing to migrate.**
+
+The top-level `$comment` still described the **v1** blocker-gated back-edges (`MERGE_READY → REVIEWING`, `REVIEWING → BUILDING`) after the enum widened 6 → 9 in 2.54.0. Corrected to the v2 set:
+
+`MERGE_READY → FINALISING` (the label-pull CI fix loop) · `FINALISING → TESTING` (a review or doc finding needing a code change re-verified) · `TESTING → BUILDING` (a failing test that is a product defect, not a test defect) · `REVIEWING → BUILDING` (review findings)
+
+**Why this entry is late, and the lesson:** the schema edit shipped in 2.55.0 *without* this entry. CI's D10 gate — "if `schemas/*.json` changed relative to `origin/main`, `schemas/CHANGELOG.md` must change too" — would have blocked it, but **the framework's `CI` workflow was `disabled_manually` at the time**, so no gate ran on that push or the fifteen before it. The omission was found later by running every CI step by hand. Two things follow: a gate that is switched off is indistinguishable from a gate that passes, and the D10 check compares against `origin/main`, so once a violating commit is pushed the gate goes quiet about it forever. Catching this required reading `git log -- schemas/`, not re-running the check.
+
 ## build-status.v2 (2026-07-29, framework 2.54.0)
 
 **`build-status.schema.json` — `status` enum widened 6 → 9; `contract_version` bumped `build-status.v1` → `build-status.v2`.**
