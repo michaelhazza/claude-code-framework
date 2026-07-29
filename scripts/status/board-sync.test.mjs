@@ -7,13 +7,14 @@
  * exported pure functions are exercised, each with an injected `now` where
  * a clock is involved so nothing depends on the real wall clock.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   BOARD_FIELDS_TO_CREATE,
   buildCardBody,
   buildCardKey,
   canonicaliseRepo,
   checkBoardContract,
+  checkBoardHygiene,
   chooseSurvivor,
   decideCardAction,
   extractKeyFromBody,
@@ -596,5 +597,81 @@ describe('board field spec matches the schema enum', () => {
     const { readStatusEnum } = await import('./status-contract.mjs');
     const status = BOARD_FIELDS_TO_CREATE.find((f) => f.name === 'Status');
     expect(status.options).toEqual(await readStatusEnum());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 4 — the guard must not switch itself off, and it must SAY what is
+// wrong beyond the one thing it refuses on.
+// ---------------------------------------------------------------------------
+
+describe('checkBoardContract — an unreadable schema is a refusal, not a pass', () => {
+  it('refuses when the status enum cannot be resolved', async () => {
+    // The reported defect: `if (!statusEnum) return null` meant "contract
+    // valid", so a missing or corrupt schema silently disabled the very check
+    // that exists to prevent split-brain cards.
+    vi.resetModules();
+    vi.doMock('./status-contract.mjs', () => ({
+      readStatusEnum: async () => null,
+      validateRecordShape: async () => null,
+    }));
+    const mod = await import('./board-sync.mjs');
+
+    const fields = {};
+    for (const spec of mod.BOARD_FIELDS_TO_CREATE) {
+      fields[spec.name] = spec.dataType === 'SINGLE_SELECT'
+        ? { id: 'x', type: 'ProjectV2SingleSelectField', options: (spec.options ?? []).map((n) => ({ id: n, name: n })) }
+        : { id: 'x', type: 'ProjectV2Field', options: [] };
+    }
+
+    const error = await mod.checkBoardContract(fields);
+    expect(error, 'a board with every option present must STILL be refused when the schema is unreadable').toBeTruthy();
+    expect(error).toMatch(/schema/i);
+
+    vi.doUnmock('./status-contract.mjs');
+    vi.resetModules();
+  });
+});
+
+describe('checkBoardHygiene', () => {
+  it('is silent on an exactly-correct board', async () => {
+    expect(await checkBoardHygiene(liveFields())).toEqual([]);
+  });
+
+  it('reports an obsolete near-miss option, without refusing', async () => {
+    // The reviewer's scenario: REVIEWNG left behind by a part-finished
+    // migration sits next to REVIEWING as its own column.
+    const fields = liveFields();
+    fields.Status.options = [...fields.Status.options, { id: 'typo', name: 'REVIEWNG' }];
+
+    const warnings = await checkBoardHygiene(fields);
+    expect(warnings.join(' ')).toContain('REVIEWNG');
+    // Extra options cannot corrupt a write, so the contract check still passes
+    // and cards keep syncing. The split is by consequence, not tidiness.
+    expect(await checkBoardContract(fields)).toBeNull();
+  });
+
+  it('reports out-of-order options, without refusing', async () => {
+    const fields = liveFields();
+    const [first, second, ...rest] = fields.Status.options;
+    fields.Status.options = [second, first, ...rest];
+
+    const warnings = await checkBoardHygiene(fields);
+    expect(warnings.join(' ')).toMatch(/order/i);
+    expect(await checkBoardContract(fields)).toBeNull();
+  });
+
+  it('does not add an order complaint on top of an extras complaint', async () => {
+    // Membership is wrong, so an order message would be noise the operator has
+    // to read past before getting to the actionable one.
+    const fields = liveFields();
+    fields.Status.options = [{ id: 'typo', name: 'REVIEWNG' }, ...fields.Status.options];
+    const warnings = await checkBoardHygiene(fields);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('REVIEWNG');
+  });
+
+  it('says nothing when Status is absent — checkBoardContract owns that refusal', async () => {
+    expect(await checkBoardHygiene({})).toEqual([]);
   });
 });

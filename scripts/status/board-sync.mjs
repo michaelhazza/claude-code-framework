@@ -656,7 +656,15 @@ export async function checkBoardContract(fields) {
   }
 
   const statusEnum = await readStatusEnum();
-  if (!statusEnum) return null; // Schema unreadable — cannot judge; do not block on our own gap.
+  if (!statusEnum) {
+    // NOT a pass. Returning null here would mean "contract valid", so an absent
+    // or corrupt schema would silently switch off the guard that exists to stop
+    // split-brain cards — precisely when we can least justify writing. The
+    // schema ships with the framework; not finding it means a broken sync.
+    // (External review round 4.)
+    return 'cannot read schemas/build-status.schema.json, so the required Status options are unknown. '
+      + 'Refusing board mutations rather than writing statuses this board may not be able to display.';
+  }
 
   const liveOptions = fields.Status.options.map((o) => o.name);
   const missingOptions = statusEnum.filter((s) => !liveOptions.includes(s));
@@ -665,6 +673,57 @@ export async function checkBoardContract(fields) {
       + `Present: ${liveOptions.join(', ') || '(none)'}. Required by schemas/build-status.schema.json: ${statusEnum.join(', ')}.`;
   }
   return null;
+}
+
+/**
+ * Non-fatal board hygiene: options the board carries that the schema does not,
+ * and an option order that does not match the pipeline order.
+ * Returns an array of warning strings (empty when the board is exactly right).
+ *
+ * Deliberately SEPARATE from checkBoardContract, and deliberately non-fatal.
+ * The split is by consequence, not by tidiness:
+ *   - A MISSING option means a status cannot be written at all. Cards would
+ *     disagree with their own column. That is a correctness failure -> refuse.
+ *   - An EXTRA option, or the right options in the wrong order, still writes
+ *     every status correctly. It is a display problem. Refusing all mutations
+ *     over column order would take the board offline for a cosmetic issue, and
+ *     would also brick the board of an operator who deliberately added a column
+ *     of their own. So: say it loudly, every run, and keep writing.
+ * External review round 4 asked for exact-match refusal here; this reports the
+ * same three categories separately, as asked, but only escalates the one that
+ * corrupts data.
+ */
+export async function checkBoardHygiene(fields) {
+  const statusEnum = await readStatusEnum();
+  if (!statusEnum || !fields?.Status?.options) return [];
+
+  const liveOptions = fields.Status.options.map((o) => o.name);
+  const warnings = [];
+
+  const extras = liveOptions.filter((name) => !statusEnum.includes(name));
+  if (extras.length > 0) {
+    warnings.push(
+      `board field "Status" carries option(s) the schema does not define: ${extras.join(', ')}. `
+      + 'A near-miss spelling of a real status (a leftover from a part-finished migration) shows as its own column '
+      + 'and is easy to mistake for the real one. Delete them in the web UI unless they are deliberate.'
+    );
+  }
+
+  // Order is only meaningful once membership matches; otherwise the extras/
+  // missing warnings already say everything useful and an order complaint on
+  // top of them is noise.
+  const orderable = liveOptions.filter((name) => statusEnum.includes(name));
+  if (extras.length === 0 && orderable.length === statusEnum.length) {
+    const outOfOrder = orderable.some((name, i) => name !== statusEnum[i]);
+    if (outOfOrder) {
+      warnings.push(
+        `board field "Status" lists its options in a different order to the pipeline. `
+        + `Board: ${liveOptions.join(', ')}. Pipeline: ${statusEnum.join(', ')}. `
+        + 'Cards still land in the right column; the columns just read out of sequence left to right.'
+      );
+    }
+  }
+  return warnings;
 }
 
 /** True when a live field is a single-select. Typename first; option presence
@@ -722,6 +781,10 @@ async function syncBoard(root, repository, boardConfig) {
       `  Refusing all writes rather than updating card bodies whose Status column would then be stale.`
     );
     return;
+  }
+
+  for (const warning of await checkBoardHygiene(fields)) {
+    console.warn(`[board-sync] board hygiene: ${warning}`);
   }
 
   const boardCtx = { owner: boardConfig.owner, number: boardConfig.number, projectId };

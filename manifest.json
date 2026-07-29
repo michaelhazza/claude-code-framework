@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.55.0",
+  "frameworkVersion": "2.56.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -952,6 +952,12 @@
     {
       "path": "scripts/status/status-contract.mjs",
       "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/status/status-contract.test.mjs",
+      "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"
     },

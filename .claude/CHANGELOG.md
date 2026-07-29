@@ -32,6 +32,33 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.56.0 — 2026-07-29
+
+**Highlights:** Round-4 external review. Three findings plus one lower-severity issue, and the streak holds: all four are defects in code written in the last two versions. Two share a single root cause worth naming — **a guard that reports "fine" when it cannot actually tell.** `checkBoardContract` returned "contract valid" when the schema was unreadable, and `validateRecordShape`'s Ajv-free floor returned "valid" for records it had never really inspected. Both were introduced by the round-3 fixes that were supposed to make these failures visible.
+
+**Fixed — `scripts/status/board-sync.mjs` (high) — an unreadable schema disabled the board guard:**
+`checkBoardContract` opened with `if (!statusEnum) return null`, and `null` is its success value. A missing, unreadable or malformed `schemas/build-status.schema.json` therefore switched off the entire preflight and let every card mutation proceed, at the exact moment the script could no longer say which statuses the board must support. Now returns an explicit refusal. The board stays non-blocking (the run still exits 0) but performs zero mutations.
+
+**Added — `scripts/status/board-sync.mjs` `checkBoardHygiene()` (medium) — extra and out-of-order options are now reported:**
+The contract check verified only that required options were *present*, so a board carrying a leftover `REVIEWNG` beside the real `REVIEWING`, or the right nine options in the wrong sequence, passed silently — while the refusal message told the operator to "delete any that are not listed", a rule nothing enforced. Missing, extra and out-of-order are now reported as three separate, individually actionable categories.
+
+*Deviation from the review recommendation, recorded deliberately:* the reviewer asked for exact-match **refusal**. Escalation is split by consequence instead. A **missing** option means a status cannot be written at all and cards would disagree with their own column — a correctness failure, so it still refuses. An **extra** option, or correct options in the wrong order, writes every status correctly; it is a display problem. Refusing all mutations there would take the board offline over column order and would brick the board of an operator who deliberately added a column of their own. Those warn loudly on every run and keep writing.
+
+**Fixed — `scripts/status/status-contract.mjs` (high) — the Ajv-free floor accepted records that crash the renderer:**
+The hand-written floor checked that `blockers` was an array but never the shape of its elements, so `blockers: [null]` passed and then threw on `blocker.cleared_at` inside `buildCardBody` — which the per-record catch reported as a **"gh failure"**, pointing the operator at GitHub for a defect in local data. It also omitted `title`, `branch` and `pr`, all dereferenced by the card renderer, while the module's own docstring claimed it covered "exactly the dereferences the renderers perform". **The floor is now derived from the schema rather than hand-maintained** — it reads `required`, `properties` and `items` straight out of the JSON and enforces them generically, including one level into `blockers[]`. A hand-kept mirror of a schema is the same drift class this build already wrote a guard for. Parsing JSON needs no dependency; only ajv's richer keywords are lost.
+
+**Fixed — `scripts/runner/install-runner.ps1` (medium, availability) — `ExecStart` parsing ignored systemd quoting:**
+The path was extracted with a bare whitespace split, so a work directory containing a space produced `"/home/mike/runner` from `ExecStart="/home/mike/runner installs/repo/runsvc.sh"`. No directory matches that, so the installer refused to manage a runner it had installed itself. The script permits spaces in `WorkDir`, so this was reachable, not theoretical. New `Get-SystemdExecPath` honours single and double quoting with backslash escapes, and returns empty on unterminated quoting so the caller refuses rather than guessing — a wrong path here feeds a stop/disable/delete decision.
+
+**Added — tests:**
+- `scripts/status/status-contract.test.mjs` (14 cases) exercises the **Ajv-unavailable** path for real via `vi.doMock`, including a case that fails if Ajv loaded after all, so the block cannot silently test the wrong code path. Also asserts the two paths return the *same verdicts* on the round-4 regression cases, so which one happens to load is not a correctness variable.
+- `checkBoardContract` refusal on an unresolvable enum; `checkBoardHygiene` across exact / extra / out-of-order / both-wrong.
+- `Get-SystemdExecPath` across quoted-with-spaces, quoted-with-arguments, single quotes, backslash escapes, unterminated quoting and empty input. The harness passes the value **through the environment** rather than inlining it, because every interesting case contains quote characters that do not survive the JS to argv to PowerShell hop.
+
+Full suite green: 29 vitest files / 677 tests, plus 14 node:test and 14 plain-node suites.
+
+---
+
 ## 2.55.0 — 2026-07-29
 
 **Highlights:** Round-3 external review. Four findings, and — as in rounds 1 and 2 — every one of them is a defect in a fix made earlier in this same build, not in pre-existing code. Two are in the WSL runner installer (both in ownership/lifecycle logic added two versions ago), two are in the status pipeline (both in the v2 widening shipped in 2.54.0 one version ago). The pattern is now measured across three rounds and is recorded in `KNOWLEDGE.md`: **recently-written code is the highest-yield place to review, and a fix is not evidence of correctness.**

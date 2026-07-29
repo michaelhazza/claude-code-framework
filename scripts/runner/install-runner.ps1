@@ -794,6 +794,51 @@ function Test-SystemdStateStopped {
     return ($State.Trim() -match '^(inactive|failed|unknown)$')
 }
 
+# Extracts the executable path from an ExecStart value, honouring systemd's
+# quoting. Returns an empty string when the value cannot be parsed
+# unambiguously, which the caller treats as "refuse to claim ownership".
+#
+# Splitting on whitespace alone was wrong (external review round 4): the script
+# permits spaces in the work directory, so a real unit could carry
+#   ExecStart="/home/mike/runner installs/repo/runsvc.sh"
+# which naive splitting reduces to '"/home/mike/runner' -- no directory ever
+# matches that, so the installer refused to manage a runner it had itself
+# installed. An availability bug, not a safety one, but it fires on exactly the
+# paths a Windows-side operator is most likely to choose.
+#
+# Systemd allows the executable to be wrapped in single or double quotes, with
+# backslash escapes processed inside double quotes. Unterminated quoting is
+# ambiguous, so it returns empty rather than guessing.
+function Get-SystemdExecPath {
+    param([string]$ExecStart)
+
+    if ([string]::IsNullOrWhiteSpace($ExecStart)) { return '' }
+    $value = $ExecStart.Trim()
+    $quote = $value[0]
+
+    if ($quote -ne '"' -and $quote -ne "'") {
+        # Unquoted: the path runs to the first whitespace.
+        return ($value -split '\s+')[0]
+    }
+
+    $sb = New-Object System.Text.StringBuilder
+    $i = 1
+    while ($i -lt $value.Length) {
+        $ch = $value[$i]
+        # Backslash escapes are only processed inside double quotes.
+        if ($ch -eq '\' -and $quote -eq '"' -and ($i + 1) -lt $value.Length) {
+            [void]$sb.Append($value[$i + 1])
+            $i += 2
+            continue
+        }
+        if ($ch -eq $quote) { return $sb.ToString() }
+        [void]$sb.Append($ch)
+        $i++
+    }
+    # Ran off the end without a closing quote.
+    return ''
+}
+
 # The single authority on "does this unit belong to THIS work dir".
 #
 # Reads the unit FILE rather than asking systemctl, deliberately: the uninstall
@@ -864,7 +909,11 @@ function Test-UnitBelongsToWorkDir {
         Write-Host "Unit '$Unit' uses a prefixed ExecStart ('$execRaw'). Refusing to claim ownership." -ForegroundColor Yellow
         return $false
     }
-    $execPath = ($execRaw -split '\s+')[0].Trim('"', "'")
+    $execPath = Get-SystemdExecPath -ExecStart $execRaw
+    if ([string]::IsNullOrEmpty($execPath)) {
+        Write-Host "Unit '$Unit' has an ExecStart this script cannot parse unambiguously ('$execRaw'). Refusing to claim ownership." -ForegroundColor Yellow
+        return $false
+    }
 
     $wdMatches = ($wd -eq $canonDir)
     $execMatches = ($execPath -eq $canonDir -or $execPath.StartsWith("$canonDir/"))

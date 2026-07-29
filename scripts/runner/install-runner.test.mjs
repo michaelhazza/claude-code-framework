@@ -467,3 +467,87 @@ describe('install-runner.ps1 ownership proof is an AND, not an OR', () => {
     expect(src).toMatch(/\^\[@\\-:\+!\]/);
   });
 });
+
+/** Executes the real Get-SystemdExecPath from the .ps1 via the AST. */
+function execPath(execStart) {
+  const ps = `
+$ErrorActionPreference = 'Stop'
+$src = Get-Content -LiteralPath ${JSON.stringify(SCRIPT)} -Raw
+$ast = [System.Management.Automation.Language.Parser]::ParseInput($src, [ref]$null, [ref]$null)
+$fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-SystemdExecPath' }, $true)
+if (-not $fn) { Write-Output 'ERR::not found'; exit 0 }
+. ([scriptblock]::Create($fn.Extent.Text))
+$result = Get-SystemdExecPath -ExecStart $env:EXECSTART_UNDER_TEST
+Write-Output "OK::$result"
+`;
+  // The value travels in the environment, not inlined into the script text:
+  // every interesting case here CONTAINS quote characters, and those do not
+  // survive the JS -> argv -> PowerShell-parser hop intact.
+  const res = spawnSync(PS, ['-NoProfile', '-NonInteractive', '-Command', ps], {
+    encoding: 'utf8',
+    env: { ...process.env, EXECSTART_UNDER_TEST: execStart },
+  });
+  const line = (res.stdout || '').split(/\r?\n/).find((l) => l.startsWith('OK::') || l.startsWith('ERR::'));
+  if (!line || line.startsWith('ERR::')) throw new Error(`no verdict: ${res.stdout} ${res.stderr}`);
+  return line.slice(4).trim();
+}
+
+describe.skipIf(!PS)('Get-SystemdExecPath (executed from the real .ps1)', () => {
+  // Regression: external review round 4. The parser split on whitespace before
+  // handling systemd quoting, so a work directory containing a space produced
+  // a truncated path that matched no directory, and the installer refused to
+  // manage a runner it had installed itself. The script permits spaces in
+  // WorkDir, so this is reachable, not theoretical.
+  it('a quoted path containing spaces survives intact — the reported defect', () => {
+    expect(execPath('"/home/mike/runner installs/repo/runsvc.sh"'))
+      .toBe('/home/mike/runner installs/repo/runsvc.sh');
+  });
+
+  it('quoted path with spaces AND arguments keeps only the path', () => {
+    expect(execPath('"/home/mike/runner installs/repo/runsvc.sh" --once --check'))
+      .toBe('/home/mike/runner installs/repo/runsvc.sh');
+  });
+
+  it('single quotes work the same as double quotes', () => {
+    expect(execPath("'/home/mike/runner installs/repo/runsvc.sh'"))
+      .toBe('/home/mike/runner installs/repo/runsvc.sh');
+  });
+
+  it('unquoted paths still parse, with and without arguments', () => {
+    expect(execPath('/home/mike/runner/repo/runsvc.sh')).toBe('/home/mike/runner/repo/runsvc.sh');
+    expect(execPath('/home/mike/runner/repo/runsvc.sh --once')).toBe('/home/mike/runner/repo/runsvc.sh');
+  });
+
+  it('backslash escapes are processed inside double quotes only', () => {
+    // systemd processes \" inside double quotes; inside single quotes the
+    // backslash is literal.
+    expect(execPath('"/home/mike/a\\"b/runsvc.sh"')).toBe('/home/mike/a"b/runsvc.sh');
+    expect(execPath("'/home/mike/a\b/runsvc.sh'")).toBe('/home/mike/a\b/runsvc.sh');
+  });
+
+  it('an unterminated quote returns empty, so the caller refuses', () => {
+    // Ambiguous input must never resolve to a path: a wrong path here feeds a
+    // stop/disable/delete decision.
+    expect(execPath('"/home/mike/unterminated')).toBe('');
+    expect(execPath("'/home/mike/unterminated")).toBe('');
+  });
+
+  it('empty and whitespace-only input return empty', () => {
+    expect(execPath('')).toBe('');
+    expect(execPath('   ')).toBe('');
+  });
+});
+
+describe('Test-UnitBelongsToWorkDir source invariants (round 4)', () => {
+  const src = SOURCE;
+
+  it('parses ExecStart via the quoting-aware helper, not a bare whitespace split', () => {
+    expect(src).toContain('Get-SystemdExecPath -ExecStart $execRaw');
+    // The naive form must not come back.
+    expect(src).not.toMatch(/\$execPath\s*=\s*\(\$execRaw\s*-split/);
+  });
+
+  it('treats an unparseable ExecStart as a refusal, not as a match', () => {
+    expect(src).toMatch(/IsNullOrEmpty\(\$execPath\)[\s\S]{0,320}return \$false/);
+  });
+});
