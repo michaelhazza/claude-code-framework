@@ -32,6 +32,28 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.59.0 — 2026-07-29
+
+**Highlights:** Found by running the merge gate for real on the first PR to use it, not by review. The label resolver swallowed every failure mode into a single answer, and that answer was "not ready".
+
+**Fixed — `templates/github-workflows/merge-gate.yml` — the label resolver failed open into a false negative:**
+The live label re-query was `gh api ... 2>/dev/null || echo ""`, which made three unrelated situations indistinguishable: the label is genuinely absent, the API call failed, and **`gh` is not installed on the runner**. On a fresh self-hosted runner the third is the common case — and it is exactly the case a brand-new runner rollout hits.
+
+The observed symptom was badly misleading. A correctly-labelled PR resolved to `ready=false`, so both gated suites were skipped, and `merge-guard` then failed with `Gated suites did not both succeed (suite=skipped, light=skipped)`. That message points at the suites, which never ran and were never at fault, rather than at the resolver that skipped them. Two full re-runs were spent before the cause was located on the runner rather than in the workflow.
+
+The resolver now:
+- **refuses outright when `gh` is absent**, with an error naming the install as the fix, rather than reporting "not ready";
+- **captures stderr and the exit status separately**, so a failed API call is a failure rather than an empty label list;
+- **echoes what it resolved and why** on both branches, so a skipped-suite run says which labels it actually saw.
+
+A resolver that cannot read the thing it gates on must say so. Answering "no" is the one response that is indistinguishable from a legitimate negative.
+
+**Runner note (consumer-side, not shipped):** `gh` is a hard dependency of this workflow and is not part of a default `actions-runner` install. Any repo standing up a self-hosted runner needs it installed alongside the runner.
+
+Full suite green: 29 vitest files / 691 tests, exit 0.
+
+---
+
 ## 2.58.0 — 2026-07-29
 
 **Highlights:** Round-6 external review, and the final round of this build. One finding: **a "known divergence" pin turned out to be encoding a real defect as intended behaviour.** The round-5 release deliberately did not implement `format: date-time` in the Ajv-free floor, on the stated grounds that a malformed timestamp produced "a wrong-looking card, not a bad write". That reasoning was wrong, and because it was written into a passing test with an explanatory failure message, it would have looked deliberate and correct to every future reader.

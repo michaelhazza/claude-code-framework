@@ -159,6 +159,16 @@ jobs:
       # snapshot baked into the triggering event's payload; this re-reads the
       # CURRENT label state at run time so a stale payload cannot report
       # ready=true (or skip a run that should have been gated).
+      #
+      # FAILS LOUD, and this is the whole point of the rewrite. The original
+      # was `gh api ... 2>/dev/null || echo ""`, which made three completely
+      # different situations indistinguishable: the label is absent, the API
+      # call failed, and `gh` is not installed. On a fresh self-hosted runner
+      # the third is the common one, and it presented as a labelled PR whose
+      # gated suites were silently skipped and whose merge-guard then failed
+      # with "suite=skipped, light=skipped" — a message that points at the
+      # suites, which never ran, rather than at the resolver that skipped them.
+      # A resolver that cannot read the labels must say so, not answer "no".
       - name: Query current PR labels
         id: check
         env:
@@ -168,11 +178,25 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          labels=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
-            --jq '.labels[].name' 2>/dev/null || echo "")
+
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "::error::gh CLI is not installed on this runner, so the ready-to-merge label cannot be re-queried. Install it (https://github.com/cli/cli#installation) — refusing to report ready=false, which would silently skip the gated suites."
+            exit 1
+          fi
+
+          # Capture stderr and the exit status separately so an API failure is
+          # reported as a failure rather than collapsing into "no labels".
+          if ! labels=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}" \
+              --jq '.labels[].name' 2>gh-err.txt); then
+            echo "::error::Failed to query PR labels: $(tr '\n' ' ' < gh-err.txt)"
+            exit 1
+          fi
+
           if printf '%s\n' "$labels" | grep -qx 'ready-to-merge'; then
+            echo "Label ready-to-merge is present on PR #${{ github.event.pull_request.number }} — gated suites will run."
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
+            echo "Label ready-to-merge is NOT present (labels: ${labels:-none}) — gated suites will be skipped."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
 
