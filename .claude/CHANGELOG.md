@@ -32,6 +32,29 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.55.0 — 2026-07-29
+
+**Highlights:** Round-3 external review. Four findings, and — as in rounds 1 and 2 — every one of them is a defect in a fix made earlier in this same build, not in pre-existing code. Two are in the WSL runner installer (both in ownership/lifecycle logic added two versions ago), two are in the status pipeline (both in the v2 widening shipped in 2.54.0 one version ago). The pattern is now measured across three rounds and is recorded in `KNOWLEDGE.md`: **recently-written code is the highest-yield place to review, and a fix is not evidence of correctness.**
+
+**Fixed — `scripts/runner/install-runner.ps1` (both critical/high, both self-inflicted):**
+- **Unit-ownership proof was `OR`, not `AND`.** `Test-UnitOwnedByUs` accepted a unit if *either* its `WorkingDirectory` *or* its `ExecStart` pointed at our canonical directory. A systemd unit with an unrelated `ExecStart` and a coincidentally-matching `WorkingDirectory` (or the reverse) was therefore claimed as ours and could be stopped, disabled and deleted. Now requires exactly one `WorkingDirectory` and exactly one `ExecStart` directive, both resolving to the canonical directory, and refuses outright on prefixed `ExecStart` forms (`@`, `-`, `:`, `+`, `!`) whose argv semantics it cannot safely parse.
+- **`deactivating` was treated as stopped.** The stop path matched on `-match '^active'` to decide whether a unit was still running, so the transient `deactivating` state read as stopped and `$WorkDir` was deleted out from under a live process. Replaced with `Test-SystemdStateStopped` (an explicit `inactive|failed|unknown` allowlist, extracted as a pure function so it is directly testable), bounded polling (15 × 2s) and a `MainPID` check before any deletion.
+
+**Fixed — `scripts/status/board-sync.mjs` (high) — split-brain cards on an unmigrated board:**
+Board writes were validated per card, but a status-enum mismatch is a property of the *board*. Against a board still provisioned with the v1 six-status field, `updateCard` wrote a title and body saying `TESTING`, `setFieldValues` could not find a `TESTING` option, warned, skipped the Status field, and the run exited 0 (board failures are deliberately non-blocking). The card body and the board column then disagreed — for exactly the three statuses the v2 migration added, the ones whose visibility was the entire point of the change. New `checkBoardContract()` runs once, before any mutation, and refuses **all** writes with a single actionable migration error naming every missing option. Its required-field list is derived from `BOARD_FIELDS_TO_CREATE`, so "what `--init` provisions" and "what sync requires" cannot drift.
+
+**Added — `scripts/status/status-contract.mjs` (medium) — one definition of "valid":**
+`generate-current-focus.mjs` validated records against the schema; `board-sync.mjs` checked only that the JSON parsed and the slug matched its directory. The two consumers of the same file could therefore disagree — the generator classifying a record `INVALID` and refusing to render it while board-sync happily published it to a card — and a malformed record reaching board-sync surfaced as a *"gh failure"*, a misleading diagnosis pointing at GitHub for a defect in local data. Both readers now share this module. Ajv is loaded dynamically with a structural fallback covering exactly the dereferences the renderers perform, preserving the stdlib-only-at-runtime property.
+
+**Added — `scripts/status/status-vocabulary.test.mjs` — drift guard for the status vocabulary:**
+The enum widened 6→9 in 2.54.0 and four things had to move together; one did not. The schema's own `$comment` went on describing the v1 back-edges (`MERGE_READY→REVIEWING`, `REVIEWING→BUILDING`) through a full external review round until a reviewer caught it by eye. Each coupling is now mechanical: board options ≡ schema enum (order included, because that order *is* the board columns); `STATUS_PRIORITY` covers exactly the non-terminal statuses with a dense unambiguous ranking; terminal statuses are a subset of the enum; and **no status name may appear in the schema's prose that is not in its own enum** — the assertion that would have caught the stale `$comment` on the day it was written. On first run it immediately found two more live drifts: `BOARD_FIELDS_TO_CREATE` was not exported, and the framework's own `tasks/current-focus.md` still documented the v1 six-value list.
+
+**Fixed — `schemas/build-status.schema.json`:** `$comment` now describes the v2 back-edges (`MERGE_READY→FINALISING`, `FINALISING→TESTING`, `TESTING→BUILDING`, `REVIEWING→BUILDING`) and points at the guard that keeps it honest.
+
+**Fixed — `tasks/current-focus.md`:** status list updated to the nine v2 values with the schema named as canonical.
+
+---
+
 ## 2.54.0 — 2026-07-29
 
 **Highlights:** Implements the board-status vocabulary the operator approved — `build-status.v2`, 6 statuses → 9. The docs described it; this makes the code do it. **Schema change with a `contract_version` bump; migration is a no-op because there were zero `status.json` files and zero board cards at the time of the change.**

@@ -43,53 +43,15 @@ import { readFile, readdir, writeFile, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { validateRecordShape } from './status-contract.mjs';
 
 const BEGIN_MARKER = '<!-- STATUS:GENERATED:BEGIN -->';
 const END_MARKER = '<!-- STATUS:GENERATED:END -->';
 const LEGACY_COMMENT_PREFIX = '<!-- mission-control';
 
-// Compiled ajv validator, or `false` when ajv/the schema are unavailable.
-// Resolved once, lazily. See validateRecordShape for the contract.
-let compiledValidator = null;
-
-async function getSchemaValidator() {
-  if (compiledValidator !== null) return compiledValidator;
-  try {
-    const [{ default: Ajv }, { default: addFormats }] = await Promise.all([
-      import('ajv'),
-      import('ajv-formats').catch(() => ({ default: null })),
-    ]);
-    const schemaPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'schemas', 'build-status.schema.json');
-    const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
-    const ajv = new Ajv({ allErrors: false, strict: false });
-    if (addFormats) addFormats(ajv);
-    compiledValidator = ajv.compile(schema);
-  } catch {
-    compiledValidator = false; // No ajv / no schema — structural fallback below.
-  }
-  return compiledValidator;
-}
-
-/**
- * Returns an error string for a key-complete but malformed record, or null.
- * Schema-first (ajv when importable), with a structural floor covering exactly
- * the dereferences buildBody/compareRecords perform — so even without ajv, no
- * malformed record can crash the run and silently drop every healthy build.
- */
-async function validateRecordShape(data) {
-  const validate = await getSchemaValidator();
-  if (validate) {
-    if (validate(data)) return null;
-    const err = validate.errors?.[0];
-    return `schema-invalid: ${err ? `${err.instancePath || '(root)'} ${err.message}` : 'unknown validation error'}`;
-  }
-  // Structural floor (no ajv available): the crash vectors, not the full schema.
-  if (!Array.isArray(data.blockers)) return 'blockers must be an array';
-  if (typeof data.summary !== 'string') return 'summary must be a string';
-  if (typeof data.updated_at !== 'string') return 'updated_at must be a string';
-  if (typeof data.phase !== 'string') return 'phase must be a string';
-  return null;
-}
+// Validation is shared with board-sync via status-contract.mjs so the two
+// readers of status.json cannot disagree about what "valid" means — they did,
+// and a record the generator called INVALID was still published to the board.
 
 const REQUIRED_KEYS = [
   'contract_version',
@@ -115,7 +77,7 @@ const REQUIRED_KEYS = [
 // the one whose state the operator most often needs.
 // Widened to build-status.v2 (2026-07-29): SPECIFYING split out of PLANNING,
 // and TESTING/FINALISING split out of the old catch-all REVIEWING span.
-const STATUS_PRIORITY = {
+export const STATUS_PRIORITY = {
   MERGE_READY: 0,
   FINALISING: 1,
   TESTING: 2,
@@ -129,7 +91,7 @@ const STATUS_PRIORITY = {
 // Named explicitly so "terminal, deliberately excluded" is distinguishable from
 // "unrecognised, therefore invalid" — collapsing the two is how a typo'd status
 // silently disappeared from the generated block.
-const TERMINAL_STATUSES = new Set(['MERGED', 'ABANDONED']);
+export const TERMINAL_STATUSES = new Set(['MERGED', 'ABANDONED']);
 
 function parseArgs(argv) {
   let root = process.cwd();

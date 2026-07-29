@@ -9,9 +9,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  BOARD_FIELDS_TO_CREATE,
   buildCardBody,
   buildCardKey,
   canonicaliseRepo,
+  checkBoardContract,
   chooseSurvivor,
   decideCardAction,
   extractKeyFromBody,
@@ -482,5 +484,117 @@ describe('board Status options match the schema enum (v2)', () => {
       expect(schema.properties.status.enum, added).toContain(added);
     }
     expect(schema.properties.contract_version.const).toBe('build-status.v2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F3 — live-board contract validation (external review round 3).
+//
+// The failure this prevents is a SPLIT-BRAIN card, not a crash: against a board
+// still provisioned with the v1 six-status field, updateCard wrote a title and
+// body saying TESTING, setFieldValues could not find a TESTING option, warned,
+// skipped the Status field, and the run exited 0 because board failures are
+// deliberately non-blocking. The card body and the board column then disagreed
+// for exactly the three statuses the v2 migration added. A per-card warning is
+// the wrong granularity for a board-level schema mismatch.
+// ---------------------------------------------------------------------------
+
+/** A field map shaped like fetchFieldIds() output for a fully migrated board. */
+function liveFields(overrides = {}) {
+  const fields = {};
+  for (const spec of BOARD_FIELDS_TO_CREATE) {
+    fields[spec.name] = spec.dataType === 'SINGLE_SELECT'
+      ? {
+          id: `id-${spec.name}`,
+          type: 'ProjectV2SingleSelectField',
+          options: spec.options.map((name) => ({ id: `opt-${name}`, name })),
+        }
+      : { id: `id-${spec.name}`, type: 'ProjectV2Field', options: [] };
+  }
+  return { ...fields, ...overrides };
+}
+
+describe('checkBoardContract', () => {
+  it('accepts a fully migrated board', async () => {
+    expect(await checkBoardContract(liveFields())).toBeNull();
+  });
+
+  it('accepts extra fields the operator added by hand', async () => {
+    const fields = liveFields();
+    fields['Notes'] = { id: 'id-Notes', type: 'ProjectV2Field', options: [] };
+    expect(await checkBoardContract(fields)).toBeNull();
+  });
+
+  it('refuses a board still carrying the v1 six-status field', async () => {
+    // The exact regression: the three statuses v2 added are simply absent.
+    const fields = liveFields();
+    fields.Status.options = ['PLANNING', 'BUILDING', 'REVIEWING', 'MERGE_READY', 'MERGED', 'ABANDONED']
+      .map((name) => ({ id: `opt-${name}`, name }));
+
+    const error = await checkBoardContract(fields);
+    expect(error).toBeTruthy();
+    // Names every missing option, so the operator knows what to add without
+    // diffing two lists by eye.
+    for (const missing of ['SPECIFYING', 'TESTING', 'FINALISING']) {
+      expect(error).toContain(missing);
+    }
+  });
+
+  it('refuses when a required field is absent, and names it', async () => {
+    const fields = liveFields();
+    delete fields[REPO_FIELD_NAME];
+    const error = await checkBoardContract(fields);
+    expect(error).toContain(REPO_FIELD_NAME);
+    expect(error).toContain('missing required field');
+  });
+
+  it('refuses a board with no fields at all rather than throwing', async () => {
+    const error = await checkBoardContract({});
+    expect(error).toContain('missing required field');
+  });
+
+  it('refuses when Status is a plain text field', async () => {
+    // A TEXT Status accepts any string, so every card would look written while
+    // the board silently stopped having columns.
+    const fields = liveFields({ Status: { id: 'id-Status', type: 'ProjectV2Field', options: [] } });
+    const error = await checkBoardContract(fields);
+    expect(error).toContain('must be a single-select');
+  });
+
+  it('refuses when a text field was provisioned as a single-select', async () => {
+    const fields = liveFields({
+      Slug: { id: 'id-Slug', type: 'ProjectV2SingleSelectField', options: [{ id: 'o', name: 'x' }] },
+    });
+    const error = await checkBoardContract(fields);
+    expect(error).toContain('must be a plain text field');
+  });
+
+  it('falls back to option presence when gh omits the type field', async () => {
+    // Older gh versions do not emit `type` in field-list output. Absence of a
+    // typename must not be read as "not a single-select" — that would refuse
+    // every write on an otherwise healthy board.
+    const fields = liveFields();
+    for (const name of Object.keys(fields)) fields[name].type = null;
+    expect(await checkBoardContract(fields)).toBeNull();
+  });
+
+  it('checks required fields before option coverage', async () => {
+    // Ordering matters for the diagnostic: a board with neither the fields nor
+    // the options should report the structural problem, which is the one the
+    // operator fixes first.
+    const error = await checkBoardContract({});
+    expect(error).toContain('missing required field');
+    expect(error).not.toContain('missing option');
+  });
+});
+
+describe('board field spec matches the schema enum', () => {
+  it('provisions exactly the statuses the contract defines', async () => {
+    // Also covered by status-vocabulary.test.mjs; asserted here too so a
+    // developer editing board-sync.mjs alone sees the coupling break in the
+    // file they are editing.
+    const { readStatusEnum } = await import('./status-contract.mjs');
+    const status = BOARD_FIELDS_TO_CREATE.find((f) => f.name === 'Status');
+    expect(status.options).toEqual(await readStatusEnum());
   });
 });

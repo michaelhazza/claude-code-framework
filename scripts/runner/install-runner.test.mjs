@@ -395,3 +395,75 @@ if ($errors -and $errors.Count -gt 0) { Write-Output "ERR::$($errors[0].Message)
     expect(res.stdout).toContain('OK::parsed');
   });
 });
+
+/** Executes the real Test-SystemdStateStopped from the .ps1 via the AST. */
+function isStopped(state) {
+  const ps = `
+$ErrorActionPreference = 'Stop'
+$src = Get-Content -LiteralPath ${JSON.stringify(SCRIPT)} -Raw
+$ast = [System.Management.Automation.Language.Parser]::ParseInput($src, [ref]$null, [ref]$null)
+$fn = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-SystemdStateStopped' }, $true)
+if (-not $fn) { Write-Output 'ERR::not found'; exit 0 }
+. ([scriptblock]::Create($fn.Extent.Text))
+$state = ${JSON.stringify(state)}
+$verdict = Test-SystemdStateStopped -State $state
+Write-Output "OK::$verdict"
+`;
+  const res = spawnSync(PS, ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8' });
+  const line = (res.stdout || '').split(/\r?\n/).find((l) => l.startsWith('OK::') || l.startsWith('ERR::'));
+  if (!line || line.startsWith('ERR::')) throw new Error(`no verdict: ${res.stdout} ${res.stderr}`);
+  return line.slice(4).trim() === 'True';
+}
+
+describe.skipIf(!PS)('Test-SystemdStateStopped (executed from the real .ps1)', () => {
+  // Regression: external review round 3. `deactivating` was in the accepted
+  // set, so a slow or stuck shutdown let the sweep delete $WorkDir while the
+  // runner process was still executing out of it. Shutdown IN PROGRESS is not
+  // shutdown COMPLETE.
+  it('deactivating is NOT stopped — the reported defect', () => {
+    expect(isStopped('deactivating')).toBe(false);
+  });
+
+  it('terminal non-running states are stopped', () => {
+    for (const s of ['inactive', 'failed', 'unknown']) {
+      expect(isStopped(s), s).toBe(true);
+    }
+  });
+
+  it('running and transitional states are not stopped', () => {
+    for (const s of ['active', 'activating', 'reloading', 'deactivating']) {
+      expect(isStopped(s), s).toBe(false);
+    }
+  });
+
+  it('empty, whitespace and unrecognised values are not stopped (fail closed)', () => {
+    for (const s of ['', '   ', 'banana', 'inactive (dead)']) {
+      expect(isStopped(s), JSON.stringify(s)).toBe(false);
+    }
+  });
+});
+
+describe('install-runner.ps1 ownership proof is an AND, not an OR', () => {
+  // Regression: external review round 3. Returning true on the FIRST matching
+  // directive proved only that some field mentioned the target dir. A unit with
+  // WorkingDirectory=<repo-b> and ExecStart=<repo-a>/runsvc.sh passed, so repo
+  // B's sweep deleted repo A's service.
+  const src = fs.readFileSync(SCRIPT, 'utf8');
+
+  it('collects both directives and requires exactly one of each', () => {
+    expect(src).toMatch(/\$workingDirs\.Count -ne 1 -or \$execStarts\.Count -ne 1/);
+  });
+
+  it('requires BOTH to match before claiming ownership', () => {
+    expect(src).toMatch(/\$wdMatches -and \$execMatches/);
+  });
+
+  it('no longer returns true from inside the directive loop', () => {
+    // The old shape: a `return $true` reached while scanning lines.
+    expect(src).not.toMatch(/StartsWith\("\$canonDir\/"\)\s*\)\s*\{\s*return \$true\s*\}/);
+  });
+
+  it('refuses prefixed ExecStart forms rather than parsing around them', () => {
+    expect(src).toMatch(/\^\[@\\-:\+!\]/);
+  });
+});

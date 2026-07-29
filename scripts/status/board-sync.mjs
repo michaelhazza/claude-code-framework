@@ -154,6 +154,10 @@ import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// Shared with generate-current-focus.mjs so the two readers of status.json
+// cannot disagree about what "valid" means, and so the board's Status options
+// are checked against the schema enum rather than a second hand-kept copy.
+import { readStatusEnum, validateRecordShape } from './status-contract.mjs';
 
 const ARCHIVE_AFTER_DAYS = Number(process.env.BOARD_SYNC_ARCHIVE_AFTER_DAYS ?? 14);
 const ARCHIVE_AFTER_MS = ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
@@ -179,7 +183,7 @@ const KEY_MARKER = /<!-- board-sync:v1 key=(\S+) updated_at=\S+ -->/;
 // so they cannot drift apart again.
 export const REPO_FIELD_NAME = 'Build Repo';
 
-const BOARD_FIELDS_TO_CREATE = [
+export const BOARD_FIELDS_TO_CREATE = [
   { name: REPO_FIELD_NAME, dataType: 'TEXT' },
   { name: 'Slug', dataType: 'TEXT' },
   { name: 'Phase', dataType: 'TEXT' },
@@ -409,6 +413,20 @@ async function collectStatusRecords(root) {
       continue;
     }
 
+    // Full schema validation, shared with generate-current-focus via
+    // status-contract.mjs. This reader previously checked only "JSON parses"
+    // and "slug matches directory", so the two consumers of the same file could
+    // disagree — the generator classifying a record INVALID while board-sync
+    // published it anyway. Worse, a malformed record reaching mapRecordToCard
+    // threw inside the sync loop and was reported as a "gh failure", pointing
+    // the operator at GitHub for a defect in local data. Refuse BEFORE any gh
+    // mutation. (External review round 3.)
+    const shapeError = await validateRecordShape(data);
+    if (shapeError) {
+      refused.push({ dir: dirName, error: shapeError });
+      continue;
+    }
+
     records.push(data);
   }
 
@@ -424,7 +442,11 @@ function fetchFieldIds(owner, number) {
   const data = ghJson(['project', 'field-list', String(number), '--owner', owner, '--format', 'json']);
   const fields = {};
   for (const field of data.fields ?? []) {
-    fields[field.name] = { id: field.id, options: field.options ?? [] };
+    // `type` is the GraphQL typename (ProjectV2SingleSelectField vs the generic
+    // ProjectV2Field for text/number/date). Kept so checkBoardContract can tell
+    // a single-select apart from a text field — a Status field provisioned as
+    // TEXT accepts any string, so the board would silently stop being a board.
+    fields[field.name] = { id: field.id, type: field.type ?? null, options: field.options ?? [] };
   }
   return fields;
 }
@@ -602,6 +624,59 @@ async function runInit(owner, title) {
   );
 }
 
+/**
+ * Verifies the LIVE board can carry every status this schema can produce.
+ * Returns an error string, or null when the board is compatible.
+ *
+ * Exported for tests. Takes the already-fetched field map so it makes no
+ * network calls of its own.
+ */
+export async function checkBoardContract(fields) {
+  // Required-field list is derived from the same constant --init provisions
+  // from, so "what we create" and "what we require" cannot drift.
+  const missing = BOARD_FIELDS_TO_CREATE.map((f) => f.name).filter((n) => !fields[n]);
+  if (missing.length > 0) {
+    return `board is missing required field(s): ${missing.join(', ')}. Present: ${Object.keys(fields).join(', ') || '(none)'}.`;
+  }
+
+  // Type check, in the only direction gh's field-list can actually resolve: it
+  // reports the GraphQL typename, so SINGLE_SELECT is distinguishable but TEXT
+  // and DATE are not (both are the generic ProjectV2Field). We therefore assert
+  // single-select-ness rather than inventing a precision gh does not give us —
+  // and that IS the failure mode: a Status provisioned as text swallows any
+  // string, and a text field provisioned as single-select rejects every write.
+  for (const spec of BOARD_FIELDS_TO_CREATE) {
+    const isSingleSelect = isSingleSelectField(fields[spec.name]);
+    const wantSingleSelect = spec.dataType === 'SINGLE_SELECT';
+    if (isSingleSelect !== wantSingleSelect) {
+      return wantSingleSelect
+        ? `board field "${spec.name}" must be a single-select, but it is not. It cannot carry status columns.`
+        : `board field "${spec.name}" is a single-select, but it must be a plain text field. Free-text values cannot be written to it.`;
+    }
+  }
+
+  const statusEnum = await readStatusEnum();
+  if (!statusEnum) return null; // Schema unreadable — cannot judge; do not block on our own gap.
+
+  const liveOptions = fields.Status.options.map((o) => o.name);
+  const missingOptions = statusEnum.filter((s) => !liveOptions.includes(s));
+  if (missingOptions.length > 0) {
+    return `board field "Status" is missing option(s): ${missingOptions.join(', ')}. `
+      + `Present: ${liveOptions.join(', ') || '(none)'}. Required by schemas/build-status.schema.json: ${statusEnum.join(', ')}.`;
+  }
+  return null;
+}
+
+/** True when a live field is a single-select. Typename first; option presence
+ *  is the fallback for gh versions that omit `type` from field-list. */
+function isSingleSelectField(field) {
+  if (!field) return false;
+  if (typeof field.type === 'string' && field.type.length > 0) {
+    return field.type.includes('SingleSelect');
+  }
+  return (field.options?.length ?? 0) > 0;
+}
+
 async function syncBoard(root, repository, boardConfig) {
   const { records, refused } = await collectStatusRecords(root);
   for (const r of refused) {
@@ -621,6 +696,31 @@ async function syncBoard(root, repository, boardConfig) {
     existingItems = fetchExistingItems(boardConfig.owner, boardConfig.number);
   } catch (err) {
     console.warn(`[board-sync] gh failure reading board state — recorded, non-blocking: ${err.message}`);
+    return;
+  }
+
+  // Live-board contract check — BEFORE any mutation, and it refuses the whole
+  // run rather than degrading per card.
+  //
+  // Without it, a board still provisioned under build-status.v1 produced a
+  // SPLIT-BRAIN card: updateCard set the title and body (which say TESTING),
+  // setFieldValues could not find the TESTING option, warned, skipped the
+  // Status field, and the run exited successfully because board failures are
+  // deliberately non-blocking. The card body and the board column then
+  // disagreed, for exactly the three statuses the migration added — the states
+  // whose visibility was the entire point of the change. A per-card warning is
+  // the wrong granularity for a schema mismatch: it is a property of the board,
+  // so it is checked once and stops everything. (External review round 3.)
+  const contractError = await checkBoardContract(fields);
+  if (contractError) {
+    console.warn(
+      `[board-sync] BOARD CONTRACT MISMATCH — no cards were written.\n` +
+      `  ${contractError}\n` +
+      `  The board must be migrated before it can carry this build's status. The Status field's\n` +
+      `  single-select options cannot be edited from the CLI, so this is a web-UI step:\n` +
+      `  Project settings -> Status -> add the missing options, then delete any that are not listed.\n` +
+      `  Refusing all writes rather than updating card bodies whose Status column would then be stale.`
+    );
     return;
   }
 

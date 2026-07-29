@@ -774,6 +774,26 @@ function Unregister-RunnerAutoStart {
 #      casing while $RepoSlug is lowercased). Accept EXACTLY one. Zero or
 #      several -> return nothing and let the caller refuse, because guessing
 #      is how repo B's cleanup stops repo A's runner.
+# Classifies a `systemctl is-active` value as terminally stopped or not.
+#
+# Extracted as its own function so the accepted set is stated in exactly one
+# place and is directly testable. `deactivating` is deliberately NOT stopped --
+# it means shutdown is in progress, and the caller deletes the work directory
+# immediately afterwards. Keeping it inline is how it drifted into the accepted
+# set in the first place.
+#
+# - inactive : stopped cleanly.
+# - failed   : stopped, having failed. Still not running.
+# - unknown / inactive-with-no-unit : systemd does not know it. Treated as
+#   stopped only because the caller has already established the unit exists.
+# Anything else (active, activating, reloading, deactivating, or an
+# unrecognised value) is NOT stopped.
+function Test-SystemdStateStopped {
+    param([string]$State)
+    if ([string]::IsNullOrWhiteSpace($State)) { return $false }
+    return ($State.Trim() -match '^(inactive|failed|unknown)$')
+}
+
 # The single authority on "does this unit belong to THIS work dir".
 #
 # Reads the unit FILE rather than asking systemctl, deliberately: the uninstall
@@ -809,16 +829,50 @@ function Test-UnitBelongsToWorkDir {
     $result = Invoke-WslBash -Distro $Distro -Command $probe
     if ($result.ExitCode -ne 0 -or $result.Output -match 'NO_UNIT_FILE') { return $false }
 
-    # At least one directive must point at the canonical dir or beneath it.
+    # BOTH directives must agree. This was an OR -- returning true on the first
+    # matching line -- which proves only that SOME field mentions the target
+    # directory, not that the service being stopped and deleted belongs to it.
+    # A stale or crafted unit with
+    #     WorkingDirectory=/home/u/actions-runner/repo-b
+    #     ExecStart=/home/u/actions-runner/repo-a/runsvc.sh
+    # passed on the WorkingDirectory line, so repo B's sweep would stop, disable
+    # and delete repo A's service. Round 2 moved ownership from name-based to
+    # path-based; the proof still had to become an AND, because the operation it
+    # authorises is destructive. (External review round 3.)
+    $workingDirs = @()
+    $execStarts = @()
     foreach ($line in ($result.Output -split "`n")) {
-        if ($line -notmatch '^(WorkingDirectory|ExecStart)=') { continue }
-        $value = ($line -split '=', 2)[1]
-        if ([string]::IsNullOrWhiteSpace($value)) { continue }
-        # ExecStart may carry arguments; the executable path is the first token.
-        $pathToken = ($value.Trim() -split '\s+')[0].Trim('"', "'")
-        if ($pathToken -eq $canonDir -or $pathToken.StartsWith("$canonDir/")) { return $true }
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^WorkingDirectory=(.*)$') { $workingDirs += $Matches[1] ; continue }
+        if ($trimmed -match '^ExecStart=(.*)$') { $execStarts += $Matches[1] }
     }
-    return $false
+
+    # Ambiguity is refusal, not a best guess. systemd allows repeated ExecStart
+    # and a resetting empty assignment; a unit using those is outside the vendor
+    # shape this script installs, so we decline rather than pick one.
+    if ($workingDirs.Count -ne 1 -or $execStarts.Count -ne 1) {
+        Write-Host "Unit '$Unit' has $($workingDirs.Count) WorkingDirectory and $($execStarts.Count) ExecStart directives (expected exactly one of each). Refusing to claim ownership." -ForegroundColor Yellow
+        return $false
+    }
+
+    $wd = $workingDirs[0].Trim().Trim('"', "'").TrimEnd('/')
+    # ExecStart may carry arguments and prefix characters (@ - : + ! ), none of
+    # which this script's own units use. Their presence means a shape we did not
+    # write, so refuse rather than parse around them.
+    $execRaw = $execStarts[0].Trim()
+    if ($execRaw -match '^[@\-:+!]') {
+        Write-Host "Unit '$Unit' uses a prefixed ExecStart ('$execRaw'). Refusing to claim ownership." -ForegroundColor Yellow
+        return $false
+    }
+    $execPath = ($execRaw -split '\s+')[0].Trim('"', "'")
+
+    $wdMatches = ($wd -eq $canonDir)
+    $execMatches = ($execPath -eq $canonDir -or $execPath.StartsWith("$canonDir/"))
+    if (-not ($wdMatches -and $execMatches)) {
+        Write-Host "Unit '$Unit' does not belong to '$canonDir' (WorkingDirectory='$wd', ExecStart='$execPath'). Refusing." -ForegroundColor Yellow
+        return $false
+    }
+    return $true
 }
 
 function Get-RunnerServiceUnit {
@@ -959,11 +1013,31 @@ function Remove-PartialInstallResidue {
         # inactive / failed / unknown means "not running", which is what the
         # sweep needs. "unit does not exist" is success; "exists and would not
         # stop" is a hard stop.
-        $stop = Invoke-WslBash -Distro $Distro -AsRoot -Command "systemctl stop $quotedUnit 2>&1; systemctl is-active $quotedUnit 2>&1 | head -1"
-        $activeState = ($stop.Output -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -Last 1)
-        if ($null -ne $activeState) { $activeState = $activeState.Trim() }
-        if ($activeState -notmatch '^(inactive|failed|unknown|deactivating)$') {
-            throw "Refusing to continue the sweep: systemd unit '$($Residue.ServiceUnit)' reports state '$activeState' after a stop attempt. It may still be RUNNING, and deleting its work directory now would pull the filesystem out from under a live runner. Investigate with: wsl -d $Distro -u root -- systemctl status $($Residue.ServiceUnit)"
+        # `deactivating` is shutdown IN PROGRESS, not shutdown complete. It was
+        # previously in the accepted set, so a slow or stuck stop let the sweep
+        # proceed to delete $WorkDir while the runner process was still
+        # executing out of it. `systemctl stop` can return before the unit
+        # reaches a terminal state, so the state must be POLLED to a terminal
+        # one rather than sampled once. (External review round 3.)
+        Invoke-WslBash -Distro $Distro -AsRoot -Command "systemctl stop $quotedUnit 2>&1" | Out-Null
+        $activeState = $null
+        for ($attempt = 1; $attempt -le 15; $attempt++) {
+            $probeState = Invoke-WslBash -Distro $Distro -AsRoot -Command "systemctl is-active $quotedUnit 2>&1 | head -1"
+            $activeState = ($probeState.Output -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -Last 1)
+            if ($null -ne $activeState) { $activeState = $activeState.Trim() }
+            if (Test-SystemdStateStopped -State $activeState) { break }
+            Start-Sleep -Seconds 2
+        }
+        if (-not (Test-SystemdStateStopped -State $activeState)) {
+            throw "Refusing to continue the sweep: systemd unit '$($Residue.ServiceUnit)' is still '$activeState' after a stop attempt and 30s of polling. It may still be RUNNING, and deleting its work directory now would pull the filesystem out from under a live runner. Investigate with: wsl -d $Distro -u root -- systemctl status $($Residue.ServiceUnit)"
+        }
+        # Belt and braces: a terminal state should mean no process, but the work
+        # dir is about to be deleted, so confirm no MainPID survives.
+        $pidProbe = Invoke-WslBash -Distro $Distro -AsRoot -Command "systemctl show $quotedUnit -p MainPID --value 2>/dev/null | head -1"
+        $mainPid = ($pidProbe.Output -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1)
+        if ($null -ne $mainPid) { $mainPid = $mainPid.Trim() }
+        if ($mainPid -match '^\d+$' -and $mainPid -ne '0') {
+            throw "Refusing to continue the sweep: systemd reports MainPID $mainPid still alive for '$($Residue.ServiceUnit)' despite state '$activeState'. Deleting the work directory now would remove the filesystem beneath a live process."
         }
 
         $svcRemove = Invoke-WslBash -Distro $Distro -AsRoot -Command "(systemctl disable $quotedUnit || true) && rm -f /etc/systemd/system/$quotedUnit && systemctl daemon-reload"
@@ -977,8 +1051,11 @@ function Remove-PartialInstallResidue {
         }
         $finalState = ($verify.Output -split "`n" | Where-Object { $_ -match '\S' } | Select-Object -Last 1)
         if ($null -ne $finalState) { $finalState = $finalState.Trim() }
-        if ($finalState -match '^active') {
-            throw "Systemd unit '$($Residue.ServiceUnit)' is STILL ACTIVE after its unit file was removed -- the runner process is live. Refusing to delete the work directory beneath it."
+        # Same classifier as the stop gate above -- this previously rejected only
+        # `^active`, so a unit still reporting `deactivating` passed the final
+        # check too, which is the second half of the same defect.
+        if (-not (Test-SystemdStateStopped -State $finalState)) {
+            throw "Systemd unit '$($Residue.ServiceUnit)' reports non-terminal state '$finalState' after its unit file was removed -- the runner process may still be live. Refusing to delete the work directory beneath it."
         }
         Write-Host "Removed systemd unit '$($Residue.ServiceUnit)' (verified: file absent, service not active)." -ForegroundColor Green
     }
