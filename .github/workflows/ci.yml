@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # On-demand runs. Added after this workflow was found `disabled_manually`,
+  # having not run for sixteen consecutive releases: re-enabling it was not
+  # enough to VERIFY it, because with only push/pull_request triggers the
+  # earliest possible proof is the next unrelated commit. A gate you cannot
+  # invoke on demand is a gate you cannot confirm is working.
+  workflow_dispatch:
 
 jobs:
   test:
