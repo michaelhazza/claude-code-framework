@@ -171,6 +171,13 @@ import { readStatusEnum, validateRecordShape } from './status-contract.mjs';
 const ARCHIVE_AFTER_DAYS = Number(process.env.BOARD_SYNC_ARCHIVE_AFTER_DAYS ?? 14);
 const ARCHIVE_AFTER_MS = ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
 
+// How many activity-log entries render on the card (newest first). Purely a
+// body-size guard — GitHub caps issue bodies at 65,536 chars and a schema-max
+// entry is ~1.3KB, so 40 stays an order of magnitude clear while covering far
+// more than a full pipeline run (~15-20 entries). The full log always remains
+// in status.json.
+export const ACTIVITY_RENDER_CAP = Number(process.env.BOARD_SYNC_ACTIVITY_RENDER_CAP ?? 40);
+
 const UPDATED_AT_MARKER = /<!-- board-sync:v1(?: key=\S+)? updated_at=(\S+) -->/;
 // The identity key travels IN THE BODY, written atomically with item-create.
 // Field values (`Build Repo`, `Slug`) are applied by separate item-edit calls
@@ -243,7 +250,8 @@ export function extractUpdatedAtFromBody(body) {
 
 /** Card body: hidden updated_at marker, then the human-readable
  *  branch/PR/blockers/updated_at/summary fields the contract assigns to
- *  the body rather than to custom fields. */
+ *  the body rather than to custom fields, then the Activity section
+ *  (schema `log[]`, optional) rendered newest-first. */
 export function buildCardBody(record, key = null) {
   const lines = [];
   // The key rides in the marker so identity survives even when the field-value
@@ -263,6 +271,31 @@ export function buildCardBody(record, key = null) {
   lines.push(`**Updated:** ${record.updated_at}`);
   lines.push('');
   lines.push(record.summary);
+  // Activity log (schema `log[]`, optional/additive — absent in pre-2.61.0
+  // records): the operator-facing build history, rendered newest-first so
+  // opening the card answers "what is it doing / what has it done" without
+  // the session transcript. Coordinators append entries at stage boundaries;
+  // this renderer never mutates them. ACTIVITY_RENDER_CAP bounds the body
+  // size; the full log stays in status.json.
+  const log = Array.isArray(record.log) ? record.log : [];
+  if (log.length > 0) {
+    lines.push('');
+    lines.push('## Activity');
+    const shown = log.slice(-ACTIVITY_RENDER_CAP).reverse();
+    for (const entry of shown) {
+      const kindLabel = entry.kind === 'start' ? 'started' : entry.kind === 'done' ? 'done' : 'update';
+      lines.push('');
+      lines.push(`**${entry.at} — ${entry.stage} (${kindLabel})**`);
+      for (const bullet of entry.note) {
+        lines.push(`- ${bullet}`);
+      }
+    }
+    const hidden = log.length - shown.length;
+    if (hidden > 0) {
+      lines.push('');
+      lines.push(`_${hidden} earlier ${hidden === 1 ? 'entry' : 'entries'} not shown — full log in tasks/builds/${record.slug}/status.json_`);
+    }
+  }
   return lines.join('\n');
 }
 

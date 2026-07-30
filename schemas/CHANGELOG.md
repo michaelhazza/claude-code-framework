@@ -1,5 +1,15 @@
 # Schema CHANGELOG
 
+## build-status.v2 — additive `log[]` activity log (2026-07-30, framework 2.61.0)
+
+**`build-status.schema.json` — new OPTIONAL top-level `log[]` array. `contract_version` unchanged at `build-status.v2`; no enum changes; nothing to migrate.**
+
+`log[]` is the operator-facing activity log rendered as the board card's `## Activity` section by `board-sync.mjs` (newest-first, capped at `ACTIVITY_RENDER_CAP` entries). Entry shape: `{at: date-time, stage: string, kind: start|done|info, note: string[1..6, each <=200 chars]}`. Coordinators append entries at every stage boundary (a forward transition appends a `done` for the closing stage plus a `start` for the opening one, in the same status write) and at notable mid-stage moments; entries are append-only and never edited.
+
+**Why additive rather than v3:** a required field or a `contract_version` bump would invalidate every existing `status.json` in every consuming repo the moment the schema synced, before any coordinator had written the new shape — the generator would mark records INVALID and board cards would stop syncing. Optional-and-additive means pre-2.61.0 records stay valid forever and the log simply starts accumulating at each build's next status write.
+
+**Consumers must:** nothing. The structural floor in `status-contract.mjs` derives its checks from the schema, so `log[]` validation (including the renderer-crash `[null]` element class) engages automatically on sync.
+
 ## build-status.v2 — documentation correction (2026-07-29, framework 2.55.0)
 
 **`build-status.schema.json` — `$comment` only. No change to `contract_version`, the `status` enum, or any validation behaviour. Nothing to migrate.**

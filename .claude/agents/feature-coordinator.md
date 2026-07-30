@@ -79,6 +79,15 @@ Back-edges, each **REQUIRING a blocker entry recorded in the same write**: `MERG
 
 > **Why `SPECIFYING` and `TESTING` exist (v2).** `PLANNING` previously covered both "working out what to build" and "sizing the build" — different activities with a mandatory operator gate between them, which made the board unable to answer the operator's most common question. `TESTING` was previously invisible inside the Phase 3 span, so "Codex is writing and running the suite" looked identical to "everything is green, final checks running". Both splits exist to make the board describe the work truthfully.
 
+**Activity log (`log[]`) — the operator's board-visible history (additive, schema-optional).** Every stage-boundary `status.json` upsert ALSO appends to the record's `log[]` array. Append-only: never edit or remove an existing entry. Rules:
+
+- Forward transition → append TWO entries in the same write: `kind: "done"` closing the stage just finished, then `kind: "start"` opening the next stage. One write moment, both views.
+- Back-edge → one `kind: "info"` entry saying in plain language why work went back, in the same write as the required blocker entry.
+- Notable mid-stage moment that already carries a status write (first chunk built, review findings in, fix loop opened or closed, gate result, abort) → one `kind: "info"` entry.
+- Entry shape (`log[]` in `schemas/build-status.schema.json`): `{ "at": "<ISO 8601 UTC now>", "stage": "<Spec|Plan|Build|Review|Testing|Finalisation|Merge>", "kind": "start|done|info", "note": ["<dot point>", ...] }`.
+- **`note` is operator language — the operator reads it on the card.** 1–4 short plain-English dot points (schema hard cap 6 × 200 chars): what was built, what was found, how many issues were fixed, what happens next. Counts over detail. No file paths, no agent names, no internal jargon, no transcripts. Good: `"Review found 6 issues, all fixed"` · `"Build done: 12 of 12 chunks, checks green"`. Bad: `"pr-reviewer NON_CONFORMANT on server/services/x.ts"`.
+- `board-sync.mjs` renders `log[]` newest-first as the card's `## Activity` section — the card IS the operator's progress feed for an unattended session, and doubles as the compact build history later reviewers read. A missed append is a missed status write: same severity.
+
 **Hand-editing the generated current-focus block is a policy violation.** Never hand-edit the region between `<!-- STATUS:GENERATED:BEGIN -->` and `<!-- STATUS:GENERATED:END -->` in `tasks/current-focus.md` — the next `generate-current-focus.mjs` run overwrites it by design. The historical prose below the markers is untouched by the generator and remains this coordinator's to edit (Step 11).
 
 **Board-sync is non-blocking.** A `board-sync.mjs` failure is recorded in `progress.md` and never blocks a build — the board is a view, not a gate.

@@ -9,6 +9,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
+  ACTIVITY_RENDER_CAP,
   BOARD_FIELDS_TO_CREATE,
   buildCardBody,
   buildCardKey,
@@ -110,6 +111,62 @@ describe('mapRecordToCard', () => {
     const card = mapRecordToCard(record, 'owner/repo');
     expect(card.body).toContain('**PR:** none');
     expect(card.body).toContain('**Blockers:** 0');
+  });
+});
+
+describe('buildCardBody — Activity log rendering', () => {
+  const logEntries = [
+    { at: '2026-07-30T01:00:00Z', stage: 'Plan', kind: 'done', note: ['Plan approved: 12 chunks'] },
+    { at: '2026-07-30T01:00:01Z', stage: 'Build', kind: 'start', note: ['Building 12 chunks'] },
+    { at: '2026-07-30T06:00:00Z', stage: 'Build', kind: 'info', note: ['Chunk 7 hit a plan gap, re-planned', 'No scope change'] },
+    { at: '2026-07-30T09:00:00Z', stage: 'Build', kind: 'done', note: ['Build done: 12/12 chunks', 'All checks green'] },
+  ];
+
+  it('renders entries newest-first under an Activity heading with kind labels', () => {
+    const body = buildCardBody(baseRecord({ log: logEntries }));
+    const activityAt = body.indexOf('## Activity');
+    expect(activityAt).toBeGreaterThan(-1);
+    // Newest first: the Build done entry appears before the Plan done entry.
+    const doneAt = body.indexOf('2026-07-30T09:00:00Z — Build (done)');
+    const infoAt = body.indexOf('2026-07-30T06:00:00Z — Build (update)');
+    const startAt = body.indexOf('2026-07-30T01:00:01Z — Build (started)');
+    const planAt = body.indexOf('2026-07-30T01:00:00Z — Plan (done)');
+    expect(doneAt).toBeGreaterThan(activityAt);
+    expect(infoAt).toBeGreaterThan(doneAt);
+    expect(startAt).toBeGreaterThan(infoAt);
+    expect(planAt).toBeGreaterThan(startAt);
+    // Bullets render as list items.
+    expect(body).toContain('- Build done: 12/12 chunks');
+    expect(body).toContain('- All checks green');
+  });
+
+  it('omits the Activity section entirely for a record with no log (pre-2.61.0 shape)', () => {
+    const body = buildCardBody(baseRecord());
+    expect(body).not.toContain('## Activity');
+    const bodyEmpty = buildCardBody(baseRecord({ log: [] }));
+    expect(bodyEmpty).not.toContain('## Activity');
+  });
+
+  it('caps rendered entries at ACTIVITY_RENDER_CAP newest entries and says how many are hidden', () => {
+    const many = Array.from({ length: ACTIVITY_RENDER_CAP + 3 }, (_, i) => ({
+      at: `2026-07-29T00:00:${String(i % 60).padStart(2, '0')}Z`,
+      stage: 'Build',
+      kind: 'info',
+      note: [`entry ${i}`],
+    }));
+    const body = buildCardBody(baseRecord({ log: many }));
+    // Oldest three fall off; newest survives. Word-boundary regexes so
+    // "entry 2" cannot false-match "entry 24".
+    expect(body).not.toMatch(/- entry 0\b/);
+    expect(body).not.toMatch(/- entry 2\b/);
+    expect(body).toContain(`- entry ${ACTIVITY_RENDER_CAP + 2}`);
+    expect(body).toContain('3 earlier entries not shown');
+    expect(body).toContain('tasks/builds/dev-pipeline-v2/status.json');
+  });
+
+  it('activity rendering never breaks the updated_at marker round-trip', () => {
+    const body = buildCardBody(baseRecord({ log: logEntries, updated_at: '2026-07-30T09:00:00Z' }));
+    expect(extractUpdatedAtFromBody(body)).toBe('2026-07-30T09:00:00Z');
   });
 });
 

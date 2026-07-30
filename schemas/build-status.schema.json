@@ -186,6 +186,52 @@
     "summary": {
       "type": "string"
     },
+    "log": {
+      "type": "array",
+      "$comment": "OPTIONAL and additive (build-status.v2 unchanged — absent in pre-2.61.0 records, which stay valid). Append-only operator-facing activity log: coordinators append entries at every stage boundary (kind: start/done) and at notable mid-stage moments (kind: info). Entries are NEVER edited or removed once written. Rendered newest-first on the build's board card by board-sync.mjs so the operator can open the card at any time and read what the build has done without the session transcript. Language contract for note[] bullets is coordinator discipline (see the coordinators' § Status contract): plain-English operator-level dot points — what was built, what was found, how many issues were fixed — no file paths, no jargon, no transcripts.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "at",
+          "stage",
+          "kind",
+          "note"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601, UTC — when the entry was appended."
+          },
+          "stage": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Operator-level stage name (e.g. Spec, Plan, Build, Review, Testing, Finalisation, Merge)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "start",
+              "done",
+              "info"
+            ],
+            "description": "start = entering the stage; done = stage completed; info = notable mid-stage event (issues found, fix loop, gate result)."
+          },
+          "note": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "description": "1-6 short plain-English dot points, each <=200 chars."
+          }
+        }
+      }
+    },
     "updated_at": {
       "type": "string",
       "format": "date-time",

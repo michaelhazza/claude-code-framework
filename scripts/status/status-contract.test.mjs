@@ -199,6 +199,56 @@ describe('validateRecordShape — Ajv unavailable (the structural floor)', () =>
     expect(await validateRecordShape(validRecord({ phase: 'not-a-phase' }))).toContain('phase');
     expect(await validateRecordShape(validRecord({ classification: 'Enormous' }))).toContain('classification');
   });
+
+  // -------------------------------------------------------------------------
+  // Activity log (`log[]`, optional/additive — 2.61.0). buildCardBody
+  // dereferences entry.at, entry.stage, entry.kind and iterates entry.note,
+  // so a malformed element is the same renderer-crash class as blockers[null].
+  // -------------------------------------------------------------------------
+
+  it('accepts a record with no log — the pre-2.61.0 shape stays valid', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    expect(await validateRecordShape(validRecord())).toBeNull();
+  });
+
+  it('accepts a valid activity log', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    const record = validRecord({
+      log: [
+        { at: '2026-07-30T01:00:00Z', stage: 'Plan', kind: 'done', note: ['Plan approved: 12 chunks'] },
+        { at: '2026-07-30T01:00:01Z', stage: 'Build', kind: 'start', note: ['Building 12 chunks', 'Sonnet builder'] },
+      ],
+    });
+    expect(await validateRecordShape(record)).toBeNull();
+  });
+
+  it('rejects log: [null] — the renderer-crash class', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    const error = await validateRecordShape(validRecord({ log: [null] }));
+    expect(error).toBeTruthy();
+    expect(error).toContain('log[0]');
+  });
+
+  it('rejects a log entry missing fields the renderer reads', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    for (const missing of ['at', 'stage', 'kind', 'note']) {
+      const entry = { at: '2026-07-30T01:00:00Z', stage: 'Build', kind: 'start', note: ['x'] };
+      delete entry[missing];
+      const error = await validateRecordShape(validRecord({ log: [entry] }));
+      expect(error, `log entry missing ${missing}`).toBeTruthy();
+      expect(error).toContain(missing);
+    }
+  });
+
+  it('rejects an out-of-enum log kind and a malformed timestamp', async () => {
+    const { validateRecordShape } = await loadWithoutAjv();
+    expect(await validateRecordShape(validRecord({
+      log: [{ at: '2026-07-30T01:00:00Z', stage: 'Build', kind: 'finished', note: ['x'] }],
+    }))).toContain('kind');
+    expect(await validateRecordShape(validRecord({
+      log: [{ at: 'yesterday', stage: 'Build', kind: 'done', note: ['x'] }],
+    }))).toContain('at');
+  });
 });
 
 describe('validateRecordShape — Ajv available', () => {

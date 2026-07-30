@@ -128,6 +128,15 @@ The generator and `board-sync.mjs` run together at every such write, including t
 - **Back-edge: `FINALISING → TESTING`** — used when a late failure is a genuine test or production defect rather than a gate/CI problem, i.e. the work belongs back in the verify-phase fix loop. Same blocker-entry requirement. Choosing between the two back-edges is a judgement about *where the work goes*, not about severity: a red CI check on unchanged code is `→ FINALISING`; a defect needing a code or test change is `→ TESTING`.
 - **Terminal: `MERGE_READY → MERGED`** — written in Step 12.4, the existing post-merge main-patch step, alongside `gates.merge_gate` evidence when `runner_live: true` (omitted/unchanged when pre-runner, since no merge-gate run exists to evidence). This is a documentation write on `main`, not a second entry of build code — "main entered exactly once" refers to the build's code, and this preserves it (spec §13). `MERGED` is terminal — no further transition follows.
 
+**Activity log (`log[]`) — the operator's board-visible history (additive, schema-optional).** Every stage-boundary `status.json` upsert ALSO appends to the record's `log[]` array. Append-only: never edit or remove an existing entry. Rules:
+
+- Forward transition → append TWO entries in the same write: `kind: "done"` closing the stage just finished, then `kind: "start"` opening the next (Step 4a closes `Review` and opens `Testing`; Step 5 closes `Testing` and opens `Finalisation`; Step 10.1 closes `Finalisation` and opens `Merge`; Step 12.4 closes `Merge` with the merged PR number).
+- Back-edge (Step 11.5 / Step 11 label-pull, or `FINALISING → TESTING`) → one `kind: "info"` entry saying in plain language why work went back, in the same write as the required blocker entry.
+- Notable mid-stage moment that already carries a status write (suite result, fix loop opened or closed, CI red/green on the label watch) → one `kind: "info"` entry.
+- Entry shape (`log[]` in `schemas/build-status.schema.json`): `{ "at": "<ISO 8601 UTC now>", "stage": "<Spec|Plan|Build|Review|Testing|Finalisation|Merge>", "kind": "start|done|info", "note": ["<dot point>", ...] }`.
+- **`note` is operator language — the operator reads it on the card.** 1–4 short plain-English dot points (schema hard cap 6 × 200 chars): what was tested, what was found, how many issues were fixed, what happens next. Counts over detail. No file paths, no agent names, no internal jargon, no transcripts. Good: `"All tests green: 214 passed"` · `"CI failed once, fixed and re-run, now green"` · `"Merged as PR #741"`. Bad: `"G5 g5-scoped.sh exit 1 on workspace-actor-coverage"`.
+- `board-sync.mjs` renders `log[]` newest-first as the card's `## Activity` section — the card IS the operator's progress feed for an unattended session, and doubles as the compact build history later reviewers read. A missed append is a missed status write: same severity.
+
 **Board-sync is non-blocking.** A `board-sync.mjs` failure is recorded in `progress.md` and never blocks a build — the board is a view, not a gate.
 
 **Error handling.**

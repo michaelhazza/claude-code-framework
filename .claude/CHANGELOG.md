@@ -32,6 +32,21 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.61.0 — 2026-07-30
+
+**Highlights:** Board activity log. Each build's Projects v2 card now carries an append-only, timestamped `## Activity` section: coordinators append short operator-level dot points at every stage boundary (`start`/`done`) and at notable mid-stage moments (`info`), so opening the card answers "what has this build done, what is it doing now" without the session transcript. Previously the card's summary was replaced on every write, leaving no history. The log also doubles as the compact build narrative later reviewers (e.g. Codex) can read from `status.json`.
+
+**Added:**
+- `schemas/build-status.schema.json` — optional additive `log[]` array (`{at, stage, kind: start|done|info, note[]}`; `note` capped 6 bullets × 200 chars). `contract_version` stays `build-status.v2`: records without `log` remain valid, so no consumer migration. See `schemas/CHANGELOG.md`.
+- `scripts/status/board-sync.mjs` — `buildCardBody` renders `log[]` newest-first as the card's `## Activity` section; `ACTIVITY_RENDER_CAP` (default 40, env `BOARD_SYNC_ACTIVITY_RENDER_CAP`) bounds body size with an "N earlier entries not shown" pointer at the full log in `status.json`. Records without a log render exactly as before.
+- Tests: Activity rendering (`board-sync.test.mjs`), `log[]` shape validation incl. the renderer-crash `[null]` class and nested date-time/enum checks (`status-contract.test.mjs`).
+
+**Changed:**
+- `spec-coordinator.md`, `feature-coordinator.md`, `finalisation-coordinator.md` — § Status contract gains a binding **Activity log** rule: forward transitions append `done` + `start` in the same write, back-edges and notable mid-stage moments append `info`, entries are append-only, and `note` bullets are operator language (counts over detail; no file paths, agent names, or jargon).
+- `scripts/status/status-vocabulary.test.mjs` — `NON_STATUS_TOKENS` gains `NEVER`, `OPTIONAL` (prose words in the new schema `$comment`).
+
+**Migration:** none. The field is optional; pre-2.61.0 `status.json` records and existing cards are untouched until a coordinator first appends.
+
 ## 2.60.1 — 2026-07-29
 
 **Highlights:** Patch. `board-sync.mjs` could not UPDATE a card on a real Projects v2 board, only create one. Two `gh project item-edit` constraints were violated at once, and the script's own fail-open contract (gh failures are recorded, non-blocking) hid both: creates worked, every update silently no-opped, so a board froze at each build's first-seen state and never moved a column again. Found by running the sync twice against a live board during the cryptotrackr pilot adoption, which is exactly the class of defect no amount of review catches: the second constraint only surfaced after the first was fixed.
