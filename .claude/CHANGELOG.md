@@ -32,6 +32,17 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.61.1 — 2026-07-31
+
+**Highlights:** Patch. Phase 1 was invisible on the Projects v2 board: `spec-coordinator`'s § Status contract ran only the current-focus generator and assigned the board obligation to `feature-coordinator`, so no card existed until Phase 2's first write — the SPECIFYING column could never show a live build. Found watching a real Phase 1 session author intent for half an hour against an empty board. The same pass fixes the first-write timing (Step 4 → Step 0 for brief-file invocations) and five stale `BUILDING` references left over from the v2 PLANNING-handoff rename.
+
+**Fixed:**
+- `spec-coordinator.md` § Status contract — the command block now runs `board-sync.mjs` together with the generator at every status write, matching the other two coordinators; the mis-assigned "`feature-coordinator` owns the board-update obligation" sentence and its error-handling echo are removed.
+- `spec-coordinator.md` Step 0 — new **Early board presence** rule: when the invocation argument names an artefact under an existing `tasks/builds/<slug>/` directory, the build's first `status.json` write (`SPECIFYING`, `phase: spec`, `log[]` `start` entry for `Spec`) happens at the lock flip, so the card appears when the phase begins rather than after intent authoring. Topic invocations keep their first write at Step 4, which is now an idempotent re-upsert that must not duplicate the `Spec` start entry.
+- `spec-coordinator.md` Steps 1/9/10/11 — five stale `BUILDING` references corrected to `PLANNING` (TodoWrite template row, abort-write-order invariant, Step 10 prose template, Step 10 `status.json` upsert, Step 11 verbatim prompt). Step 10's upsert previously instructed a `SPECIFYING → BUILDING` write that the file's own transition matrix forbids.
+
+**Migration:** none. Playbook-only change; consumers pick it up via `sync.js` on the next update.
+
 ## 2.61.0 — 2026-07-30
 
 **Highlights:** Board activity log. Each build's Projects v2 card now carries an append-only, timestamped `## Activity` section: coordinators append short operator-level dot points at every stage boundary (`start`/`done`) and at notable mid-stage moments (`info`), so opening the card answers "what has this build done, what is it doing now" without the session transcript. Previously the card's summary was replaced on every write, leaving no history. The log also doubles as the compact build narrative later reviewers (e.g. Codex) can read from `status.json`.
