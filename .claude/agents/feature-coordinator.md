@@ -296,8 +296,9 @@ plan-phase enforcement. Write this before presenting the plan to the operator
 so the transition is recorded even if the operator replies `abort`.
 
 Also upsert `status.json` in this same step (`phase: plan`; `status`
-unchanged, still `BUILDING`) — per § Status contract — then run the
-generator and `board-sync.mjs`.
+unchanged, still `PLANNING` — `BUILDING` is written only on operator
+approval below) — per § Status contract — then run the generator and
+`board-sync.mjs`.
 
 **Bootstrap note:** the v2.13.0 build that introduces these phase markers does
 not benefit from its own enforcement — the hook is not yet deployed during this
@@ -314,7 +315,7 @@ Present the finalised plan to the operator verbatim:
 
 **Operator reply handling:**
 
-- `proceed` / `execute` / `go` → mark plan-gate complete, continue to Step 6 (per-chunk loop)
+- `proceed` / `execute` / `go` → mark plan-gate complete, then **write the `PLANNING → BUILDING` transition this step owns** (transition table above): update the `**Status:**` line in the `tasks/current-focus.md` prose body to `BUILDING`, upsert `status.json` (`status: BUILDING`; `phase` stays `plan` until the first chunk writes `build`) with the forward-transition `log[]` pair (`kind: "done"` closing `Plan`, `kind: "start"` opening `Build`) — per § Status contract — then run the generator and `board-sync.mjs`. Continue to Step 6 (per-chunk loop). Without this write the board sits on `PLANNING` through the entire construction phase and the `BUILDING` column never shows a live build.
 - `revise` + feedback → send feedback back to architect (counts against the 3-round cap), then re-run chatgpt-plan-review (Step 4) and plan-gate (Step 5)
 - `abort` → write `phase_status: PHASE_2_ABORTED` to `tasks/builds/{slug}/handoff.md`, set `tasks/current-focus.md` status to `NONE`, mark all remaining TodoWrite items as completed, and exit. See abort write order in the Failure paths section.
 - Anything else → ask the operator to clarify; do not infer intent. Do not proceed without an explicit reply.
