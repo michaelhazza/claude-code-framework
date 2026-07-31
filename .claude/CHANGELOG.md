@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.61.2 — 2026-07-31
+
+**Highlights:** Patch. Full audit of the status-contract surface across all three coordinators, prompted by the v2.61.1 find: every edge of the forward chain was checked for a matching write instruction, generator + board-sync pairing, and post-PLANNING-rename vocabulary. One more edge was missing: `feature-coordinator`'s own transition table promises `PLANNING → BUILDING` at Step 5 on plan approval, but no step body ever wrote it — the board sat on `PLANNING` through the entire construction phase (the longest phase of a build) and the `BUILDING` column could never show a live build. `finalisation-coordinator` (all four owned transitions plus the Step 11.5 back-edge and the terminal `MERGED` write), the status scripts (enums derived from the schema, no drift surface), `phase-lock.js`, and `verify-phase`'s gates-only writes all audited clean.
+
+**Fixed:**
+- `feature-coordinator.md` Step 5 — the `proceed` reply now writes the `PLANNING → BUILDING` transition it owns: current-focus prose to `BUILDING`, `status.json` upsert carrying the forward-transition `log[]` pair (`done` closing `Plan`, `start` opening `Build`), then the generator and `board-sync.mjs`.
+- `feature-coordinator.md` Step 5 — the `.phase: plan` upsert parenthetical claimed `status` was "still `BUILDING`" (v1 leftover from before the PLANNING handoff rename); it is `PLANNING` until the operator approves the plan.
+
+**Migration:** none. Playbook-only change.
+
 ## 2.61.1 — 2026-07-31
 
 **Highlights:** Patch. Phase 1 was invisible on the Projects v2 board: `spec-coordinator`'s § Status contract ran only the current-focus generator and assigned the board obligation to `feature-coordinator`, so no card existed until Phase 2's first write — the SPECIFYING column could never show a live build. Found watching a real Phase 1 session author intent for half an hour against an empty board. The same pass fixes the first-write timing (Step 4 → Step 0 for brief-file invocations) and five stale `BUILDING` references left over from the v2 PLANNING-handoff rename.
