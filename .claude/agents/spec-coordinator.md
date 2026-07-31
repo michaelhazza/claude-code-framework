@@ -61,6 +61,8 @@ If status is BUILDING, REVIEWING, or MERGE_READY:
 
 The SPECIFYING prose update (item 6 above) MUST happen BEFORE the TodoWrite list is emitted. It is the concurrency gate.
 
+**Early board presence (brief-file invocations).** The lock flip above is a phase transition and carries the § Status contract obligation. When the invocation argument already names an artefact under an existing `tasks/builds/<slug>/` directory, the slug is known now: upsert `tasks/builds/{slug}/status.json` in this same step — the build's first write (`status: SPECIFYING`, `phase: spec`, plus the `log[]` `kind: "start"` entry for `Spec`) — then run the generator and `board-sync.mjs`, so the card appears under SPECIFYING when the phase begins rather than after intent authoring (Step 3 is the longest pre-spec stretch and must be board-visible). Topic invocations have no slug yet; their first write happens at Step 4.
+
 After Step 4 derives the actual slug, update the prose body of `tasks/current-focus.md` so the active build slug reads `{slug}`.
 
 ## Status contract (status.json)
@@ -69,7 +71,10 @@ At every phase transition — the same moments this coordinator writes `.phase` 
 
 ```bash
 node scripts/status/generate-current-focus.mjs
+node scripts/status/board-sync.mjs
 ```
+
+The generator and `board-sync.mjs` run together at every such write.
 
 **Precedence.** `status.json` is **authoritative** for build state. `.phase` is a **derived projection** — its content equals `status.phase` — written in the **same coordinator step** as the `status.json` write. On disagreement, `status.json` wins and the coordinator **rewrites `.phase`** to match.
 
@@ -84,10 +89,10 @@ node scripts/status/generate-current-focus.mjs
 
 **Hand-editing the generated current-focus block is a policy violation.** Never hand-edit the region between `<!-- STATUS:GENERATED:BEGIN -->` and `<!-- STATUS:GENERATED:END -->` in `tasks/current-focus.md` — the next `generate-current-focus.mjs` run overwrites it by design. The historical prose below the markers is untouched by the generator and remains this coordinator's to edit (Step 10).
 
-**Board-sync is non-blocking.** `feature-coordinator` owns the board-update obligation (its own `board-sync.mjs` invocation); wherever a board-sync write fails, it is recorded in `progress.md` and never blocks a build — the board is a view, not a gate.
+**Board-sync is non-blocking.** A `board-sync.mjs` failure is recorded in `progress.md` and never blocks a build — the board is a view, not a gate.
 
 **Error handling.**
-- Board-sync failure (recorded by whichever coordinator invoked it) → record, continue. Never a build stop.
+- Board-sync failure → record, continue. Never a build stop.
 - Generator hard error (duplicate `STATUS:GENERATED` markers) → **stop the transition and surface.** Do not proceed on a phase transition whose status projection failed to write.
 - A status write rejected by `.claude/hooks/phase-lock.js` means the `status.json` write-allowlist did not land, or `.phase` disagrees with the write path — **fail loudly** rather than silently skipping the status write.
 
@@ -108,7 +113,7 @@ Emit a TodoWrite list with one item per phase step. Update items in real time as
 7. spec-reviewer invocation
 8. chatgpt-spec-review (MODE per `references/review-mode-resolution.md` — hard default manual; Claude log injected via D8)
 9. Handoff write (tasks/builds/{slug}/handoff.md)
-10. tasks/current-focus.md update → status BUILDING
+10. tasks/current-focus.md update → status PLANNING
 11. End-of-phase prompt to operator
 
 Sub-steps may be added once context is loaded. Item 5 (mockup loop) may expand into many sub-items — one per round.
@@ -402,7 +407,7 @@ Derive a kebab-case slug from the brief title (e.g. "Add live agent execution lo
 
 Create `tasks/builds/{slug}/` if it does not exist. Create `tasks/builds/{slug}/progress.md` with an initial header and the phase-1 status table.
 
-Upsert `tasks/builds/{slug}/status.json` now — this build's first write (`status: SPECIFYING`, `phase: spec`) — per § Status contract, then run the generator.
+Upsert `tasks/builds/{slug}/status.json` now (`status: SPECIFYING`, `phase: spec`) — per § Status contract — then run the generator and `board-sync.mjs`. For topic invocations this is the build's first write and carries the `log[]` `kind: "start"` entry for `Spec`; for brief-file invocations Step 0 already wrote both — re-upsert idempotently and do NOT append a duplicate `Spec` start entry.
 
 Write the derived slug back to `tasks/current-focus.md`: update `build_slug: none` → `build_slug: {slug}`.
 
@@ -655,7 +660,7 @@ Write `tasks/builds/{slug}/handoff.md` with this exact shape:
 **Decisions made in Phase 1:** [bullet list — every directional choice the operator made]
 ```
 
-`feature-coordinator` reads this file at its entry and uses every field. Write the handoff BEFORE updating `tasks/current-focus.md` to `BUILDING` — this is the abort-write-order invariant.
+`feature-coordinator` reads this file at its entry and uses every field. Write the handoff BEFORE updating `tasks/current-focus.md` to `PLANNING` — this is the abort-write-order invariant.
 
 ## Step 10 — current-focus.md update
 
@@ -665,12 +670,12 @@ Update the prose body of `tasks/current-focus.md` to reflect:
 - **Active plan:** `tasks/builds/{slug}/plan.md`
 - **Active build slug:** `{slug}`
 - **Branch:** `<branch>`
-- **Status:** **BUILDING** — {one-line summary}
+- **Status:** **PLANNING** — {one-line summary}
 - **Last updated:** {YYYY-MM-DD}
 
 Status enum transitions `SPECIFYING → PLANNING` (v2: Phase 2 owns plan authoring, so Phase 1 hands over at PLANNING rather than BUILDING).
 
-Also upsert `status.json` in this same step (`status: BUILDING`; `phase` unchanged) — per § Status contract — then run the generator.
+Also upsert `status.json` in this same step (`status: PLANNING`; `phase` unchanged) — per § Status contract — then run the generator and `board-sync.mjs`.
 
 If status was already `BUILDING` or `REVIEWING` for a different slug, refuse and prompt the operator (concurrent-feature collision). Do not overwrite a different slug's state.
 
@@ -682,7 +687,7 @@ Print verbatim:
 >
 > Spec finalised at `tasks/builds/{slug}/spec.md`.
 > Handoff written to `tasks/builds/{slug}/handoff.md`.
-> `tasks/current-focus.md` → status `BUILDING`.
+> `tasks/current-focus.md` → status `PLANNING`.
 >
 > **Next:** open a new Claude Code session and type:
 >
@@ -733,5 +738,5 @@ Push to current branch. Never `--no-verify`, never `--amend`, never force-push.
    **Partial-write behaviour.** Rows are processed and written one-by-one; successful `ACCEPTED_DEFERRED` writes are not rolled back if a later row's guard fails. The operator prompt in step 4 lists which rows were updated and which were skipped (updated / skipped-status / skipped-slug-mismatch), so the operator can resolve any partial state manually.
 
 3. Reset `tasks/current-focus.md` to `NONE`.
-3a. Also set `status.json.status = ABANDONED` (with a blocker entry citing the rejection rationale from step 1) in this same step — per § Status contract — then run the generator.
+3a. Also set `status.json.status = ABANDONED` (with a blocker entry citing the rejection rationale from step 1) in this same step — per § Status contract — then run the generator and `board-sync.mjs`.
 4. Inform operator: "Build rejected. BUG-IDs [<list>] set to ACCEPTED_DEFERRED. Slug <slug> abandoned." Include the per-row outcome (updated / skipped-status / skipped-slug-mismatch) so the operator can resolve any rows that were not updated.
