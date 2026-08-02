@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "completion-packet.schema.json",
+  "title": "CompletionPacket",
+  "description": "Versioned return contract (FR-3) for any role reporting back to a coordinator, runtime-neutral. Contract version completion-packet.v1. Formalises the verdict block already produced informally by the Claude Code builder agent (.claude/agents/builder.md) — Verdict/Files changed/Spec sections/What was implemented/Plan gap/G1 attempts/Notes for caller/DID NOT TOUCH.",
+  "$comment": "status enum is exactly the builder verdict set (SUCCESS, PLAN_GAP, G1_FAILED) — no drift permitted; any new terminal a Builder can return requires a coordinated schema bump. commit_sha is nullable because a PLAN_GAP or G1_FAILED result, or a SUCCESS awaiting a coordinator-owned commit, has no commit yet.",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "packet_id",
+    "status",
+    "role",
+    "runtime",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "completion-packet.v1"
+    },
+    "packet_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Echoes the packet_id of the work-packet.v1 this result answers."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["SUCCESS", "PLAN_GAP", "G1_FAILED"]
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime": {
+      "type": "string",
+      "minLength": 1
+    },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "spec_sections": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Concise operator-facing summary of what was done."
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "result"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "type": "string",
+            "enum": ["pass", "fail", "skip"]
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "unresolved_risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "commit_sha": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "produced_artefacts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes_for_caller": {
+      "type": "string"
+    },
+    "did_not_touch": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

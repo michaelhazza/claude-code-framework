@@ -248,6 +248,18 @@ export function extractUpdatedAtFromBody(body) {
   return match ? match[1] : null;
 }
 
+/** Neutralises HTML-comment delimiters in free-text fields rendered into a
+ *  card body (summary, blocker text, activity-log notes), so a crafted
+ *  status.json cannot inject a second `<!-- board-sync:v1 ... -->` marker
+ *  (spoofing the upsert key/updated_at this script trusts back out of the
+ *  body) or otherwise break out into raw markdown via an HTML comment.
+ *  Additive and non-behavioural for normal text: only the literal `<!--` /
+ *  `-->` delimiter sequences are altered, never surrounding text. */
+export function neutraliseCardText(text) {
+  if (typeof text !== 'string') return text;
+  return text.replace(/<!--/g, '<! --').replace(/-->/g, '-- >');
+}
+
 /** Card body: hidden updated_at marker, then the human-readable
  *  branch/PR/blockers/updated_at/summary fields the contract assigns to
  *  the body rather than to custom fields, then the Activity section
@@ -266,11 +278,11 @@ export function buildCardBody(record, key = null) {
   lines.push(`**PR:** ${record.pr === null || record.pr === undefined ? 'none' : `#${record.pr}`}`);
   lines.push(`**Blockers:** ${record.blockers.length}`);
   for (const blocker of record.blockers) {
-    lines.push(`- [${blocker.cleared_at ? 'cleared' : 'open'}] ${blocker.text}`);
+    lines.push(`- [${blocker.cleared_at ? 'cleared' : 'open'}] ${neutraliseCardText(blocker.text)}`);
   }
   lines.push(`**Updated:** ${record.updated_at}`);
   lines.push('');
-  lines.push(record.summary);
+  lines.push(neutraliseCardText(record.summary));
   // Activity log (schema `log[]`, optional/additive — absent in pre-2.61.0
   // records): the operator-facing build history, rendered newest-first so
   // opening the card answers "what is it doing / what has it done" without
@@ -287,7 +299,7 @@ export function buildCardBody(record, key = null) {
       lines.push('');
       lines.push(`**${entry.at} — ${entry.stage} (${kindLabel})**`);
       for (const bullet of entry.note) {
-        lines.push(`- ${bullet}`);
+        lines.push(`- ${neutraliseCardText(bullet)}`);
       }
     }
     const hidden = log.length - shown.length;
@@ -369,6 +381,33 @@ export function shouldArchive(record, now) {
   if (record.status !== 'MERGED' && record.status !== 'ABANDONED') return false;
   const ageMs = now.getTime() - new Date(record.updated_at).getTime();
   return ageMs >= ARCHIVE_AFTER_MS;
+}
+
+/** Classifies a `gh` failure as a named permission diagnostic when its
+ *  message matches a known missing-scope / missing-access shape (FR-6, spec
+ *  §6A "Projects V2 -> permission diagnostics only"), so a swallowed board
+ *  failure is diagnosable ("your token lacks the project scope") rather than
+ *  a generic "gh failure" pointing the operator nowhere. Purely
+ *  informational — the board stays a non-blocking projection regardless of
+ *  the result (see the asymmetric error-handling contract above); this never
+ *  turns the board into a gate, it only labels a swallowed failure. Returns
+ *  null when the message shows no permission signal at all, so an unrelated
+ *  gh failure (network, rate limit, malformed JSON) is not mislabelled. */
+export function classifyBoardPermissionError(err) {
+  const message = typeof err?.message === 'string' ? err.message : String(err ?? '');
+  const lower = message.toLowerCase();
+
+  if (lower.includes("'project' scope") || (lower.includes('scope') && lower.includes('project'))) {
+    return 'MISSING_PROJECT_SCOPE';
+  }
+  if (lower.includes('not accessible') || lower.includes('does not have access')
+      || lower.includes('permission') || lower.includes('forbidden') || /\b403\b/.test(lower)) {
+    return 'MISSING_BOARD_ACCESS';
+  }
+  if (lower.includes('unauthorized') || lower.includes('authentication') || /\b401\b/.test(lower)) {
+    return 'UNKNOWN';
+  }
+  return null;
 }
 
 /** Parses `owner/name` out of an `origin` remote URL (https or ssh form).
@@ -849,7 +888,11 @@ async function syncBoard(root, repository, boardConfig) {
     projectId = fetchProjectId(boardConfig.owner, boardConfig.number);
     existingItems = fetchExistingItems(boardConfig.owner, boardConfig.number);
   } catch (err) {
-    console.warn(`[board-sync] gh failure reading board state — recorded, non-blocking: ${err.message}`);
+    const diagnostic = classifyBoardPermissionError(err);
+    console.warn(
+      `[board-sync] gh failure reading board state — recorded, non-blocking: ${err.message}`
+      + (diagnostic ? ` [diagnostic: ${diagnostic}]` : '')
+    );
     return;
   }
 
@@ -931,7 +974,11 @@ async function syncBoard(root, repository, boardConfig) {
         archiveItem(boardCtx.owner, boardCtx.number, survivor.id);
       }
     } catch (err) {
-      console.warn(`[board-sync] gh failure syncing ${record.slug} — recorded, non-blocking: ${err.message}`);
+      const diagnostic = classifyBoardPermissionError(err);
+      console.warn(
+        `[board-sync] gh failure syncing ${record.slug} — recorded, non-blocking: ${err.message}`
+        + (diagnostic ? ` [diagnostic: ${diagnostic}]` : '')
+      );
     }
   }
 }

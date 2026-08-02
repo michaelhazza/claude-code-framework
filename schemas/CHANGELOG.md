@@ -1,5 +1,25 @@
 # Schema CHANGELOG
 
+## build-status.v2 — additive runtime-identity fields (2026-08-02, framework 2.62.0)
+
+**`build-status.schema.json` — new OPTIONAL top-level `runtime` object and new OPTIONAL `runtime`/`role` string keys on `log[]` items. `contract_version` unchanged at `build-status.v2`; no enum changes; nothing to migrate.**
+
+Part of the runtime-neutral pilot (`framework-runtime-neutral-v3`, spec §12.A Chunk A3, FR-1/FR-4/FR-13). The top-level `runtime: {coordinator_runtime, coordinator_role}` records the build-level coordinating runtime. The `log[]` item's `runtime` + `role` string keys are the per-stage/per-commit stamp (FR-13): each activity entry records the acting runtime and role at that transition. See `references/runtime-roles.md` for the role-to-runtime vocabulary and the stamping rule.
+
+**Why additive rather than v3:** same reasoning as the `log[]` addition below — a required field or a `contract_version` bump would invalidate every existing `status.json` in every consuming repo the moment the schema synced. Optional-and-additive means pre-2.62.0 records stay valid forever.
+
+**Consumers must:** nothing. Both `runtime` objects are `additionalProperties: false`, so the new keys had to be declared in their respective `properties` — done here. The structural floor in `status-contract.mjs` derives its checks from the schema, so the new fields validate automatically on sync.
+
+## work-packet.v1 / completion-packet.v1 — new schemas (2026-08-02, framework 2.62.0)
+
+**New files: `schemas/work-packet.schema.json` and `schemas/completion-packet.schema.json`. Both draft-07, `additionalProperties: false`, versioned via a `contract_version` const. Part of the runtime-neutral pilot (`framework-runtime-neutral-v3`, spec §12.A Chunk A1, FR-2/FR-3).**
+
+These formalise, as machine-checkable contracts, dispatch/return shapes that already exist informally today: `work-packet.schema.json` (`contract_version: "work-packet.v1"`) mirrors the fields already carried in Claude Code agent dispatch prompts (objective, governing artefacts, allowed files/resources, dependencies, verification commands, output locations, prohibited actions, resume id), plus additive `role` and `runtime` fields for runtime-neutral dispatch. `completion-packet.schema.json` (`contract_version: "completion-packet.v1"`) mirrors the builder verdict block in `.claude/agents/builder.md` (Verdict / Files changed / Spec sections / What was implemented / Plan gap / G1 attempts / Notes for caller / DID NOT TOUCH); its `status` enum (`SUCCESS`, `PLAN_GAP`, `G1_FAILED`) is exactly the builder verdict set, no drift permitted.
+
+**Required set kept minimal** on both schemas so existing Claude Code dispatches map cleanly without every field being mandatory: work-packet requires `contract_version, packet_id, feature_slug, repo, branch, objective, role, runtime`; completion-packet requires `contract_version, packet_id, status, role, runtime, summary`. All other fields (arrays of strings, plus `tests[]` as `{name, result}` objects with `result` enum `pass`/`fail`/`skip`) are optional and additive.
+
+**Consumers must:** nothing yet — these schemas are declarative contracts with no wired validator in this chunk. `scripts/packet-contract/validate-packet.mjs` (framework-runtime-neutral-v3 Chunk A2) adds the round-trip harness and fixtures that exercise them against Ajv.
+
 ## build-status.v2 — additive `log[]` activity log (2026-07-30, framework 2.61.0)
 
 **`build-status.schema.json` — new OPTIONAL top-level `log[]` array. `contract_version` unchanged at `build-status.v2`; no enum changes; nothing to migrate.**

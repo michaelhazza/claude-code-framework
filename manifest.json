@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.61.3",
+  "frameworkVersion": "2.62.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -350,6 +350,12 @@
       "substituteAt": "adoption"
     },
     {
+      "path": "docs/pilots/openclaw-rejection-test-runbook.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "references/verification-commands.md",
       "category": "template",
       "mode": "adopt-only",
@@ -638,6 +644,12 @@
       "substituteAt": "adoption"
     },
     {
+      "path": "docs/decisions/0015-runtime-neutral-role-model.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "docs/decisions/0014-coordinators-run-inline.md",
       "category": "adr",
       "mode": "sync",
@@ -753,6 +765,12 @@
     },
     {
       "path": "references/autonomy-ladder.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/runtime-roles.md",
       "category": "reference",
       "mode": "sync",
       "substituteAt": "never"
@@ -938,6 +956,24 @@
       "substituteAt": "never"
     },
     {
+      "path": "templates/CODEOWNERS.template",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "templates/default-branch-ruleset.json",
+      "category": "template",
+      "mode": "adopt-only",
+      "substituteAt": "adoption"
+    },
+    {
+      "path": "docs/openclaw-pilot-adoption.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/status/generate-current-focus.mjs",
       "category": "helper-script",
       "mode": "sync",
@@ -975,6 +1011,66 @@
     },
     {
       "path": "scripts/status/status-vocabulary.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/status/transition-validator.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/status/transition-validator.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/status/recovery-checks.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/status/recovery-checks.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/validate-packet.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/validate-packet.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/fixtures/*.json",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/pilot/rejection-test.sh",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/pilot/classify-rejection.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/pilot/classify-rejection.test.mjs",
       "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"

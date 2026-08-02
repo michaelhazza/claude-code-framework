@@ -32,6 +32,31 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.62.0 — 2026-08-02
+
+**Highlights:** Runtime-neutral pilot, Phases A + C plus the non-live half of Phase B (`framework-runtime-neutral-v3`). Work-packet and completion-packet JSON Schemas formalise the existing builder dispatch/verdict shapes into a contract any runtime's Builder path can validate against, with a round-trip harness proving structural comparability across a Claude-path and an OpenClaw-path fixture. `build-status.v2` gains optional additive runtime-identity fields (a build-level `runtime` object plus per-`log[]`-entry `runtime`/`role` stamps) so a future OpenClaw Builder run is attributable without invalidating any existing `status.json`. `references/runtime-roles.md` is the one canonical config point recording the two supported runtime/role mappings. A writer-side transition validator, board-sync permission diagnostics, and a recovery-state detector round out the release. **Live OpenClaw enablement is deferred** — see Deferred below.
+
+**Added:**
+- `schemas/work-packet.schema.json`, `schemas/completion-packet.schema.json` — draft-07 contracts (`work-packet.v1` / `completion-packet.v1`) formalising the existing dispatch prompt and builder verdict block; `completion-packet`'s `status` enum matches the builder verdict set (`SUCCESS`, `PLAN_GAP`, `G1_FAILED`) exactly.
+- `scripts/packet-contract/validate-packet.mjs` (+ test) — `validatePacket(kind, obj)` round-trip harness (Ajv with a structural-floor fallback) plus fixtures (`work-packet.example.json`, `completion-packet.claude.json`, `completion-packet.openclaw.json`) proving the Claude and OpenClaw completion shapes are structurally comparable.
+- `references/runtime-roles.md` — canonical runtime/role mapping: Claude Code as Coordinator/Architect/Builder/Reviewer/Test-Author/Finaliser; OpenClaw as sequential Builder only, stopping at `MERGE_READY`; the per-stage/per-commit runtime-identity stamping contract.
+- `scripts/status/transition-validator.mjs` (+ test) — pure, never-throws `validateTransition(from, to, {hasBlocker})` encoding the `build-status.v2` forward path and its four blocker-gated back-edges, read from the schema enum so it cannot drift.
+- `scripts/status/recovery-checks.mjs` (+ test) — `detectRecoveryState({repo, slug})`: dirty branch, orphaned worktree, partial integration, stale status, missing CI, already-completed-work detection. Artefact/Git-driven, never mutates repo state.
+- `docs/pilots/openclaw-rejection-test-runbook.md`, `scripts/pilot/rejection-test.sh`, `scripts/pilot/classify-rejection.mjs` (+ test) — the live disposable-repo GitHub-enforcement rejection-test gate (fail-closed classification pure module + offline fixture tests; the live probe script itself carries no token literal and is operator/coordinator-run, not a CI step).
+- `templates/CODEOWNERS.template`, `templates/default-branch-ruleset.json`, `docs/openclaw-pilot-adoption.md` — consumer-facing assets for adopting the OpenClaw pilot's branch-protection posture, plus the Claude-only regression procedure an existing consumer runs to prove no regression.
+
+**Changed:**
+- `schemas/build-status.schema.json` — new OPTIONAL top-level `runtime` object (`coordinator_runtime`, `coordinator_role`) and new OPTIONAL `runtime`/`role` string keys on `log[]` items. `contract_version` unchanged at `build-status.v2`; additive only, no consumer migration. See `schemas/CHANGELOG.md`.
+- `.claude/agents/architect.md`, `docs/spec-authoring-checklist.md` — plan chunks now carry a mandatory existing-component mapping (spec §6A): the deployed component the chunk builds on and its disposition (`reuse` / `extend` / `replace` / `new`), citing `references/runtime-roles.md` for runtime/role vocabulary.
+- `scripts/status/board-sync.mjs` — `classifyBoardPermissionError` labels a swallowed `gh` failure as `MISSING_PROJECT_SCOPE` / `MISSING_BOARD_ACCESS` / `UNKNOWN` when the message matches a known permission shape. Purely informational: the board stays a non-blocking projection either way.
+
+**Fixed:**
+- `references/rule-classification.md` — added the missing ledger row for `.claude/hooks/path-portability-guard.js` (shipped in 2.61.3, ledger row omitted at the time).
+
+**Deferred:** the live OpenClaw Builder CLI adapter (Chunk B2) and the coordinator OpenClaw dispatch + `MERGE_READY` stop + API merge-verification wiring (Chunk B3) are quarantined pending a live disposable-repo rejection-gate run — no builder token or disposable repo was available this session. B1's tooling and B4's templates ship regardless (no live dependency); the live rejection evidence and the adapter/dispatch code are a follow-up run. `scripts/status/transition-validator.mjs` ships as a standalone module in this release; it is not yet called from any coordinator status-write site — wiring it in is also a follow-up.
+
+**Migration:** none. Every schema change is additive; no existing `status.json` or consumer file is invalidated.
+
 ## 2.61.3 — 2026-08-02
 
 **Highlights:** Patch. Filename portability enforcement, prompted by a live incident: a dual-review log written from a Linux session with colons in its ISO timestamp (`...2026-08-01T21:14:58Z.md`) made `git pull` fail on every Windows clone of the consuming repo — Windows cannot create paths containing colons, so the branch was un-checkout-able until the file was renamed via index plumbing. Three layers ship: a PreToolUse hook that blocks non-portable filenames at write time on every OS, a CI gate that scans all tracked paths as the backstop for files created outside `Write` (bash redirects, generators), and the root-cause doc fix in `dual-reviewer.md`.

@@ -57,6 +57,8 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `docs/agent-selection.md` | One-page decision tree: operator intent → agent/command, plus runtime FAQ |
 | `docs/capabilities-template.md` | Capabilities-registry skeleton (Asset Register, lifecycle states, editorial rules) — scaffold your `docs/capabilities.md` from it |
 | `docs/codebase-audit-framework-template.md` | Codebase-audit operating manual skeleton (Layer 1 cleanup areas, Layer 2 generic modules, Scope Guard, audit modes) — pairs with `audit-runner` |
+| `docs/openclaw-pilot-adoption.md` | OpenClaw pilot adoption walkthrough: builder identity, branch-protection ruleset + CODEOWNERS install, Claude-only regression procedure |
+| `docs/pilots/openclaw-rejection-test-runbook.md` | Live disposable-repo GitHub-enforcement rejection-test runbook (OpenClaw pilot security gate) |
 | `references/test-gate-policy.md` | "Test gates are CI-only" rule, single source of truth |
 | `references/spec-review-directional-signals.md` | Classifier signals for `spec-reviewer` |
 | `references/verification-commands.md` | Stack-template lint/typecheck/build/test commands |
@@ -67,8 +69,10 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `references/project-extensions-convention.md` | How consumer repos add their own agents/hooks/skills alongside managed ones |
 | `references/skill-overlay-convention.md` | The skill-overlay mechanism: pointer line, `skill-context.md` sidecar, and the KNOWLEDGE→overlay→canonical-skill drain wired into `/cleanfiles` |
 | `references/eval-suite-format.md` | Golden-set eval suite contract (`config.json` / `cases.jsonl` / `baseline.json`, verdict taxonomy, metrics) for `/eval-prompts` |
-| `schemas/` | Review-result JSON Schemas (v2 contract, Ajv-gated) + input-shape schemas (`pr-context`, `prior-rounds` — advisory) + schema CHANGELOG |
-| `scripts/` | Review driver (`chatgpt-review*.ts`), review coordinator library, migration runner, framework merge + validation (`framework-merge.js`, `validate-framework.js`), build-scheduler, mockup capture, code-graph + gates libraries, skill-routing evals (`skill-routing-evals*.ts` + `evals/skill-routing/` cases — framework CI only), helper scripts + their tests |
+| `references/runtime-roles.md` | Runtime/role mapping (Claude Coordinator/Architect/Builder/Reviewer/Test-Author/Finaliser; OpenClaw sequential Builder-only) + per-stage/commit runtime-identity stamping contract |
+| `schemas/` | Review-result JSON Schemas (v2 contract, Ajv-gated) + input-shape schemas (`pr-context`, `prior-rounds` — advisory) + work-packet/completion-packet Builder-dispatch contracts (`work-packet.schema.json`, `completion-packet.schema.json`) + schema CHANGELOG |
+| `scripts/` | Review driver (`chatgpt-review*.ts`), review coordinator library, migration runner, framework merge + validation (`framework-merge.js`, `validate-framework.js`), build-scheduler, mockup capture, code-graph + gates libraries, skill-routing evals (`skill-routing-evals*.ts` + `evals/skill-routing/` cases — framework CI only), packet-contract validation harness (`scripts/packet-contract/`), OpenClaw-pilot rejection-test tooling (`scripts/pilot/`), status transition-validator + recovery-checks (`scripts/status/`), helper scripts + their tests |
+| `templates/` | `github-workflows/` (CI/merge-gate workflow templates) + OpenClaw-pilot branch-protection templates (`CODEOWNERS.template`, `default-branch-ruleset.json`) |
 | `migrations/` | Per-version consumer migrations (run automatically by `/claudeupdate`) + `_helpers.js` + template |
 | `context/` | Reviewer `PROJECT_CONTEXT` injection templates (distinct from `.claude/context/agent-context.md`) |
 | `tasks/` | Empty scaffolding (current-focus, todo, ideas, bugs, lessons, runbooks/, review-logs/, builds/_example/) |

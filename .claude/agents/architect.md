@@ -161,6 +161,7 @@ If no sibling repos are configured or all return empty/low-score results, omit t
 
 For each chunk:
 - **Files to create or modify** — exact paths from the project root
+- **Existing-component mapping (spec §6A)** — mandatory. Name the deployed component this chunk builds on and its disposition: `reuse` / `extend` / `replace` / `new`. Re-implementing an existing capability under a new (e.g. runtime-neutral) name is prohibited unless the plan records an explicit replacement decision — what is being replaced and why reuse/extension were insufficient (see `docs/spec-authoring-checklist.md § Section 1`). When the mapping names a runtime or role, use the canonical vocabulary in `references/runtime-roles.md` rather than inventing new terms.
 - **Module shape** — state in two lines:
   - *Public interface this chunk exposes:* the function signatures, route shapes, exported types, or service methods callers will touch — keep it small
   - *What stays hidden behind it:* internal helpers, data structures, intermediate state, retry/idempotency machinery, transformation steps, error-mapping — anything callers must not depend on

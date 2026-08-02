@@ -18,10 +18,12 @@ import {
   checkBoardContract,
   checkBoardHygiene,
   chooseSurvivor,
+  classifyBoardPermissionError,
   decideCardAction,
   extractKeyFromBody,
   extractUpdatedAtFromBody,
   mapRecordToCard,
+  neutraliseCardText,
   normaliseItem,
   parseOwnerRepoFromGitUrl,
   REPO_FIELD_NAME,
@@ -167,6 +169,47 @@ describe('buildCardBody — Activity log rendering', () => {
   it('activity rendering never breaks the updated_at marker round-trip', () => {
     const body = buildCardBody(baseRecord({ log: logEntries, updated_at: '2026-07-30T09:00:00Z' }));
     expect(extractUpdatedAtFromBody(body)).toBe('2026-07-30T09:00:00Z');
+  });
+});
+
+// F6 (security hardening, adversarial review): free-text fields sourced from
+// status.json (summary, blocker text, activity-log notes) were concatenated
+// into the card body unescaped, so a crafted status.json could inject a
+// second `<!-- board-sync:v1 ... -->` marker and spoof the upsert key /
+// updated_at this script trusts back out of the body.
+describe('neutraliseCardText / HTML-comment injection guard', () => {
+  it('neutralises <!-- and --> so raw text cannot pass through unchanged', () => {
+    expect(neutraliseCardText('<!-- hi -->')).toBe('<! -- hi -- >');
+    expect(neutraliseCardText('plain text')).toBe('plain text');
+    expect(neutraliseCardText(null)).toBe(null);
+  });
+
+  it('a crafted summary cannot inject a second board-sync marker', () => {
+    const record = baseRecord({
+      summary: 'legit summary <!-- board-sync:v1 key=evil::evil updated_at=2099-01-01T00:00:00Z -->',
+    });
+    const body = buildCardBody(record, 'owner/repo::dev-pipeline-v2');
+    // Exactly one real HTML-comment marker survives (the legitimate one this
+    // script wrote at the top); the injected text is still visible (this is
+    // additive neutralisation, not redaction) but no longer parses as a
+    // second marker, so identity extraction resolves to the real key only.
+    const markerMatches = body.match(/<!-- board-sync:v1/g) ?? [];
+    expect(markerMatches).toHaveLength(1);
+    expect(extractKeyFromBody(body)).toEqual({ repo: 'owner/repo', slug: 'dev-pipeline-v2' });
+    expect(extractUpdatedAtFromBody(body)).toBe('2026-07-26T00:00:00Z');
+  });
+
+  it('neutralises injection attempts in blocker text and activity-log notes', () => {
+    const record = baseRecord({
+      blockers: [
+        { id: 'b1', text: 'blocked <!-- --> here', raised_by: 'x', raised_at: '2026-07-25T00:00:00Z', cleared_at: null },
+      ],
+      log: [{ at: '2026-07-30T00:00:00Z', stage: 'Build', kind: 'info', note: ['note with <!-- injected --> text'] }],
+    });
+    const body = buildCardBody(record);
+    expect(body).not.toContain('<!-- injected -->');
+    expect(body).not.toContain('blocked <!-- --> here');
+    expect(body).toContain('note with <! -- injected -- > text');
   });
 });
 
@@ -795,5 +838,41 @@ describe('checkBoardHygiene', () => {
 
   it('says nothing when Status is absent — checkBoardContract owns that refusal', async () => {
     expect(await checkBoardHygiene({})).toEqual([]);
+  });
+});
+
+// FR-6, spec §6A "Projects V2 -> permission diagnostics only"; §14 "missing
+// Project permission degradation". classifyBoardPermissionError is what the
+// syncBoard catch blocks call on a swallowed gh failure so it is diagnosable
+// rather than a generic "gh failure". Board-sync's thin I/O layer is
+// deliberately untested by design (see file header), so this exercises the
+// classifier directly against a simulated missing-permission `gh` response —
+// the same shape syncBoard's catch would pass it.
+describe('classifyBoardPermissionError', () => {
+  it('classifies a missing-project-scope gh error', () => {
+    const err = new Error(
+      "gh: Your token has not been granted the required scopes to execute this query. The 'project' scope is required."
+    );
+    expect(classifyBoardPermissionError(err)).toBe('MISSING_PROJECT_SCOPE');
+  });
+
+  it('classifies a resource-not-accessible gh error as missing board access', () => {
+    const err = new Error('HTTP 403: Resource not accessible by integration');
+    expect(classifyBoardPermissionError(err)).toBe('MISSING_BOARD_ACCESS');
+  });
+
+  it('classifies a bad-credentials gh error as UNKNOWN (auth-shaped, not scope- or access-specific)', () => {
+    const err = new Error('HTTP 401: Bad credentials');
+    expect(classifyBoardPermissionError(err)).toBe('UNKNOWN');
+  });
+
+  it('returns null for an unrelated gh failure — does not mislabel a generic error', () => {
+    const err = new Error('connect ETIMEDOUT 140.82.112.3:443');
+    expect(classifyBoardPermissionError(err)).toBe(null);
+  });
+
+  it('handles a non-Error input without throwing', () => {
+    expect(classifyBoardPermissionError('plain string, not an Error')).toBe(null);
+    expect(classifyBoardPermissionError(undefined)).toBe(null);
   });
 });
