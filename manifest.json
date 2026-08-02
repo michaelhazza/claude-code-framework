@@ -350,6 +350,12 @@
       "substituteAt": "adoption"
     },
     {
+      "path": "docs/pilots/openclaw-rejection-test-runbook.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "references/verification-commands.md",
       "category": "template",
       "mode": "adopt-only",
@@ -999,6 +1005,24 @@
     },
     {
       "path": "scripts/packet-contract/fixtures/*.json",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/pilot/rejection-test.sh",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/pilot/classify-rejection.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/pilot/classify-rejection.test.mjs",
       "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"
