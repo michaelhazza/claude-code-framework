@@ -644,6 +644,12 @@
       "substituteAt": "adoption"
     },
     {
+      "path": "docs/decisions/0015-runtime-neutral-role-model.md",
+      "category": "adr",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "docs/decisions/0014-coordinators-run-inline.md",
       "category": "adr",
       "mode": "sync",
