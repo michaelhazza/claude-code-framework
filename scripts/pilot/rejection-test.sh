@@ -142,6 +142,56 @@ classify_forbidden_probe() {
   fi
 }
 
+# OAI-PR-001 (security-gate soundness): runs "$@", capturing stdout into
+# GH_CAP_STDOUT, token-scrubbed stderr into GH_CAP_STDERR, and exit code into
+# GH_CAP_EXIT. Used by the merge/approval probes (5, 6a, 6b) so their
+# classification can tell "the gh command itself failed" apart from "GitHub's
+# ruleset rejected the action" — see classify_action_probe below.
+gh_capture() {
+  local stderr_file
+  stderr_file="$(mktemp)"
+  GH_CAP_STDOUT="$("$@" 2>"$stderr_file")"
+  GH_CAP_EXIT="$?"
+  GH_CAP_STDERR="$(cat "$stderr_file" 2>/dev/null)"
+  rm -f "$stderr_file"
+  GH_CAP_STDERR="${GH_CAP_STDERR//$BUILDER_TOKEN/***}"
+}
+
+# OAI-PR-001: classifies a merge/approval probe outcome. A prior fix (F6,
+# below) made probe 5 trust the post-action STATE read over the merge
+# command's own exit status/stderr, because GitHub's block-message wording
+# for merges doesn't reliably match classify_forbidden_probe's signal list.
+# That is still correct — but taken alone it let a merge/approve command that
+# failed for an UNRELATED reason (auth, transient API, bad flag) be recorded
+# as "rejected" just because the PR wasn't merged/approved, without ever
+# proving the ruleset was what stopped it. This requires the state read to
+# have genuinely succeeded AND the paired action command to have failed
+# before calling it "rejected"; an action command that reports success (exit
+# 0) while the state disagrees is ambiguous, not a clean pass, and is
+# reported as "error" (-> INCONCLUSIVE) instead.
+# $1=action_exit $2=action_stderr(scrubbed) $3=view_exit $4=view_stdout
+# $5=success_value (e.g. "MERGED" / "APPROVED"). Sets PROBE_OBSERVED and
+# PROBE_DETAIL.
+classify_action_probe() {
+  local action_exit="$1" action_stderr="$2" view_exit="$3" view_stdout="$4" success_value="$5"
+  if [ "$view_exit" -eq 0 ] && [ "$view_stdout" = "$success_value" ]; then
+    PROBE_OBSERVED="allowed"
+    PROBE_DETAIL=""
+    return
+  fi
+  if [ "$view_exit" -eq 0 ] && [ -n "$view_stdout" ] && [ "$action_exit" -ne 0 ]; then
+    PROBE_OBSERVED="rejected"
+    PROBE_DETAIL="state=$view_stdout${action_stderr:+; action-stderr=$action_stderr}"
+    return
+  fi
+  if [ "$action_exit" -ne 0 ]; then
+    classify_forbidden_probe "$action_exit" "$action_stderr"
+    return
+  fi
+  PROBE_OBSERVED="error"
+  PROBE_DETAIL="could not confirm outcome (action-exit=$action_exit view-exit=$view_exit view-stdout=${view_stdout:-<empty>}${action_stderr:+; action-stderr=$action_stderr})"
+}
+
 WORKDIR="$(mktemp -d -t openclaw-rejection-test-workdir-XXXXXX 2>/dev/null || mktemp -d)"
 cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
@@ -229,38 +279,43 @@ else
     # blocked merge risked misclassifying as "error" -> INCONCLUSIVE (an
     # un-passable gate). Prefer a STATE check over stderr parsing, mirroring
     # probe 6a's reviewDecision approach: attempt the merge, then read the
-    # PR's own `state` afterwards rather than trusting the merge command's
-    # exit status/stderr alone. Only when that state read itself fails
-    # (genuine API/auth error) does this fall back to stderr classification.
-    MERGE_STDERR="$(GH_TOKEN="$BUILDER_TOKEN" gh pr merge --repo "$PILOT_REPO" "$PR_URL" --squash --auto=false 2>&1 >/dev/null)"
-    MERGE_EXIT="$?"
-    POST_MERGE_STATE="$(GH_TOKEN="$BUILDER_TOKEN" gh pr view --repo "$PILOT_REPO" "$PR_URL" --json state --jq .state 2>/dev/null)"
-    if [ "$POST_MERGE_STATE" = "MERGED" ]; then
-      emit_probe "merge-without-approval" "merge-pr" "rejected" "allowed" "builder merged $PR_URL with no code-owner approval — should have been rejected"
-    elif [ -n "$POST_MERGE_STATE" ]; then
-      emit_probe "merge-without-approval" "merge-pr" "rejected" "rejected" "merge correctly blocked (PR state=$POST_MERGE_STATE)"
-    else
-      classify_forbidden_probe "$MERGE_EXIT" "$MERGE_STDERR"
-      if [ "$PROBE_OBSERVED" = "allowed" ]; then
-        emit_probe "merge-without-approval" "merge-pr" "rejected" "allowed" "builder merged $PR_URL with no code-owner approval — should have been rejected"
-      elif [ "$PROBE_OBSERVED" = "rejected" ]; then
-        emit_probe "merge-without-approval" "merge-pr" "rejected" "rejected"
-      else
-        emit_probe "merge-without-approval" "merge-pr" "rejected" "error" "could not confirm post-merge PR state for $PR_URL: $PROBE_DETAIL"
-      fi
-    fi
+    # PR's own `state` afterwards. OAI-PR-001: that state read alone is not
+    # sufficient proof — classify_action_probe additionally requires the
+    # merge command itself to have failed before trusting a non-MERGED state
+    # as "rejected", so a merge command that failed for an unrelated reason
+    # (auth, transient API, bad flag) can no longer be recorded as a false
+    # "rejected" pass.
+    gh_capture env GH_TOKEN="$BUILDER_TOKEN" gh pr merge --repo "$PILOT_REPO" "$PR_URL" --squash --auto=false
+    MERGE_EXIT="$GH_CAP_EXIT"
+    MERGE_STDERR="$GH_CAP_STDERR"
+    gh_capture env GH_TOKEN="$BUILDER_TOKEN" gh pr view --repo "$PILOT_REPO" "$PR_URL" --json state --jq .state
+    VIEW_EXIT="$GH_CAP_EXIT"
+    POST_MERGE_STATE="$GH_CAP_STDOUT"
+    classify_action_probe "$MERGE_EXIT" "$MERGE_STDERR" "$VIEW_EXIT" "$POST_MERGE_STATE" "MERGED"
+    case "$PROBE_OBSERVED" in
+      allowed) emit_probe "merge-without-approval" "merge-pr" "rejected" "allowed" "builder merged $PR_URL with no code-owner approval — should have been rejected" ;;
+      rejected) emit_probe "merge-without-approval" "merge-pr" "rejected" "rejected" "$PROBE_DETAIL" ;;
+      *) emit_probe "merge-without-approval" "merge-pr" "rejected" "error" "could not confirm post-merge PR state for $PR_URL: $PROBE_DETAIL" ;;
+    esac
 
     # --- Probe 6a: an agent-identity approval does not satisfy code-owner
     # review on the OpenClaw-authored PR opened in probe 1 ---
-    GH_TOKEN="$BUILDER_TOKEN" gh pr review --repo "$PILOT_REPO" "$PR_URL" --approve --body "agent approval (should not satisfy code-owner review)" >/dev/null 2>&1
-    DECISION=$(GH_TOKEN="$BUILDER_TOKEN" gh pr view --repo "$PILOT_REPO" "$PR_URL" --json reviewDecision --jq .reviewDecision 2>/dev/null)
-    if [ "$DECISION" = "APPROVED" ]; then
-      emit_probe "agent-approval-openclaw-pr" "approve-pr" "rejected" "allowed" "agent approval satisfied review decision on an OpenClaw-authored PR — should not have"
-    elif [ -z "$DECISION" ]; then
-      emit_probe "agent-approval-openclaw-pr" "approve-pr" "rejected" "error" "could not read reviewDecision for $PR_URL"
-    else
-      emit_probe "agent-approval-openclaw-pr" "approve-pr" "rejected" "rejected" "reviewDecision=$DECISION"
-    fi
+    # OAI-PR-001: capture the approve command's own exit/stderr — previously
+    # discarded entirely — so a failed approval attempt (auth, transient
+    # API, bad flag) can't be misread as a successful "agent approval didn't
+    # satisfy code-owner review" test via classify_action_probe below.
+    gh_capture env GH_TOKEN="$BUILDER_TOKEN" gh pr review --repo "$PILOT_REPO" "$PR_URL" --approve --body "agent approval (should not satisfy code-owner review)"
+    REVIEW_EXIT="$GH_CAP_EXIT"
+    REVIEW_STDERR="$GH_CAP_STDERR"
+    gh_capture env GH_TOKEN="$BUILDER_TOKEN" gh pr view --repo "$PILOT_REPO" "$PR_URL" --json reviewDecision --jq .reviewDecision
+    VIEW_EXIT="$GH_CAP_EXIT"
+    DECISION="$GH_CAP_STDOUT"
+    classify_action_probe "$REVIEW_EXIT" "$REVIEW_STDERR" "$VIEW_EXIT" "$DECISION" "APPROVED"
+    case "$PROBE_OBSERVED" in
+      allowed) emit_probe "agent-approval-openclaw-pr" "approve-pr" "rejected" "allowed" "agent approval satisfied review decision on an OpenClaw-authored PR — should not have" ;;
+      rejected) emit_probe "agent-approval-openclaw-pr" "approve-pr" "rejected" "rejected" "reviewDecision=$DECISION" ;;
+      *) emit_probe "agent-approval-openclaw-pr" "approve-pr" "rejected" "error" "could not confirm reviewDecision for $PR_URL: $PROBE_DETAIL" ;;
+    esac
   else
     emit_probe "merge-without-approval" "merge-pr" "rejected" "error" "no PR from the positive-control probe to test against"
     emit_probe "agent-approval-openclaw-pr" "approve-pr" "rejected" "error" "no PR from the positive-control probe to test against"
@@ -290,15 +345,19 @@ else
     if git push --quiet "$AMBIENT_PUSH_URL" "HEAD:refs/heads/$CLAUDE_BRANCH" 2>/dev/null \
         && CLAUDE_PR_URL=$(gh pr create --repo "$PILOT_REPO" --head "$CLAUDE_BRANCH" \
             --title "openclaw rejection-test: claude-authored probe" --body "Automated probe — safe to close/delete." 2>/dev/null); then
-      GH_TOKEN="$BUILDER_TOKEN" gh pr review --repo "$PILOT_REPO" "$CLAUDE_PR_URL" --approve --body "agent approval (should not satisfy code-owner review)" >/dev/null 2>&1
-      CLAUDE_DECISION=$(gh pr view --repo "$PILOT_REPO" "$CLAUDE_PR_URL" --json reviewDecision --jq .reviewDecision 2>/dev/null)
-      if [ "$CLAUDE_DECISION" = "APPROVED" ]; then
-        emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "allowed" "agent approval satisfied review decision on a Claude-authored PR — should not have"
-      elif [ -z "$CLAUDE_DECISION" ]; then
-        emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "error" "could not read reviewDecision for $CLAUDE_PR_URL"
-      else
-        emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "rejected" "reviewDecision=$CLAUDE_DECISION"
-      fi
+      # OAI-PR-001: same capture-then-classify treatment as probe 6a.
+      gh_capture env GH_TOKEN="$BUILDER_TOKEN" gh pr review --repo "$PILOT_REPO" "$CLAUDE_PR_URL" --approve --body "agent approval (should not satisfy code-owner review)"
+      CLAUDE_REVIEW_EXIT="$GH_CAP_EXIT"
+      CLAUDE_REVIEW_STDERR="$GH_CAP_STDERR"
+      gh_capture gh pr view --repo "$PILOT_REPO" "$CLAUDE_PR_URL" --json reviewDecision --jq .reviewDecision
+      CLAUDE_VIEW_EXIT="$GH_CAP_EXIT"
+      CLAUDE_DECISION="$GH_CAP_STDOUT"
+      classify_action_probe "$CLAUDE_REVIEW_EXIT" "$CLAUDE_REVIEW_STDERR" "$CLAUDE_VIEW_EXIT" "$CLAUDE_DECISION" "APPROVED"
+      case "$PROBE_OBSERVED" in
+        allowed) emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "allowed" "agent approval satisfied review decision on a Claude-authored PR — should not have" ;;
+        rejected) emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "rejected" "reviewDecision=$CLAUDE_DECISION" ;;
+        *) emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "error" "could not confirm reviewDecision for $CLAUDE_PR_URL: $PROBE_DETAIL" ;;
+      esac
     else
       emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "error" "could not open the claude-authored probe PR under the ambient credential"
     fi

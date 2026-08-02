@@ -32,6 +32,7 @@ Before installing, fill in the placeholders:
 |---|---|
 | `{{RULESET_NAME}}` | Any descriptive name, e.g. `"Default branch protection"` |
 | `{{CI_STATUS_CHECK_NAME}}` | The exact context/check name your CI reports (e.g. your `ci.yml` job name). If your repo has no CI status check configured yet, remove the `required_status_checks` rule entry rather than leaving a placeholder value — an unfulfillable check name blocks every PR. |
+| `integration_id` (defaults to `0`) | Context-name matching alone is spoofable — any app or workflow that posts a check with the same context name can satisfy the requirement without your trusted check having run (see the runbook's Operator note). Replace the `0` sentinel with your CI app's numeric GitHub App integration id. For GitHub Actions, that id is `15368`. |
 
 Install the ruleset via the GitHub UI (Settings → Rules → Rulesets → New branch ruleset → paste the JSON under "Import a ruleset") or via `gh api repos/{owner}/{repo}/rulesets -X POST --input templates/default-branch-ruleset.json` once the placeholders are filled.
 

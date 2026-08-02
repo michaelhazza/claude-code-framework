@@ -2,6 +2,8 @@
 
 The one canonical mapping of pipeline role → approved execution runtime (spec `framework-runtime-neutral-v3` §8-FR1). Agent files and coordinators cite this table rather than restating runtime eligibility inline; when a summary elsewhere disagrees with this table, THIS FILE WINS.
 
+**Canonical role-literal casing:** the table below uses Title Case for human readability, but every packet `role` value (`work-packet.schema.json`, `completion-packet.schema.json`, and their fixtures) is **lowercase** — `builder`, `coordinator`, `architect`, `reviewer`, `test-author`, `finaliser` — matching the runtime literals (`claude-code`, `openclaw`). When populating a packet's `role` field, use the lowercase form; the Title Case column here is presentation only.
+
 ## Role → approved runtimes
 
 | Role | Approved runtime(s) | Notes |
