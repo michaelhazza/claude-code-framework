@@ -144,7 +144,9 @@ export async function gatherRecoveryProbes({ repo, slug, root }) {
   // failure — missing gh, no PR yet, network — degrades to ciError, which
   // evaluateRecoveryState treats as "cannot tell", never as "missing CI".
   try {
-    const out = execFileSync('gh', ['pr', 'checks', branch, '--json', 'state'], { encoding: 'utf8' });
+    const args = ['pr', 'checks', branch, '--json', 'state'];
+    if (repo) args.push('--repo', repo);
+    const out = execFileSync('gh', args, { encoding: 'utf8' });
     const parsed = JSON.parse(out);
     probes.ciFound = Array.isArray(parsed) && parsed.length > 0;
   } catch (err) {
