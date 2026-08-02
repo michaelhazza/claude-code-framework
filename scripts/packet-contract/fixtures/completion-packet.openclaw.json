@@ -5,7 +5,7 @@
   "role": "builder",
   "runtime": "openclaw",
   "changed_files": [
-    "scripts/packet-contract/validate-packet-openclaw.mjs"
+    "src/example-feature/openclaw-built-module.mjs"
   ],
   "spec_sections": ["12.A", "13-1"],
   "summary": "Implemented the packet validation harness and round-trip fixtures.",

@@ -133,7 +133,7 @@ classify_forbidden_probe() {
     PROBE_DETAIL=""
     return
   fi
-  if printf '%s' "$scrubbed" | grep -qiE 'protected branch|GH006|Changes must be made through a pull request|Review required|required status check|refusing to allow|(status: *)?422'; then
+  if printf '%s' "$scrubbed" | grep -qiE 'protected branch|GH006|Changes must be made through a pull request|Review required|required status check|refusing to allow|not mergeable|required approving review|at least 1 approving review|(status: *)?422'; then
     PROBE_OBSERVED="rejected"
     PROBE_DETAIL=""
   else
@@ -223,14 +223,31 @@ else
 
   if [ -n "$PR_URL" ]; then
     # --- Probe 5: merge the open PR with no code-owner approval ---
+    # F6: `gh pr merge`'s block message ("not mergeable", "required
+    # approving review") differs from the git-push protected-branch signals
+    # classify_forbidden_probe was originally tuned for, so a correctly-
+    # blocked merge risked misclassifying as "error" -> INCONCLUSIVE (an
+    # un-passable gate). Prefer a STATE check over stderr parsing, mirroring
+    # probe 6a's reviewDecision approach: attempt the merge, then read the
+    # PR's own `state` afterwards rather than trusting the merge command's
+    # exit status/stderr alone. Only when that state read itself fails
+    # (genuine API/auth error) does this fall back to stderr classification.
     MERGE_STDERR="$(GH_TOKEN="$BUILDER_TOKEN" gh pr merge --repo "$PILOT_REPO" "$PR_URL" --squash --auto=false 2>&1 >/dev/null)"
-    classify_forbidden_probe "$?" "$MERGE_STDERR"
-    if [ "$PROBE_OBSERVED" = "allowed" ]; then
+    MERGE_EXIT="$?"
+    POST_MERGE_STATE="$(GH_TOKEN="$BUILDER_TOKEN" gh pr view --repo "$PILOT_REPO" "$PR_URL" --json state --jq .state 2>/dev/null)"
+    if [ "$POST_MERGE_STATE" = "MERGED" ]; then
       emit_probe "merge-without-approval" "merge-pr" "rejected" "allowed" "builder merged $PR_URL with no code-owner approval — should have been rejected"
-    elif [ "$PROBE_OBSERVED" = "rejected" ]; then
-      emit_probe "merge-without-approval" "merge-pr" "rejected" "rejected"
+    elif [ -n "$POST_MERGE_STATE" ]; then
+      emit_probe "merge-without-approval" "merge-pr" "rejected" "rejected" "merge correctly blocked (PR state=$POST_MERGE_STATE)"
     else
-      emit_probe "merge-without-approval" "merge-pr" "rejected" "error" "$PROBE_DETAIL"
+      classify_forbidden_probe "$MERGE_EXIT" "$MERGE_STDERR"
+      if [ "$PROBE_OBSERVED" = "allowed" ]; then
+        emit_probe "merge-without-approval" "merge-pr" "rejected" "allowed" "builder merged $PR_URL with no code-owner approval — should have been rejected"
+      elif [ "$PROBE_OBSERVED" = "rejected" ]; then
+        emit_probe "merge-without-approval" "merge-pr" "rejected" "rejected"
+      else
+        emit_probe "merge-without-approval" "merge-pr" "rejected" "error" "could not confirm post-merge PR state for $PR_URL: $PROBE_DETAIL"
+      fi
     fi
 
     # --- Probe 6a: an agent-identity approval does not satisfy code-owner

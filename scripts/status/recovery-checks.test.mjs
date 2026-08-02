@@ -168,6 +168,20 @@ describe('evaluateRecoveryState — partial integration', () => {
     );
     expect(report.checks.partialIntegration.flagged).toBe(false);
   });
+
+  it('flags a squash-merged branch (branchMergedToDefault derived from a merged-PR fixture, no git ancestry link) with a non-terminal status.json', () => {
+    // PR-001: this framework merges via `--admin squash`, which leaves no
+    // ancestry link, so branchMergedToDefault must come from PR state (gh pr
+    // list --state merged), not git merge-base --is-ancestor. This pins the
+    // decision layer's behaviour for exactly that gh-derived true value.
+    const report = evaluateRecoveryState(
+      { slug: 's' },
+      { statusRecord: baseRecord({ status: 'TESTING' }), branchMergedToDefault: true },
+      NOW
+    );
+    expect(report.checks.partialIntegration.flagged).toBe(true);
+    expect(report.checks.alreadyCompleted.flagged).toBe(true);
+  });
 });
 
 describe('evaluateRecoveryState — stale status', () => {

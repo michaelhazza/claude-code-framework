@@ -16,6 +16,12 @@
  * leave the prior state unchanged (fail closed) -- this module only judges,
  * it does not write.
  *
+ * IDEMPOTENT SELF-TRANSITIONS (PR-003): `from === to` is always `{ok: true}`
+ * when `from` is a known status, including for terminal states -- re-writing
+ * MERGED as MERGED is a harmless no-op re-stamp, not an outbound edge, so it
+ * is exempt from the terminal-immutability rule below. An unknown status is
+ * still rejected even when `from === to`.
+ *
  * The legal status vocabulary is read from schemas/build-status.schema.json
  * via readStatusEnum() (status-contract.mjs), never hardcoded here, so this
  * module cannot drift from the schema enum -- the same anti-drift discipline
@@ -76,6 +82,10 @@ export async function validateTransition(from, to, opts = {}) {
   }
   if (!enum_.includes(to)) {
     return { ok: false, error: `unknown status "${to}" — not in the schema enum` };
+  }
+
+  if (from === to) {
+    return { ok: true };
   }
 
   if (TERMINAL_STATUSES.has(from)) {

@@ -62,7 +62,10 @@ describe('validateTransition — blocker-gated back-edges', () => {
 });
 
 describe('validateTransition — terminal immutability', () => {
-  it.each(['SPECIFYING', 'PLANNING', 'BUILDING', 'REVIEWING', 'TESTING', 'FINALISING', 'MERGE_READY', 'MERGED', 'ABANDONED'])(
+  // MERGED and ABANDONED are excluded from these two lists: from===to is an
+  // idempotent no-op re-stamp, not an outbound transition, and is legal even
+  // for terminal states (PR-003) — see the dedicated describe block below.
+  it.each(['SPECIFYING', 'PLANNING', 'BUILDING', 'REVIEWING', 'TESTING', 'FINALISING', 'MERGE_READY', 'ABANDONED'])(
     'rejects MERGED -> %s',
     async (to) => {
       const result = await validateTransition('MERGED', to);
@@ -71,7 +74,7 @@ describe('validateTransition — terminal immutability', () => {
     }
   );
 
-  it.each(['SPECIFYING', 'PLANNING', 'BUILDING', 'REVIEWING', 'TESTING', 'FINALISING', 'MERGE_READY', 'MERGED', 'ABANDONED'])(
+  it.each(['SPECIFYING', 'PLANNING', 'BUILDING', 'REVIEWING', 'TESTING', 'FINALISING', 'MERGE_READY', 'MERGED'])(
     'rejects ABANDONED -> %s',
     async (to) => {
       const result = await validateTransition('ABANDONED', to);
@@ -83,6 +86,22 @@ describe('validateTransition — terminal immutability', () => {
   it('rejects a terminal -> non-terminal transition even with hasBlocker: true', async () => {
     const result = await validateTransition('MERGED', 'BUILDING', { hasBlocker: true });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('validateTransition — idempotent same-status re-stamp (PR-003)', () => {
+  it('accepts a mid-state self-transition as a no-op', async () => {
+    expect(await validateTransition('BUILDING', 'BUILDING')).toEqual({ ok: true });
+  });
+
+  it('accepts a terminal-state self-transition as a no-op (re-writing MERGED as MERGED)', async () => {
+    expect(await validateTransition('MERGED', 'MERGED')).toEqual({ ok: true });
+  });
+
+  it('still rejects an unknown status even when from === to', async () => {
+    const result = await validateTransition('BOGUS', 'BOGUS');
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('BOGUS');
   });
 });
 

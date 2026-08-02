@@ -60,15 +60,6 @@ function parseWorktreePorcelain(output) {
   return entries;
 }
 
-function detectDefaultBranch(root) {
-  try {
-    const out = execFileSync('git', ['-C', root, 'symbolic-ref', 'refs/remotes/origin/HEAD'], { encoding: 'utf8' }).trim();
-    return out.replace('refs/remotes/origin/', '') || 'main';
-  } catch {
-    return 'main';
-  }
-}
-
 /**
  * Thin I/O layer: gathers raw Git/gh/filesystem observations for one
  * {repo, slug}. Read-only throughout — no probe here ever mutates repo
@@ -131,20 +122,21 @@ export async function gatherRecoveryProbes({ repo, slug, root }) {
     probes.workingTreeError = `no worktree found for branch "${branch}" — cannot check for uncommitted changes`;
   }
 
-  const defaultBranch = detectDefaultBranch(root);
+  // Derived from PR state via `gh`, not git ancestry: this framework merges
+  // via `--admin squash` (finalisation Step 12), which leaves no ancestry
+  // link, so an `--is-ancestor` check is always false for a squash-merged
+  // branch — the exact FR-12 resume scenario this probe exists to catch.
+  // `pr list --state merged` is decisive on success (empty = not merged,
+  // non-empty = merged) and never errors merely because no PR was ever
+  // opened, unlike `pr view`.
   try {
-    execFileSync('git', ['-C', root, 'merge-base', '--is-ancestor', `origin/${branch}`, `origin/${defaultBranch}`], { encoding: 'utf8' });
-    probes.branchMergedToDefault = true;
+    const args = ['pr', 'list', '--head', branch, '--state', 'merged', '--json', 'mergedAt,state'];
+    if (repo) args.push('--repo', repo);
+    const out = execFileSync('gh', args, { encoding: 'utf8' });
+    const parsed = JSON.parse(out);
+    probes.branchMergedToDefault = Array.isArray(parsed) && parsed.some((pr) => Boolean(pr.mergedAt));
   } catch (err) {
-    // Exit code 1 means "not an ancestor" — a legitimate, well-formed answer
-    // of "not merged yet". Any other failure (unknown ref, no network, no
-    // git binary) means the question is unanswerable, not that the answer is
-    // "no" — those are recorded as mergeCheckError rather than false.
-    if (err.status === 1) {
-      probes.branchMergedToDefault = false;
-    } else {
-      probes.mergeCheckError = `cannot determine merge state of "${branch}" against "${defaultBranch}": ${err.message}`;
-    }
+    probes.mergeCheckError = `cannot determine merge state of "${branch}" via gh pr list: ${err.message}`;
   }
 
   // Best-effort: pinning gh's exact `pr checks` output shape against a live
