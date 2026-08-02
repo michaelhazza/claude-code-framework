@@ -758,6 +758,12 @@
       "substituteAt": "never"
     },
     {
+      "path": "references/runtime-roles.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": ".claude/skills/wargame/SKILL.md",
       "category": "skill",
       "mode": "sync",
