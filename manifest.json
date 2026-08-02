@@ -62,6 +62,18 @@
       "substituteAt": "never"
     },
     {
+      "path": ".claude/hooks/path-portability-guard.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": ".claude/hooks/path-portability-guard.test.js",
+      "category": "hook",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": ".claude/hooks/phase-lock.js",
       "category": "hook",
       "mode": "sync",

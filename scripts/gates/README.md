@@ -111,9 +111,19 @@ Flags duplicate registrations on the same method + path key in a downstream regi
 
 Exit: `0` clean, `2` violations (warning-first default — set `VERIFY_DUPLICATE_REGISTRATIONS_EXIT=1` to promote to blocking), `1` internal/tool error, misconfiguration, or unresolvable `typescript` (fail closed).
 
+### verify-portable-paths.sh
+
+Every tracked path must be checkout-able on Windows, macOS, and Linux. One bad filename breaks `git pull` for every Windows clone (2026-08-01 incident: a review log with colons in its ISO timestamp blocked all Windows pulls until renamed via index plumbing). Checks per tracked path: invalid characters (`< > : " \ | ? *`, control chars), trailing dot/space components, reserved Windows device names (`CON PRN AUX NUL COM1-9 LPT1-9`), and case-collisions. Enumerates via `git ls-files -z` (newline-proof); a zero-path scan fails (proof-of-life). Runtime prevention lives in the `path-portability-guard.js` PreToolUse hook; this gate is the CI backstop for files created outside `Write` (bash redirects, generators).
+
+| Knob | Default | Meaning |
+|---|---|---|
+| `--paths-file <file>` | unset | Newline-delimited path list override — fixture-test mode (`verify-portable-paths.fixture-test.sh`) |
+
+Exit: `0` clean, `1` violations or zero paths scanned (fail closed).
+
 ## Guards for the guards
 
-The directory holds **8 gates + 1 meta-validator + README**. The meta-validator is not a counted gate.
+The directory holds **9 gates + 1 gate fixture test + 1 meta-validator + README**. The meta-validator and the fixture test are not counted gates.
 
 ### verify-gate-syntax.sh
 
