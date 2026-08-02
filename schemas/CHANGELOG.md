@@ -1,6 +1,6 @@
 # Schema CHANGELOG
 
-## build-status.v2 — additive runtime-identity fields (2026-08-02, framework 2.61.4)
+## build-status.v2 — additive runtime-identity fields (2026-08-02, framework 2.62.0)
 
 **`build-status.schema.json` — new OPTIONAL top-level `runtime` object and new OPTIONAL `runtime`/`role` string keys on `log[]` items. `contract_version` unchanged at `build-status.v2`; no enum changes; nothing to migrate.**
 
@@ -10,7 +10,7 @@ Part of the runtime-neutral pilot (`framework-runtime-neutral-v3`, spec §12.A C
 
 **Consumers must:** nothing. Both `runtime` objects are `additionalProperties: false`, so the new keys had to be declared in their respective `properties` — done here. The structural floor in `status-contract.mjs` derives its checks from the schema, so the new fields validate automatically on sync.
 
-## work-packet.v1 / completion-packet.v1 — new schemas (2026-08-02, framework 2.61.3)
+## work-packet.v1 / completion-packet.v1 — new schemas (2026-08-02, framework 2.62.0)
 
 **New files: `schemas/work-packet.schema.json` and `schemas/completion-packet.schema.json`. Both draft-07, `additionalProperties: false`, versioned via a `contract_version` const. Part of the runtime-neutral pilot (`framework-runtime-neutral-v3`, spec §12.A Chunk A1, FR-2/FR-3).**
 
