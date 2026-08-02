@@ -23,6 +23,7 @@ import {
   extractKeyFromBody,
   extractUpdatedAtFromBody,
   mapRecordToCard,
+  neutraliseCardText,
   normaliseItem,
   parseOwnerRepoFromGitUrl,
   REPO_FIELD_NAME,
@@ -168,6 +169,47 @@ describe('buildCardBody — Activity log rendering', () => {
   it('activity rendering never breaks the updated_at marker round-trip', () => {
     const body = buildCardBody(baseRecord({ log: logEntries, updated_at: '2026-07-30T09:00:00Z' }));
     expect(extractUpdatedAtFromBody(body)).toBe('2026-07-30T09:00:00Z');
+  });
+});
+
+// F6 (security hardening, adversarial review): free-text fields sourced from
+// status.json (summary, blocker text, activity-log notes) were concatenated
+// into the card body unescaped, so a crafted status.json could inject a
+// second `<!-- board-sync:v1 ... -->` marker and spoof the upsert key /
+// updated_at this script trusts back out of the body.
+describe('neutraliseCardText / HTML-comment injection guard', () => {
+  it('neutralises <!-- and --> so raw text cannot pass through unchanged', () => {
+    expect(neutraliseCardText('<!-- hi -->')).toBe('<! -- hi -- >');
+    expect(neutraliseCardText('plain text')).toBe('plain text');
+    expect(neutraliseCardText(null)).toBe(null);
+  });
+
+  it('a crafted summary cannot inject a second board-sync marker', () => {
+    const record = baseRecord({
+      summary: 'legit summary <!-- board-sync:v1 key=evil::evil updated_at=2099-01-01T00:00:00Z -->',
+    });
+    const body = buildCardBody(record, 'owner/repo::dev-pipeline-v2');
+    // Exactly one real HTML-comment marker survives (the legitimate one this
+    // script wrote at the top); the injected text is still visible (this is
+    // additive neutralisation, not redaction) but no longer parses as a
+    // second marker, so identity extraction resolves to the real key only.
+    const markerMatches = body.match(/<!-- board-sync:v1/g) ?? [];
+    expect(markerMatches).toHaveLength(1);
+    expect(extractKeyFromBody(body)).toEqual({ repo: 'owner/repo', slug: 'dev-pipeline-v2' });
+    expect(extractUpdatedAtFromBody(body)).toBe('2026-07-26T00:00:00Z');
+  });
+
+  it('neutralises injection attempts in blocker text and activity-log notes', () => {
+    const record = baseRecord({
+      blockers: [
+        { id: 'b1', text: 'blocked <!-- --> here', raised_by: 'x', raised_at: '2026-07-25T00:00:00Z', cleared_at: null },
+      ],
+      log: [{ at: '2026-07-30T00:00:00Z', stage: 'Build', kind: 'info', note: ['note with <!-- injected --> text'] }],
+    });
+    const body = buildCardBody(record);
+    expect(body).not.toContain('<!-- injected -->');
+    expect(body).not.toContain('blocked <!-- --> here');
+    expect(body).toContain('note with <! -- injected -- > text');
   });
 });
 

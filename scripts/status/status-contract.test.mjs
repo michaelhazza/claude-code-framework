@@ -252,7 +252,7 @@ describe('validateRecordShape — Ajv unavailable (the structural floor)', () =>
 
   // -------------------------------------------------------------------------
   // Runtime-identity fields (top-level `runtime` object and `log[]`
-  // `runtime`/`role` keys, optional/additive — 2.61.4). Both are
+  // `runtime`/`role` keys, optional/additive — 2.62.0). Both are
   // additionalProperties: false, so the additive proof is that a record with
   // NONE of these keys still validates, and a record carrying all of them
   // also validates once the keys are declared in `properties`.

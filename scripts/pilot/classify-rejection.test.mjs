@@ -88,4 +88,51 @@ describe('classifyRejection', () => {
     const result = classifyRejection(probes);
     expect(result.verdict).toBe('INCONCLUSIVE');
   });
+
+  // F2 (security hardening, adversarial review): a run missing one of the 7
+  // canonical probes must not be able to reach PASS on the strength of the
+  // probes that DID run.
+  describe('completeness check (F2)', () => {
+    it('returns PASS when the complete canonical probe set ran and all met expectations', () => {
+      const result = classifyRejection(passingProbes());
+      expect(result.verdict).toBe('PASS');
+    });
+
+    it('returns INCONCLUSIVE, naming it, when a required forbidden probe never ran', () => {
+      const probes = passingProbes().filter((p) => p.name !== 'force-push-default');
+      const result = classifyRejection(probes);
+      expect(result.verdict).toBe('INCONCLUSIVE');
+      expect(result.reasons.some((r) => r.includes('force-push-default'))).toBe(true);
+    });
+
+    it('names multiple missing probes together', () => {
+      const probes = passingProbes().filter(
+        (p) => p.name !== 'delete-default-branch' && p.name !== 'agent-approval-claude-pr',
+      );
+      const result = classifyRejection(probes);
+      expect(result.verdict).toBe('INCONCLUSIVE');
+      expect(result.reasons.some((r) => r.includes('delete-default-branch') && r.includes('agent-approval-claude-pr'))).toBe(true);
+    });
+
+    it('a FAIL still outranks a missing-probe INCONCLUSIVE', () => {
+      const probes = passingProbes().filter((p) => p.name !== 'force-push-default');
+      probes[0] = { name: 'positive-control', action: 'push-feature-branch-open-pr', expected: 'allowed', observed: 'rejected' };
+      const result = classifyRejection(probes);
+      expect(result.verdict).toBe('FAIL');
+    });
+
+    it('opts.requiredProbes overrides the default canonical set (testability seam)', () => {
+      const probes = [{ name: 'custom-probe', action: 'x', expected: 'allowed', observed: 'allowed' }];
+      const result = classifyRejection(probes, { requiredProbes: ['custom-probe'] });
+      expect(result.verdict).toBe('PASS');
+    });
+
+    it('an overridden required set still reports what is missing', () => {
+      const result = classifyRejection([{ name: 'a', action: 'x', expected: 'allowed', observed: 'allowed' }], {
+        requiredProbes: ['a', 'b'],
+      });
+      expect(result.verdict).toBe('INCONCLUSIVE');
+      expect(result.reasons.some((r) => r.includes('b'))).toBe(true);
+    });
+  });
 });

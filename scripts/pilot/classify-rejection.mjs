@@ -23,6 +23,22 @@ import { fileURLToPath } from 'node:url';
 const VALID_EXPECTED = new Set(['rejected', 'allowed']);
 const VALID_OBSERVED = new Set(['rejected', 'allowed', 'error']);
 
+// The 7 canonical probes rejection-test.sh emits (spec §13.4/§13.5, §14).
+// F2 (security hardening, adversarial review): a run that never attempted
+// (say) the delete-default-branch probe — because the script errored out
+// early, or a future edit dropped a probe — must not be able to reach PASS
+// just because every probe that DID run happened to succeed. Overridable via
+// opts.requiredProbes for testability.
+const DEFAULT_REQUIRED_PROBES = [
+  'positive-control',
+  'direct-push-default',
+  'force-push-default',
+  'delete-default-branch',
+  'merge-without-approval',
+  'agent-approval-openclaw-pr',
+  'agent-approval-claude-pr',
+];
+
 /**
  * @typedef {Object} ProbeResult
  * @property {string} [name]
@@ -47,12 +63,19 @@ const VALID_OBSERVED = new Set(['rejected', 'allowed', 'error']);
  *  - A definitive FAIL always outranks an INCONCLUSIVE when both are
  *    present in the same run: a proven security failure is a stronger
  *    signal than an unproven probe, so FAIL wins the verdict.
- *  - All expected outcomes met (and no errors) -> PASS.
+ *  - F2: PASS additionally requires every probe in the required set (the 7
+ *    canonical probes by default, see DEFAULT_REQUIRED_PROBES) to have run
+ *    at all. A required probe absent from the input -> INCONCLUSIVE, naming
+ *    the missing probe(s), even when every probe that DID run succeeded.
+ *  - All expected outcomes met (and no errors, and nothing required is
+ *    missing) -> PASS.
  *
  * @param {ProbeResult[]} probeResults
+ * @param {{requiredProbes?: string[]}} [opts] - requiredProbes overrides
+ *   DEFAULT_REQUIRED_PROBES (testability seam).
  * @returns {{verdict: 'PASS'|'FAIL'|'INCONCLUSIVE', reasons: string[]}}
  */
-export function classifyRejection(probeResults) {
+export function classifyRejection(probeResults, opts = {}) {
   try {
     if (!Array.isArray(probeResults) || probeResults.length === 0) {
       return {
@@ -61,8 +84,11 @@ export function classifyRejection(probeResults) {
       };
     }
 
+    const requiredProbes = Array.isArray(opts.requiredProbes) ? opts.requiredProbes : DEFAULT_REQUIRED_PROBES;
+
     const failReasons = [];
     const inconclusiveReasons = [];
+    const seenNames = new Set();
 
     for (const probe of probeResults) {
       if (!probe || typeof probe !== 'object' || Array.isArray(probe)) {
@@ -71,6 +97,7 @@ export function classifyRejection(probeResults) {
       }
 
       const { name, action, expected, observed, detail } = probe;
+      if (typeof name === 'string') seenNames.add(name);
       const label = name || action || '(unnamed probe)';
 
       if (!VALID_EXPECTED.has(expected) || !VALID_OBSERVED.has(observed)) {
@@ -93,6 +120,13 @@ export function classifyRejection(probeResults) {
           : `expected-allowed action "${action}" was OBSERVED REJECTED (positive control failed)`;
         failReasons.push(`${label}: ${message}${detail ? ` — ${detail}` : ''}`);
       }
+    }
+
+    const missingProbes = requiredProbes.filter((requiredName) => !seenNames.has(requiredName));
+    if (missingProbes.length > 0) {
+      inconclusiveReasons.unshift(
+        `missing required probe(s): ${missingProbes.join(', ')} — cannot confirm PASS without every canonical probe having run`,
+      );
     }
 
     if (failReasons.length > 0) {

@@ -64,6 +64,13 @@
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
+# F4 (security hardening, adversarial review): refuse to run under xtrace —
+# `set -x` would echo BUILDER_PUSH_URL (which embeds the raw token) to the
+# terminal/log on every command.
+case $- in
+  *x*) echo "rejection-test: refusing to run under set -x (token exposure risk)" >&2; exit 1 ;;
+esac
+
 BUILDER_TOKEN="${OPENCLAW_BUILDER_TOKEN:-${MYATDEVELOPMENT_TOKEN:-}}"
 PILOT_REPO="${OPENCLAW_PILOT_REPO:-}"
 DEFAULT_BRANCH="${OPENCLAW_DEFAULT_BRANCH:-main}"
@@ -105,6 +112,34 @@ emit_probe() {
     process.stdout.write(JSON.stringify(probe) + "\n");
   ' "$name" "$action" "$expected" "$observed" "$detail" >> "$LOG_FILE"
   echo "rejection-test: probe '$name' -> expected=$expected observed=$observed" >&2
+}
+
+# F1 (security hardening, adversarial review): a forbidden probe (direct
+# push, force-push, delete-default, unapproved merge) that merely NON-ZERO
+# EXITS is not proof GitHub's ruleset rejected it — a wrong
+# OPENCLAW_DEFAULT_BRANCH, a transient 5xx, or an expired token all exit
+# non-zero too, and previously that was recorded as "rejected" (a false
+# PASS). This classifies the captured stderr against known branch-
+# protection/ruleset signals before calling it "rejected"; anything else on
+# a non-zero exit is "error" (-> INCONCLUSIVE downstream), never a silent
+# false PASS. Sets PROBE_OBSERVED and PROBE_DETAIL; the token is scrubbed
+# from PROBE_DETAIL before it is ever stored or emitted.
+# $1=exit-code $2=captured-stderr
+classify_forbidden_probe() {
+  local exit_code="$1" stderr_output="$2" scrubbed
+  scrubbed="${stderr_output//$BUILDER_TOKEN/***}"
+  if [ "$exit_code" -eq 0 ]; then
+    PROBE_OBSERVED="allowed"
+    PROBE_DETAIL=""
+    return
+  fi
+  if printf '%s' "$scrubbed" | grep -qiE 'protected branch|GH006|Changes must be made through a pull request|Review required|required status check|refusing to allow|(status: *)?422'; then
+    PROBE_OBSERVED="rejected"
+    PROBE_DETAIL=""
+  else
+    PROBE_OBSERVED="error"
+    PROBE_DETAIL="$scrubbed"
+  fi
 }
 
 WORKDIR="$(mktemp -d -t openclaw-rejection-test-workdir-XXXXXX 2>/dev/null || mktemp -d)"
@@ -151,35 +186,51 @@ else
   echo "openclaw rejection-test direct-push probe" >> "openclaw-rejection-direct.txt"
   git add "openclaw-rejection-direct.txt"
   git commit --quiet -m "openclaw rejection-test: direct-push probe (must be rejected)"
-  if git push --quiet origin "$DEFAULT_BRANCH" 2>/dev/null; then
+  DIRECT_PUSH_STDERR="$(git push --quiet origin "$DEFAULT_BRANCH" 2>&1 >/dev/null)"
+  classify_forbidden_probe "$?" "$DIRECT_PUSH_STDERR"
+  if [ "$PROBE_OBSERVED" = "allowed" ]; then
     emit_probe "direct-push-default" "direct-push" "rejected" "allowed" "push to $DEFAULT_BRANCH SUCCEEDED — should have been rejected"
-  else
+  elif [ "$PROBE_OBSERVED" = "rejected" ]; then
     emit_probe "direct-push-default" "direct-push" "rejected" "rejected"
+  else
+    emit_probe "direct-push-default" "direct-push" "rejected" "error" "$PROBE_DETAIL"
   fi
   git reset --hard --quiet "origin/$DEFAULT_BRANCH" 2>/dev/null || true
 
   # --- Probe 3: force-push to default ---
   git commit --quiet --allow-empty -m "openclaw rejection-test: force-push probe (must be rejected)"
-  if git push --force --quiet origin "$DEFAULT_BRANCH" 2>/dev/null; then
+  FORCE_PUSH_STDERR="$(git push --force --quiet origin "$DEFAULT_BRANCH" 2>&1 >/dev/null)"
+  classify_forbidden_probe "$?" "$FORCE_PUSH_STDERR"
+  if [ "$PROBE_OBSERVED" = "allowed" ]; then
     emit_probe "force-push-default" "force-push" "rejected" "allowed" "force-push to $DEFAULT_BRANCH SUCCEEDED — should have been rejected"
-  else
+  elif [ "$PROBE_OBSERVED" = "rejected" ]; then
     emit_probe "force-push-default" "force-push" "rejected" "rejected"
+  else
+    emit_probe "force-push-default" "force-push" "rejected" "error" "$PROBE_DETAIL"
   fi
   git reset --hard --quiet "origin/$DEFAULT_BRANCH" 2>/dev/null || true
 
   # --- Probe 4: delete the default branch ---
-  if git push --quiet origin --delete "$DEFAULT_BRANCH" 2>/dev/null; then
+  DELETE_BRANCH_STDERR="$(git push --quiet origin --delete "$DEFAULT_BRANCH" 2>&1 >/dev/null)"
+  classify_forbidden_probe "$?" "$DELETE_BRANCH_STDERR"
+  if [ "$PROBE_OBSERVED" = "allowed" ]; then
     emit_probe "delete-default-branch" "delete-branch" "rejected" "allowed" "deletion of $DEFAULT_BRANCH SUCCEEDED — should have been rejected"
-  else
+  elif [ "$PROBE_OBSERVED" = "rejected" ]; then
     emit_probe "delete-default-branch" "delete-branch" "rejected" "rejected"
+  else
+    emit_probe "delete-default-branch" "delete-branch" "rejected" "error" "$PROBE_DETAIL"
   fi
 
   if [ -n "$PR_URL" ]; then
     # --- Probe 5: merge the open PR with no code-owner approval ---
-    if GH_TOKEN="$BUILDER_TOKEN" gh pr merge --repo "$PILOT_REPO" "$PR_URL" --squash --auto=false 2>/dev/null; then
+    MERGE_STDERR="$(GH_TOKEN="$BUILDER_TOKEN" gh pr merge --repo "$PILOT_REPO" "$PR_URL" --squash --auto=false 2>&1 >/dev/null)"
+    classify_forbidden_probe "$?" "$MERGE_STDERR"
+    if [ "$PROBE_OBSERVED" = "allowed" ]; then
       emit_probe "merge-without-approval" "merge-pr" "rejected" "allowed" "builder merged $PR_URL with no code-owner approval — should have been rejected"
-    else
+    elif [ "$PROBE_OBSERVED" = "rejected" ]; then
       emit_probe "merge-without-approval" "merge-pr" "rejected" "rejected"
+    else
+      emit_probe "merge-without-approval" "merge-pr" "rejected" "error" "$PROBE_DETAIL"
     fi
 
     # --- Probe 6a: an agent-identity approval does not satisfy code-owner
@@ -202,26 +253,38 @@ else
   # Opened under the CALLER's ambient `gh` auth (Michael/Claude
   # administrator credential), never the builder token, so the PR's
   # authorship is genuinely non-builder.
-  CLAUDE_BRANCH="claude-rejection-probe-$$"
-  git checkout "$DEFAULT_BRANCH" --quiet 2>/dev/null
-  git checkout -b "$CLAUDE_BRANCH" --quiet
-  echo "claude-authored rejection-test probe $(date -u +%FT%TZ)" >> "claude-rejection-probe.txt"
-  git add "claude-rejection-probe.txt"
-  git commit --quiet -m "openclaw rejection-test: claude-authored PR for agent-approval probe"
-  if git push --quiet "$AMBIENT_PUSH_URL" "HEAD:refs/heads/$CLAUDE_BRANCH" 2>/dev/null \
-      && CLAUDE_PR_URL=$(gh pr create --repo "$PILOT_REPO" --head "$CLAUDE_BRANCH" \
-          --title "openclaw rejection-test: claude-authored probe" --body "Automated probe — safe to close/delete." 2>/dev/null); then
-    GH_TOKEN="$BUILDER_TOKEN" gh pr review --repo "$PILOT_REPO" "$CLAUDE_PR_URL" --approve --body "agent approval (should not satisfy code-owner review)" >/dev/null 2>&1
-    CLAUDE_DECISION=$(gh pr view --repo "$PILOT_REPO" "$CLAUDE_PR_URL" --json reviewDecision --jq .reviewDecision 2>/dev/null)
-    if [ "$CLAUDE_DECISION" = "APPROVED" ]; then
-      emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "allowed" "agent approval satisfied review decision on a Claude-authored PR — should not have"
-    elif [ -z "$CLAUDE_DECISION" ]; then
-      emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "error" "could not read reviewDecision for $CLAUDE_PR_URL"
-    else
-      emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "rejected" "reviewDecision=$CLAUDE_DECISION"
-    fi
+  #
+  # F3 (security hardening, adversarial review): if the ambient credential
+  # resolves to the SAME login as the builder identity (or is unauthenticated
+  # entirely), the "Claude-authored" PR below would in fact be builder-
+  # authored, silently defeating the probe. Verify the two identities differ
+  # BEFORE creating anything; neither token is ever printed.
+  AMBIENT_LOGIN="$(gh api user --jq .login 2>/dev/null)"
+  BUILDER_LOGIN="$(GH_TOKEN="$BUILDER_TOKEN" gh api user --jq .login 2>/dev/null)"
+  if [ -z "$AMBIENT_LOGIN" ] || [ "$AMBIENT_LOGIN" = "$BUILDER_LOGIN" ]; then
+    emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "error" "could not obtain a non-builder authoring identity"
   else
-    emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "error" "could not open the claude-authored probe PR under the ambient credential"
+    CLAUDE_BRANCH="claude-rejection-probe-$$"
+    git checkout "$DEFAULT_BRANCH" --quiet 2>/dev/null
+    git checkout -b "$CLAUDE_BRANCH" --quiet
+    echo "claude-authored rejection-test probe $(date -u +%FT%TZ)" >> "claude-rejection-probe.txt"
+    git add "claude-rejection-probe.txt"
+    git commit --quiet -m "openclaw rejection-test: claude-authored PR for agent-approval probe"
+    if git push --quiet "$AMBIENT_PUSH_URL" "HEAD:refs/heads/$CLAUDE_BRANCH" 2>/dev/null \
+        && CLAUDE_PR_URL=$(gh pr create --repo "$PILOT_REPO" --head "$CLAUDE_BRANCH" \
+            --title "openclaw rejection-test: claude-authored probe" --body "Automated probe — safe to close/delete." 2>/dev/null); then
+      GH_TOKEN="$BUILDER_TOKEN" gh pr review --repo "$PILOT_REPO" "$CLAUDE_PR_URL" --approve --body "agent approval (should not satisfy code-owner review)" >/dev/null 2>&1
+      CLAUDE_DECISION=$(gh pr view --repo "$PILOT_REPO" "$CLAUDE_PR_URL" --json reviewDecision --jq .reviewDecision 2>/dev/null)
+      if [ "$CLAUDE_DECISION" = "APPROVED" ]; then
+        emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "allowed" "agent approval satisfied review decision on a Claude-authored PR — should not have"
+      elif [ -z "$CLAUDE_DECISION" ]; then
+        emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "error" "could not read reviewDecision for $CLAUDE_PR_URL"
+      else
+        emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "rejected" "reviewDecision=$CLAUDE_DECISION"
+      fi
+    else
+      emit_probe "agent-approval-claude-pr" "approve-pr" "rejected" "error" "could not open the claude-authored probe PR under the ambient credential"
+    fi
   fi
 fi
 

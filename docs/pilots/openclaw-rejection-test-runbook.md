@@ -13,6 +13,8 @@ All of the following must exist **before** this test is run. If any is missing, 
 1. **A disposable pilot GitHub repository.** Never run this against a production repository — several probes deliberately attempt destructive actions (direct push, force-push, branch deletion) against its default branch, and the whole point of the test is to prove GitHub rejects them.
 2. **The dedicated OpenClaw builder identity/token** (per-consumer configuration; the identity is `myatdevelopment` for this project — spec §9). Branch-write and PR rights only: no Admin role, no ruleset bypass, never used by Claude sessions.
 3. **The default-branch ruleset + CODEOWNERS installed on the pilot repo**, per spec §9 "Required default-branch rules": restrict updates and deletion, require a PR plus one code-owner approval after the latest push, block force pushes, and never grant the builder identity a bypass. CODEOWNERS assigns all paths to Michael, so only Michael's approval satisfies the approval requirement. Consumer-facing templates for both are shipped separately (`templates/CODEOWNERS.template`, `templates/default-branch-ruleset.json`).
+
+   **Operator note:** if the ruleset's required status check is configured, pin it by `integration_id`, not just by context name. GitHub matches a required status check on context-name string alone; if any non-trusted app or workflow can post a check with the same context name, it can satisfy the requirement without the trusted check having run at all. Pinning the integration id closes that gap.
 4. **`gh` and `git` on `PATH`, both usable non-interactively.**
 
 ## Environment variables

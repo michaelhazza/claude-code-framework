@@ -248,6 +248,18 @@ export function extractUpdatedAtFromBody(body) {
   return match ? match[1] : null;
 }
 
+/** Neutralises HTML-comment delimiters in free-text fields rendered into a
+ *  card body (summary, blocker text, activity-log notes), so a crafted
+ *  status.json cannot inject a second `<!-- board-sync:v1 ... -->` marker
+ *  (spoofing the upsert key/updated_at this script trusts back out of the
+ *  body) or otherwise break out into raw markdown via an HTML comment.
+ *  Additive and non-behavioural for normal text: only the literal `<!--` /
+ *  `-->` delimiter sequences are altered, never surrounding text. */
+export function neutraliseCardText(text) {
+  if (typeof text !== 'string') return text;
+  return text.replace(/<!--/g, '<! --').replace(/-->/g, '-- >');
+}
+
 /** Card body: hidden updated_at marker, then the human-readable
  *  branch/PR/blockers/updated_at/summary fields the contract assigns to
  *  the body rather than to custom fields, then the Activity section
@@ -266,11 +278,11 @@ export function buildCardBody(record, key = null) {
   lines.push(`**PR:** ${record.pr === null || record.pr === undefined ? 'none' : `#${record.pr}`}`);
   lines.push(`**Blockers:** ${record.blockers.length}`);
   for (const blocker of record.blockers) {
-    lines.push(`- [${blocker.cleared_at ? 'cleared' : 'open'}] ${blocker.text}`);
+    lines.push(`- [${blocker.cleared_at ? 'cleared' : 'open'}] ${neutraliseCardText(blocker.text)}`);
   }
   lines.push(`**Updated:** ${record.updated_at}`);
   lines.push('');
-  lines.push(record.summary);
+  lines.push(neutraliseCardText(record.summary));
   // Activity log (schema `log[]`, optional/additive — absent in pre-2.61.0
   // records): the operator-facing build history, rendered newest-first so
   // opening the card answers "what is it doing / what has it done" without
@@ -287,7 +299,7 @@ export function buildCardBody(record, key = null) {
       lines.push('');
       lines.push(`**${entry.at} — ${entry.stage} (${kindLabel})**`);
       for (const bullet of entry.note) {
-        lines.push(`- ${bullet}`);
+        lines.push(`- ${neutraliseCardText(bullet)}`);
       }
     }
     const hidden = log.length - shown.length;
