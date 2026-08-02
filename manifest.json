@@ -980,6 +980,24 @@
       "substituteAt": "never"
     },
     {
+      "path": "scripts/packet-contract/validate-packet.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/validate-packet.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/fixtures/*.json",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/adopt-ci-templates.mjs",
       "category": "helper-script",
       "mode": "sync",
