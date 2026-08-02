@@ -1022,6 +1022,18 @@
       "substituteAt": "never"
     },
     {
+      "path": "scripts/status/recovery-checks.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/status/recovery-checks.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/packet-contract/validate-packet.mjs",
       "category": "helper-script",
       "mode": "sync",

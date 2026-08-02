@@ -18,6 +18,7 @@ import {
   checkBoardContract,
   checkBoardHygiene,
   chooseSurvivor,
+  classifyBoardPermissionError,
   decideCardAction,
   extractKeyFromBody,
   extractUpdatedAtFromBody,
@@ -795,5 +796,41 @@ describe('checkBoardHygiene', () => {
 
   it('says nothing when Status is absent — checkBoardContract owns that refusal', async () => {
     expect(await checkBoardHygiene({})).toEqual([]);
+  });
+});
+
+// FR-6, spec §6A "Projects V2 -> permission diagnostics only"; §14 "missing
+// Project permission degradation". classifyBoardPermissionError is what the
+// syncBoard catch blocks call on a swallowed gh failure so it is diagnosable
+// rather than a generic "gh failure". Board-sync's thin I/O layer is
+// deliberately untested by design (see file header), so this exercises the
+// classifier directly against a simulated missing-permission `gh` response —
+// the same shape syncBoard's catch would pass it.
+describe('classifyBoardPermissionError', () => {
+  it('classifies a missing-project-scope gh error', () => {
+    const err = new Error(
+      "gh: Your token has not been granted the required scopes to execute this query. The 'project' scope is required."
+    );
+    expect(classifyBoardPermissionError(err)).toBe('MISSING_PROJECT_SCOPE');
+  });
+
+  it('classifies a resource-not-accessible gh error as missing board access', () => {
+    const err = new Error('HTTP 403: Resource not accessible by integration');
+    expect(classifyBoardPermissionError(err)).toBe('MISSING_BOARD_ACCESS');
+  });
+
+  it('classifies a bad-credentials gh error as UNKNOWN (auth-shaped, not scope- or access-specific)', () => {
+    const err = new Error('HTTP 401: Bad credentials');
+    expect(classifyBoardPermissionError(err)).toBe('UNKNOWN');
+  });
+
+  it('returns null for an unrelated gh failure — does not mislabel a generic error', () => {
+    const err = new Error('connect ETIMEDOUT 140.82.112.3:443');
+    expect(classifyBoardPermissionError(err)).toBe(null);
+  });
+
+  it('handles a non-Error input without throwing', () => {
+    expect(classifyBoardPermissionError('plain string, not an Error')).toBe(null);
+    expect(classifyBoardPermissionError(undefined)).toBe(null);
   });
 });

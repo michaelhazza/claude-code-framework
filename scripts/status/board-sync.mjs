@@ -371,6 +371,33 @@ export function shouldArchive(record, now) {
   return ageMs >= ARCHIVE_AFTER_MS;
 }
 
+/** Classifies a `gh` failure as a named permission diagnostic when its
+ *  message matches a known missing-scope / missing-access shape (FR-6, spec
+ *  §6A "Projects V2 -> permission diagnostics only"), so a swallowed board
+ *  failure is diagnosable ("your token lacks the project scope") rather than
+ *  a generic "gh failure" pointing the operator nowhere. Purely
+ *  informational — the board stays a non-blocking projection regardless of
+ *  the result (see the asymmetric error-handling contract above); this never
+ *  turns the board into a gate, it only labels a swallowed failure. Returns
+ *  null when the message shows no permission signal at all, so an unrelated
+ *  gh failure (network, rate limit, malformed JSON) is not mislabelled. */
+export function classifyBoardPermissionError(err) {
+  const message = typeof err?.message === 'string' ? err.message : String(err ?? '');
+  const lower = message.toLowerCase();
+
+  if (lower.includes("'project' scope") || (lower.includes('scope') && lower.includes('project'))) {
+    return 'MISSING_PROJECT_SCOPE';
+  }
+  if (lower.includes('not accessible') || lower.includes('does not have access')
+      || lower.includes('permission') || lower.includes('forbidden') || /\b403\b/.test(lower)) {
+    return 'MISSING_BOARD_ACCESS';
+  }
+  if (lower.includes('unauthorized') || lower.includes('authentication') || /\b401\b/.test(lower)) {
+    return 'UNKNOWN';
+  }
+  return null;
+}
+
 /** Parses `owner/name` out of an `origin` remote URL (https or ssh form).
  *  Returns null when the URL isn't a recognisable github.com remote. */
 export function parseOwnerRepoFromGitUrl(url) {
@@ -849,7 +876,11 @@ async function syncBoard(root, repository, boardConfig) {
     projectId = fetchProjectId(boardConfig.owner, boardConfig.number);
     existingItems = fetchExistingItems(boardConfig.owner, boardConfig.number);
   } catch (err) {
-    console.warn(`[board-sync] gh failure reading board state — recorded, non-blocking: ${err.message}`);
+    const diagnostic = classifyBoardPermissionError(err);
+    console.warn(
+      `[board-sync] gh failure reading board state — recorded, non-blocking: ${err.message}`
+      + (diagnostic ? ` [diagnostic: ${diagnostic}]` : '')
+    );
     return;
   }
 
@@ -931,7 +962,11 @@ async function syncBoard(root, repository, boardConfig) {
         archiveItem(boardCtx.owner, boardCtx.number, survivor.id);
       }
     } catch (err) {
-      console.warn(`[board-sync] gh failure syncing ${record.slug} — recorded, non-blocking: ${err.message}`);
+      const diagnostic = classifyBoardPermissionError(err);
+      console.warn(
+        `[board-sync] gh failure syncing ${record.slug} — recorded, non-blocking: ${err.message}`
+        + (diagnostic ? ` [diagnostic: ${diagnostic}]` : '')
+      );
     }
   }
 }
