@@ -32,6 +32,18 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.61.3 — 2026-08-02
+
+**Highlights:** Patch. Filename portability enforcement, prompted by a live incident: a dual-review log written from a Linux session with colons in its ISO timestamp (`...2026-08-01T21:14:58Z.md`) made `git pull` fail on every Windows clone of the consuming repo — Windows cannot create paths containing colons, so the branch was un-checkout-able until the file was renamed via index plumbing. Three layers ship: a PreToolUse hook that blocks non-portable filenames at write time on every OS, a CI gate that scans all tracked paths as the backstop for files created outside `Write` (bash redirects, generators), and the root-cause doc fix in `dual-reviewer.md`.
+
+**Added:**
+- `.claude/hooks/path-portability-guard.js` (+ test) — PreToolUse hook on `Write`: blocks Windows-invalid characters (colons etc.), trailing dots/spaces, and reserved device names (`CON`, `NUL`, `COM1-9`, …) in target paths; normalises drive-letter/UNC prefixes so absolute Windows paths don't false-positive; fails open. Registered under the `Write` matcher in `.claude/settings.json`.
+- `scripts/gates/verify-portable-paths.sh` (+ `verify-portable-paths.fixture-test.sh`) — CI gate over `git ls-files -z`: invalid characters, trailing dot/space components, reserved device names, case-collisions; a zero-path scan fails (proof-of-life). Consumers wire it as a static-gate step (see `scripts/gates/README.md`).
+
+**Changed:**
+- `.claude/agents/dual-reviewer.md` — log-filename timestamps now explicitly hyphenated (`2026-08-01T21-14-58Z`; shell `date -u +%Y-%m-%dT%H-%M-%SZ`), with colons named as forbidden. This file's ambiguous "ISO 8601 UTC timestamp" wording produced the incident filename.
+- `scripts/gates/README.md` — gate catalogue entry + directory count (9 gates + 1 gate fixture test + 1 meta-validator).
+
 ## 2.61.2 — 2026-07-31
 
 **Highlights:** Patch. Full audit of the status-contract surface across all three coordinators, prompted by the v2.61.1 find: every edge of the forward chain was checked for a matching write instruction, generator + board-sync pairing, and post-PLANNING-rename vocabulary. One more edge was missing: `feature-coordinator`'s own transition table promises `PLANNING → BUILDING` at Step 5 on plan approval, but no step body ever wrote it — the board sat on `PLANNING` through the entire construction phase (the longest phase of a build) and the `BUILDING` column could never show a live build. `finalisation-coordinator` (all four owned transitions plus the Step 11.5 back-edge and the terminal `MERGED` write), the status scripts (enums derived from the schema, no drift surface), `phase-lock.js`, and `verify-phase`'s gates-only writes all audited clean.
