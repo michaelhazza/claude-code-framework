@@ -1,5 +1,15 @@
 # Schema CHANGELOG
 
+## work-packet.v1 / completion-packet.v1 — new schemas (2026-08-02, framework 2.61.3)
+
+**New files: `schemas/work-packet.schema.json` and `schemas/completion-packet.schema.json`. Both draft-07, `additionalProperties: false`, versioned via a `contract_version` const. Part of the runtime-neutral pilot (`framework-runtime-neutral-v3`, spec §12.A Chunk A1, FR-2/FR-3).**
+
+These formalise, as machine-checkable contracts, dispatch/return shapes that already exist informally today: `work-packet.schema.json` (`contract_version: "work-packet.v1"`) mirrors the fields already carried in Claude Code agent dispatch prompts (objective, governing artefacts, allowed files/resources, dependencies, verification commands, output locations, prohibited actions, resume id), plus additive `role` and `runtime` fields for runtime-neutral dispatch. `completion-packet.schema.json` (`contract_version: "completion-packet.v1"`) mirrors the builder verdict block in `.claude/agents/builder.md` (Verdict / Files changed / Spec sections / What was implemented / Plan gap / G1 attempts / Notes for caller / DID NOT TOUCH); its `status` enum (`SUCCESS`, `PLAN_GAP`, `G1_FAILED`) is exactly the builder verdict set, no drift permitted.
+
+**Required set kept minimal** on both schemas so existing Claude Code dispatches map cleanly without every field being mandatory: work-packet requires `contract_version, packet_id, feature_slug, repo, branch, objective, role, runtime`; completion-packet requires `contract_version, packet_id, status, role, runtime, summary`. All other fields (arrays of strings, plus `tests[]` as `{name, result}` objects with `result` enum `pass`/`fail`/`skip`) are optional and additive.
+
+**Consumers must:** nothing yet — these schemas are declarative contracts with no wired validator in this chunk. `scripts/packet-contract/validate-packet.mjs` (framework-runtime-neutral-v3 Chunk A2) adds the round-trip harness and fixtures that exercise them against Ajv.
+
 ## build-status.v2 — additive `log[]` activity log (2026-07-30, framework 2.61.0)
 
 **`build-status.schema.json` — new OPTIONAL top-level `log[]` array. `contract_version` unchanged at `build-status.v2`; no enum changes; nothing to migrate.**
