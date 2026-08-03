@@ -1,5 +1,35 @@
 # Schema CHANGELOG
 
+## review-result.v2 — additive finding evidence fields (2026-08-03, framework 2.63.0)
+
+**`review-finding.schema.json` — new OPTIONAL `confidence`, `evidence_kind` and `verification_state` properties. `contract_version` unchanged at `review-result.v2`; no changes to existing enums; nothing to migrate.**
+
+Every finding already carried `source_refs` (where the reviewer looked) and `risk_domain` (what it touches), but nothing recorded how strongly the reviewer believed it or what kind of observation backed it. A triage loop cannot mechanically separate "read the file, this is broken" from "inferred from a diff hunk, might be broken" without that. `verification_state` deliberately reuses the `verified | inferred | assumed` vocabulary of the fable-mode reasoning overlay so reviewer output and reasoning discipline share one word set; `evidence_kind: reasoning_only` names the class most prone to hallucinated premises.
+
+**Why additive rather than a version bump:** identical reasoning to the `build-status.v2` entries below — a required field or a `contract_version` bump invalidates every stored review result in every consuming repo the moment the schema syncs, before any reviewer has emitted the new shape. All three fields are optional, and absence means "not rated", never a default of high confidence.
+
+**Consumers must:** nothing. Reviewers may start emitting the fields at any time; coordinators that do not read them are unaffected.
+
+## work-packet.v1 / completion-packet.v1 — additive execution policy (2026-08-03, framework 2.63.0)
+
+**`work-packet.schema.json` — new OPTIONAL `execution_policy` object. `completion-packet.schema.json` — new OPTIONAL `effective_policy` (via `definitions.executionPolicy`), `effective_policy_hash`, `policy_evaluation` and `policy_violations`. Both `contract_version` values unchanged; nothing to migrate.**
+
+`execution_policy` is capability-REMOVING dispatch metadata: `write_scope`, `protected_paths`, `destructive_actions`, `credential_access`, `network_egress` + `egress_allowlist`, `deploy_authority` (a `const false` — a policy can withhold deploy authority, never confer it) and `expires_at`. Normative semantics live in `references/execution-policy.md`; the computation lives in `scripts/packet-contract/execution-policyPure.mjs`.
+
+**Three decisions worth recording:**
+
+1. **Composition is a conjunction, not a merge.** A path is writable iff it matches `allowed_files` (when present) AND `write_scope` (when present) AND no `protected_paths` entry. Glob intersection is not computable over pattern strings — intersecting `server/**` with `**/*.test.ts` means "test files under server/", which no string operation on the two patterns yields — so both lists are carried and the conjunction is evaluated per path.
+2. **The hash covers normalized declarations, not a resolved file set.** A coordinator must be able to recompute it from the work packet alone to detect mutation between dispatch and return, and a resolved set cannot express authority over files that do not exist yet — which is most of what a builder writes.
+3. **The policy shape is duplicated** between the two schema files rather than `$ref`'d across them. `validate-packet.mjs` compiles each packet schema standalone with no `addSchema`, so a cross-file `$ref` would fail to resolve, be swallowed by the compile `try/catch`, and silently degrade that packet to the structural floor. `validate-packet.test.mjs` asserts every shared key stays identical and that `allowed_files` — folded into the echo so it is self-contained — is the only permitted divergence.
+
+**Validator change:** `validatePacket` now returns `{ok, errors, warnings}` (previously `{ok, errors}`) and runs `validatePacketSemantics` after the structural check in BOTH modes. The structural floor reads only top-level `required`/`enum`/`const`, so every nested policy invariant would otherwise be enforced with Ajv and silently ignored without it — a constraint that holds only where a devDependency happens to be installed is not a constraint. Deleting the semantic call fails 23 tests across both modes.
+
+**Scope boundary:** this ships declarations only. Recompute-and-compare of the hash, `expires_at` evaluation at dispatch, matching patterns against a real checkout, symlink handling, and cross-field reconciliation against `allowed_resources` belong to the later enforcement build. A packet carrying `execution_policy` grants nothing and blocks nothing on its own.
+
+**Why additive:** same reasoning as every entry below. All new fields are optional; a frozen pre-2.63.0 work packet and completion packet are asserted still-valid in the suite.
+
+**Consumers must:** nothing. Callers reading `.errors` are unaffected by the added `.warnings` key.
+
 ## build-status.v2 — additive runtime-identity fields (2026-08-02, framework 2.62.0)
 
 **`build-status.schema.json` — new OPTIONAL top-level `runtime` object and new OPTIONAL `runtime`/`role` string keys on `log[]` items. `contract_version` unchanged at `build-status.v2`; no enum changes; nothing to migrate.**

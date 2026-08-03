@@ -314,6 +314,12 @@
       "substituteAt": "never"
     },
     {
+      "path": "references/execution-policy.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "references/spec-review-directional-signals.md",
       "category": "reference",
       "mode": "sync",
@@ -1047,6 +1053,24 @@
     },
     {
       "path": "scripts/packet-contract/validate-packet.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/execution-policyPure.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/packet-semanticsPure.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/execution-policyPure.test.mjs",
       "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"

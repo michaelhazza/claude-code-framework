@@ -2,8 +2,126 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "completion-packet.schema.json",
   "title": "CompletionPacket",
-  "description": "Versioned return contract (FR-3) for any role reporting back to a coordinator, runtime-neutral. Contract version completion-packet.v1. Formalises the verdict block already produced informally by the Claude Code builder agent (.claude/agents/builder.md) — Verdict/Files changed/Spec sections/What was implemented/Plan gap/G1 attempts/Notes for caller/DID NOT TOUCH.",
-  "$comment": "status enum is exactly the builder verdict set (SUCCESS, PLAN_GAP, G1_FAILED) — no drift permitted; any new terminal a Builder can return requires a coordinated schema bump. commit_sha is nullable because a PLAN_GAP or G1_FAILED result, or a SUCCESS awaiting a coordinator-owned commit, has no commit yet.",
+  "description": "Versioned return contract (FR-3) for any role reporting back to a coordinator, runtime-neutral. Contract version completion-packet.v1. Formalises the verdict block already produced informally by the Claude Code builder agent (.claude/agents/builder.md) \u2014 Verdict/Files changed/Spec sections/What was implemented/Plan gap/G1 attempts/Notes for caller/DID NOT TOUCH.",
+  "$comment": "status enum is exactly the builder verdict set (SUCCESS, PLAN_GAP, G1_FAILED) \u2014 no drift permitted; any new terminal a Builder can return requires a coordinated schema bump. commit_sha is nullable because a PLAN_GAP or G1_FAILED result, or a SUCCESS awaiting a coordinator-owned commit, has no commit yet.",
+  "definitions": {
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The execution policy in force during a run, normalized per references/execution-policy.md. Structurally the work packet's execution_policy PLUS allowed_files: the effective policy folds in the work packet's top-level allowed_files so the object is self-contained and evaluable without the original packet. Semantics are conjunctive - a path is writable iff it matches allowed_files (when present) AND write_scope (when present) AND no protected_paths entry.",
+      "$comment": "Every key here except allowed_files is duplicated from work-packet.schema.json properties.execution_policy, because validate-packet.mjs compiles each packet schema standalone with no addSchema, so a cross-file $ref would fail to resolve, be swallowed by the compile try/catch, and silently degrade that packet to the structural floor. validate-packet.test.mjs asserts every shared key stays identical and that allowed_files is the ONLY permitted divergence.",
+      "properties": {
+        "allowed_files": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Folded copy of the work packet's top-level allowed_files, normalized. Conjunctive with write_scope."
+        },
+        "write_scope": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Repo-relative glob patterns this dispatch may write. Conjunctive with allowed_files: a path must match BOTH when both are present. An empty array means nothing is writable."
+        },
+        "protected_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Repo-relative glob patterns that must never be written, overriding allowed_files and write_scope."
+        },
+        "destructive_actions": {
+          "type": "string",
+          "enum": [
+            "forbidden",
+            "require_approval"
+          ]
+        },
+        "credential_access": {
+          "type": "string",
+          "enum": [
+            "none",
+            "read"
+          ]
+        },
+        "network_egress": {
+          "type": "string",
+          "enum": [
+            "none",
+            "allowlist"
+          ]
+        },
+        "egress_allowlist": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Permitted egress hosts. Only meaningful with network_egress: allowlist."
+        },
+        "deploy_authority": {
+          "const": false,
+          "description": "The only expressible value is false. A policy can withhold deploy authority but can never confer it; deployment stays operator-owned."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Instant after which this policy must not be honoured. Expiry is evaluated at dispatch time by the coordinator, not by this schema."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "network_egress": {
+                "const": "allowlist"
+              }
+            },
+            "required": [
+              "network_egress"
+            ]
+          },
+          "then": {
+            "required": [
+              "egress_allowlist"
+            ],
+            "properties": {
+              "egress_allowlist": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "egress_allowlist"
+            ]
+          },
+          "then": {
+            "required": [
+              "network_egress"
+            ],
+            "properties": {
+              "network_egress": {
+                "const": "allowlist"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
   "type": "object",
   "required": [
     "contract_version",
@@ -26,7 +144,11 @@
     },
     "status": {
       "type": "string",
-      "enum": ["SUCCESS", "PLAN_GAP", "G1_FAILED"]
+      "enum": [
+        "SUCCESS",
+        "PLAN_GAP",
+        "G1_FAILED"
+      ]
     },
     "role": {
       "type": "string",
@@ -59,7 +181,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "result"],
+        "required": [
+          "name",
+          "result"
+        ],
         "additionalProperties": false,
         "properties": {
           "name": {
@@ -68,7 +193,11 @@
           },
           "result": {
             "type": "string",
-            "enum": ["pass", "fail", "skip"]
+            "enum": [
+              "pass",
+              "fail",
+              "skip"
+            ]
           }
         }
       }
@@ -88,7 +217,10 @@
       }
     },
     "commit_sha": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1
     },
     "produced_artefacts": {
@@ -107,6 +239,33 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "effective_policy": {
+      "$ref": "#/definitions/executionPolicy",
+      "description": "The execution policy actually in force during this run, normalized per references/execution-policy.md. Echoed so a coordinator can detect divergence between what was dispatched and what the executing runtime believed it was bound by."
+    },
+    "effective_policy_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Lowercase SHA-256 over the canonical serialization of the normalized policy declarations (NOT a resolved file set), computed by normalizeExecutionPolicy in scripts/packet-contract/execution-policyPure.mjs. Declaration-level so a coordinator can recompute it from the work packet alone."
+    },
+    "policy_evaluation": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "violated",
+        "not_evaluated"
+      ],
+      "description": "Whether policy compliance was actually assessed. Distinguishes \"checked, clean\" from \"never checked\" \u2014 an empty policy_violations array cannot. Absence means the producer did not report, which callers must treat as not_evaluated."
+    },
+    "policy_violations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Human-readable policy violations observed during the run. Only meaningful when policy_evaluation is violated."
     }
   }
 }

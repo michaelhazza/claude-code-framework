@@ -17,6 +17,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
+import { POLICY_ENUMS, POLICY_PATH_KEYS } from './packet-semanticsPure.mjs';
+
 const FIXTURES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   'fixtures',
@@ -100,6 +102,166 @@ describe.each([
     const { validatePacket } = await load();
     const result = await validatePacket('bogus', {});
     expect(result.ok).toBe(false);
+  });
+
+  // ---------------------------------------------------------------------
+  // execution_policy — every case below must produce the SAME verdict with
+  // and without Ajv. The structural floor reads only top-level
+  // required/enum/const, so these all rely on the shared semantic layer;
+  // running them inside describe.each is what proves fallback mode is not a
+  // hole in a security-shaped contract.
+  // ---------------------------------------------------------------------
+
+  it('accepts a work packet carrying a well-formed execution_policy', async () => {
+    const { validatePacket } = await load();
+    const packet = await loadFixture('work-packet.example.json');
+    packet.execution_policy = {
+      write_scope: ['scripts/**'],
+      protected_paths: ['schemas/**'],
+      destructive_actions: 'forbidden',
+      credential_access: 'none',
+      network_egress: 'none',
+      deploy_authority: false,
+    };
+    const result = await validatePacket('work', packet);
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it.each([
+    ['deploy_authority: true', { deploy_authority: true }],
+    ['a bare {} policy', {}],
+    ['allowlist mode with no allowlist', { network_egress: 'allowlist' }],
+    ['allowlist mode with an empty allowlist', { network_egress: 'allowlist', egress_allowlist: [] }],
+    ['an allowlist without allowlist mode', { network_egress: 'none', egress_allowlist: ['api.github.com'] }],
+    ['allowed_files inside the policy', { allowed_files: ['server/**'] }],
+    ['an absolute write_scope pattern', { write_scope: ['/etc/passwd'] }],
+    ['an upward-traversing write_scope pattern', { write_scope: ['../outside/**'] }],
+    ['a duplicated write_scope entry', { write_scope: ['server/**', 'server/**'] }],
+    ['an out-of-enum credential_access', { credential_access: 'write' }],
+    ['a non-date expires_at', { expires_at: 'whenever' }],
+  ])('rejects a work packet with %s', async (_label, execution_policy) => {
+    const { validatePacket } = await load();
+    const packet = await loadFixture('work-packet.example.json');
+    packet.execution_policy = execution_policy;
+    const result = await validatePacket('work', packet);
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('accepts a completion packet echoing a policy with its hash', async () => {
+    const { validatePacket } = await load();
+    const packet = await loadFixture('completion-packet.claude.json');
+    packet.effective_policy = { allowed_files: ['scripts/**'], write_scope: ['scripts/**'] };
+    packet.effective_policy_hash = 'a'.repeat(64);
+    packet.policy_evaluation = 'passed';
+    packet.policy_violations = [];
+    const result = await validatePacket('completion', packet);
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it.each([
+    ['a non-hex policy hash', { effective_policy_hash: 'not-a-digest' }],
+    ['an uppercase policy hash', { effective_policy_hash: 'A'.repeat(64) }],
+    ['violated with no violations listed', { policy_evaluation: 'violated', policy_violations: [] }],
+    [
+      'violations listed but evaluation passed',
+      { policy_evaluation: 'passed', policy_violations: ['wrote outside write_scope'] },
+    ],
+    [
+      'violations listed but evaluation not_evaluated',
+      { policy_evaluation: 'not_evaluated', policy_violations: ['wrote outside write_scope'] },
+    ],
+    ['a contradictory echoed policy', { effective_policy: { network_egress: 'none', egress_allowlist: ['x'] } }],
+    ['a bare {} echoed policy', { effective_policy: {} }],
+  ])('rejects a completion packet with %s', async (_label, patch) => {
+    const { validatePacket } = await load();
+    const packet = { ...(await loadFixture('completion-packet.claude.json')), ...patch };
+    const result = await validatePacket('completion', packet);
+    expect(result.ok).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('still accepts packets authored before the policy fields existed', async () => {
+    // Frozen pre-2.63.0 shapes. The additive-compatibility proof: a consuming
+    // repo's existing packets must not become invalid the moment this syncs.
+    const { validatePacket } = await load();
+    const legacyWork = {
+      contract_version: 'work-packet.v1',
+      packet_id: 'wp-legacy-0001',
+      feature_slug: 'legacy-build',
+      repo: 'claude-code-framework',
+      branch: 'claude/legacy',
+      objective: 'A packet authored before execution_policy existed.',
+      allowed_files: ['scripts/legacy.mjs'],
+      role: 'builder',
+      runtime: 'claude-code',
+    };
+    const legacyCompletion = {
+      contract_version: 'completion-packet.v1',
+      packet_id: 'wp-legacy-0001',
+      status: 'SUCCESS',
+      role: 'builder',
+      runtime: 'claude-code',
+      summary: 'A completion authored before the policy echo existed.',
+    };
+    expect((await validatePacket('work', legacyWork)).ok).toBe(true);
+    expect((await validatePacket('completion', legacyCompletion)).ok).toBe(true);
+  });
+});
+
+describe('execution_policy — duplicated shape and hand-written enums cannot drift', () => {
+  const SCHEMA_DIR = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..',
+    '..',
+    'schemas',
+  );
+
+  async function loadSchema(name) {
+    return JSON.parse(await readFile(path.join(SCHEMA_DIR, name), 'utf8'));
+  }
+
+  it('keeps every shared key identical between the two schema copies', async () => {
+    // The shape is duplicated because validate-packet.mjs compiles each packet
+    // schema standalone; a cross-file $ref would be swallowed by the compile
+    // try/catch and silently downgrade the packet to the structural floor.
+    const work = await loadSchema('work-packet.schema.json');
+    const completion = await loadSchema('completion-packet.schema.json');
+    const workPolicy = work.properties.execution_policy;
+    const echoPolicy = completion.definitions.executionPolicy;
+
+    for (const [key, subschema] of Object.entries(workPolicy.properties)) {
+      expect(echoPolicy.properties[key], `${key} diverged between the two copies`).toEqual(subschema);
+    }
+    expect(workPolicy.allOf).toEqual(echoPolicy.allOf);
+    expect(workPolicy.additionalProperties).toBe(false);
+    expect(echoPolicy.additionalProperties).toBe(false);
+  });
+
+  it('permits allowed_files as the only divergence', async () => {
+    const work = await loadSchema('work-packet.schema.json');
+    const completion = await loadSchema('completion-packet.schema.json');
+    const workKeys = new Set(Object.keys(work.properties.execution_policy.properties));
+    const echoKeys = Object.keys(completion.definitions.executionPolicy.properties);
+    const extra = echoKeys.filter((k) => !workKeys.has(k));
+    // effective_policy folds in the packet's top-level allowed_files so the
+    // echoed object is self-contained; nothing else may differ.
+    expect(extra).toEqual(['allowed_files']);
+  });
+
+  it('keeps the semantic layer enums in step with the schema', async () => {
+    const work = await loadSchema('work-packet.schema.json');
+    const policyProps = work.properties.execution_policy.properties;
+    for (const [key, allowed] of Object.entries(POLICY_ENUMS)) {
+      expect(policyProps[key].enum, `${key} enum drifted from the schema`).toEqual(allowed);
+    }
+    for (const key of POLICY_PATH_KEYS) {
+      const source = key === 'allowed_files' ? work.properties.allowed_files : policyProps[key];
+      expect(source, `${key} is not a schema array`).toBeDefined();
+      expect(source.type).toBe('array');
+    }
   });
 });
 
