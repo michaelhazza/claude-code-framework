@@ -320,6 +320,12 @@
       "substituteAt": "never"
     },
     {
+      "path": "references/review-lenses.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "references/spec-review-directional-signals.md",
       "category": "reference",
       "mode": "sync",

@@ -219,6 +219,8 @@ Per-round section:
 - Never use an unscoped log glob — always scope to the current slug.
 - Use `risk_domain` (not `finding_type`) for security carve-out routing.
 - A finding with `risk_domain` in `{tenant_isolation, security, auth_authorisation, idempotency, data_integrity, compliance}` is never auto-applied — always surface for operator approval.
+- In **manual** mode the operator pastes the plan into ChatGPT-web without the automated tier's system prompt, so the lens sweep is not carried for them: include the four lenses from [`references/review-lenses.md`](../../references/review-lenses.md) in the paste-ready prompt, with the coverage-mandatory / tagging-conditional rule. The automated tier gets this from `SYSTEM_PROMPT_PLAN_V2`; manual mode would silently lose it.
+- A finding's `lens` is optional and never a routing input — triage stays keyed on `risk_domain` and `triage_hint`.
 
 ---
 

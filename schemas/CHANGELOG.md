@@ -10,6 +10,20 @@ Every finding already carried `source_refs` (where the reviewer looked) and `ris
 
 **Consumers must:** nothing. Reviewers may start emitting the fields at any time; coordinators that do not read them are unaffected.
 
+## review-result.v2 — additive review lens (2026-08-03, framework 2.63.0)
+
+**`review-finding.schema.json` — new OPTIONAL `lens` property (`product_value | engineering_feasibility | design_quality | developer_experience`). `contract_version` unchanged at `review-result.v2`; nothing to migrate.**
+
+A reviewer with finite attention converges on whichever failure class is easiest to see — usually engineering feasibility, because it is the most concrete. Value, design and operability failures then reach the operator unexamined. Naming the four perspectives makes an unreviewed one visible as an omission rather than invisible as a non-finding. Definitions and reporting rules: `references/review-lenses.md`.
+
+**Coverage is mandatory; tagging is not.** Plan reviewers sweep all four lenses and state which reviewed clean; a finding carries `lens` only when ONE lens clearly dominates. The field stays optional precisely so cross-cutting findings can omit it — a miscategorised finding is worse than an unclassified one.
+
+Wired into all three plan-review tiers: `claude-plan-review` and `plan-reviewer` (lens sweep + a five-line decision brief in their prose logs — NOT a JSON field, the envelope stays closed), and `chatgpt-plan-review` via `SYSTEM_PROMPT_PLAN_V2`. Manual ChatGPT-web mode carries the lenses in the paste-ready prompt, since it does not get the system prompt.
+
+**`prompt_version` deliberately stays `openai-plan-review.v2`.** In this repo that identifier names the prompt TIER (v1 legacy shape vs v2 canonical envelope, selected by `--prompt-version`), not each content revision; the v2 prompts have been revised in place before, e.g. the 2026-05-28 move of artefact content out of the system prompt. Adding a v3 tier would mean a new `getSystemPrompt` branch for a content change that alters no output shape.
+
+**Consumers must:** nothing. `lens` is never a routing input — triage stays keyed on `risk_domain` and `triage_hint`.
+
 ## work-packet.v1 / completion-packet.v1 — additive execution policy (2026-08-03, framework 2.63.0)
 
 **`work-packet.schema.json` — new OPTIONAL `execution_policy` object. `completion-packet.schema.json` — new OPTIONAL `effective_policy` (via `definitions.executionPolicy`), `effective_policy_hash`, `policy_evaluation` and `policy_violations`. Both `contract_version` values unchanged; nothing to migrate.**

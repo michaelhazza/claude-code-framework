@@ -169,6 +169,17 @@ the decomposition). Pass 9 Failure-mode specificity (name the build-time pain:
 Pass 10 Acceptance-check verifiability — every finding's acceptance_check must
 name a concrete check per the anti-vagueness rule in the merged contract.
 
+## Lens sweep (run on every plan)
+
+Four perspectives, full definitions in [`references/review-lenses.md`](../../references/review-lenses.md):
+
+- `product_value` — delivers what the spec promised, to whom it named?
+- `engineering_feasibility` — builds in this order, in this codebase?
+- `design_quality` — user-facing result belongs to the existing product? (Skip with a one-line note when no user surface is touched.)
+- `developer_experience` — operable, debuggable, handoff-safe after it ships?
+
+**Coverage is mandatory, tagging is not.** Sweep all four; a lens with no findings is stated as reviewed clean in the decision brief, never silently dropped. Set the optional per-finding `lens` only when ONE lens clearly dominates — omit it for cross-cutting findings. A miscategorised finding is worse than an unclassified one.
+
 ## Rubric pass (run on every plan)
 
 - Every chunk has a verifiable success criterion.
@@ -188,8 +199,11 @@ Emit two artefacts, both as fenced blocks, in this order:
    with header (plan path + spec path + ISO 8601 UTC timestamp), Files NOT read
    sub-section, findings tables, DAG/chunk assessment (oversized chunks, unsafe
    dependencies, parallelism opportunities, finalisation-only work), integrity
-   check, summary count, Verdict line. The coordinator does not parse this
-   block for routing.
+   check, summary count, Verdict line, and a **decision brief** — five lines
+   maximum: the recommendation, the strongest surviving objection per
+   unsatisfied lens, and which lenses reviewed clean. The brief lives in this
+   prose block, NEVER as a JSON field; the schema is closed (see Rules). The
+   coordinator does not parse this block for routing.
 
 2. Mandatory JSON block as the LAST content of your response, validating against
    `schemas/review-result.schema.json` (§3d). Contains all findings with the

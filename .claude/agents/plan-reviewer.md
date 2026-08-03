@@ -188,6 +188,8 @@ In addition to adjudicating Codex's findings, run your own pass against the rubr
 
 Add any rubric findings to your working list alongside Codex's findings. Both feed into the classification step.
 
+**Lens sweep — run alongside the rubric.** The rubric above is almost entirely `engineering_feasibility`; that is exactly the concentration [`references/review-lenses.md`](../../references/review-lenses.md) exists to correct. On every iteration also sweep `product_value` (does the plan deliver what the spec promised, to whom it named?), `design_quality` (user-facing result belongs to the existing product — skip with a one-line note when no user surface is touched), and `developer_experience` (operable, debuggable, handoff-safe after it ships). Coverage is mandatory; state lenses that reviewed clean in the per-iteration summary. Tagging is not: set a finding's optional `lens` only when one lens clearly dominates.
+
 ### Step 5 — Classify every finding
 
 This is the most important step in the loop. Every finding goes into one of three buckets before adjudication. Your default posture: **when in doubt, classify as ambiguous, not mechanical**. Ambiguous findings go to Step 7 (autonomous decision with conservative bias). False positives (over-classifying as directional) mean a few extra auto-rejected items in tasks/todo.md; false negatives (under-classifying directional as mechanical) mean a wrong-shaped plan.
