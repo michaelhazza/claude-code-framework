@@ -38,6 +38,12 @@ Wired into all three plan-review tiers: `claude-plan-review` and `plan-reviewer`
 
 **Validator change:** `validatePacket` now returns `{ok, errors, warnings}` (previously `{ok, errors}`) and runs `validatePacketSemantics` after the structural check in BOTH modes. The structural floor reads only top-level `required`/`enum`/`const`, so every nested policy invariant would otherwise be enforced with Ajv and silently ignored without it — a constraint that holds only where a devDependency happens to be installed is not a constraint. Deleting the semantic call fails 23 tests across both modes.
 
+Three fallback-mode gaps closed in review, each one a case where the same packet's verdict depended on whether Ajv was installed:
+
+1. **Closed key sets.** `additionalProperties: false` lives in the schema, which the floor never reads, so an undeclared key inside `execution_policy`, `effective_policy` or `release_evidence` passed without Ajv. That is the authority-shaped hole the layer exists to close — a future consumer could read an undeclared field as a capability grant while the validator reported the packet valid. `POLICY_KEYS` and `RELEASE_EVIDENCE_KEYS` now close the sets, and a test asserts they match the schemas' `properties` so a new schema key cannot land unvalidated.
+2. **Strict RFC 3339 for `expires_at`.** `Date.parse` accepts a date-only `2026-01-01`, a timezone-less `2026-08-03T12:00:00`, and silently rolls `2026-02-31` into March; `ajv-formats` rejects all three. `isRfc3339DateTime` replaces it, and a parity test checks it against the real Ajv format across 16 vectors rather than a remembered rule.
+3. **`policy_evaluation: violated` with `policy_violations` absent.** Previously only the explicitly-empty array was rejected, so omitting the field entirely let a packet claim a violation while listing none.
+
 **Scope boundary:** this ships declarations only. Recompute-and-compare of the hash, `expires_at` evaluation at dispatch, matching patterns against a real checkout, symlink handling, and cross-field reconciliation against `allowed_resources` belong to the later enforcement build. A packet carrying `execution_policy` grants nothing and blocks nothing on its own.
 
 **Why additive:** same reasoning as every entry below. All new fields are optional; a frozen pre-2.63.0 work packet and completion packet are asserted still-valid in the suite.

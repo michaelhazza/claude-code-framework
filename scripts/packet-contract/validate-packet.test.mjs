@@ -17,7 +17,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
-import { POLICY_ENUMS, POLICY_PATH_KEYS } from './packet-semanticsPure.mjs';
+import {
+  POLICY_ENUMS,
+  POLICY_KEYS,
+  POLICY_PATH_KEYS,
+  RELEASE_EVIDENCE_KEYS,
+  isRfc3339DateTime,
+} from './packet-semanticsPure.mjs';
 
 const FIXTURES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -140,6 +146,13 @@ describe.each([
     ['a duplicated write_scope entry', { write_scope: ['server/**', 'server/**'] }],
     ['an out-of-enum credential_access', { credential_access: 'write' }],
     ['a non-date expires_at', { expires_at: 'whenever' }],
+    ['a date-only expires_at', { expires_at: '2026-01-01' }],
+    ['an expires_at with no timezone', { expires_at: '2026-08-03T12:00:00' }],
+    ['an impossible calendar day in expires_at', { expires_at: '2026-02-31T00:00:00Z' }],
+    // Undeclared keys are the fallback-mode hole: the schema closes them with
+    // additionalProperties: false, which the structural floor never reads.
+    ['an undeclared policy field', { deploy_authority: false, shell_access: 'unrestricted' }],
+    ['an undeclared field aliasing deploy authority', { may_deploy: true }],
   ])('rejects a work packet with %s', async (_label, execution_policy) => {
     const { validatePacket } = await load();
     const packet = await loadFixture('work-packet.example.json');
@@ -175,6 +188,8 @@ describe.each([
     ],
     ['a contradictory echoed policy', { effective_policy: { network_egress: 'none', egress_allowlist: ['x'] } }],
     ['a bare {} echoed policy', { effective_policy: {} }],
+    ['an undeclared field in the echoed policy', { effective_policy: { write_scope: ['a/**'], shell_access: 'all' } }],
+    ['violated with policy_violations omitted entirely', { policy_evaluation: 'violated' }],
   ])('rejects a completion packet with %s', async (_label, patch) => {
     const { validatePacket } = await load();
     const packet = { ...(await loadFixture('completion-packet.claude.json')), ...patch };
@@ -215,6 +230,10 @@ describe.each([
 
   it.each([
     ['an empty release_evidence object', { release_evidence: {} }],
+    [
+      'an undeclared release_evidence field',
+      { release_evidence: { release_control_id: 'rc-1', deployed_by: 'nobody' } },
+    ],
     ['a passing canary with no evidence', { release_evidence: { canary_result: 'pass' } }],
     [
       'a failing canary with empty evidence',
@@ -338,6 +357,62 @@ describe('execution_policy — duplicated shape and hand-written enums cannot dr
     // effective_policy folds in the packet's top-level allowed_files so the
     // echoed object is self-contained; nothing else may differ.
     expect(extra).toEqual(['allowed_files']);
+  });
+
+  it('keeps the semantic layer key sets in step with the schema', async () => {
+    // These lists are what closes additionalProperties in fallback mode. If a
+    // schema key is added without updating them, the new key is silently
+    // unvalidated without Ajv — so the drift itself must fail the build.
+    const work = await loadSchema('work-packet.schema.json');
+    const completion = await loadSchema('completion-packet.schema.json');
+    expect([...POLICY_KEYS].sort()).toEqual(
+      Object.keys(work.properties.execution_policy.properties).sort(),
+    );
+    expect(['allowed_files', ...POLICY_KEYS].sort()).toEqual(
+      Object.keys(completion.definitions.executionPolicy.properties).sort(),
+    );
+    expect([...RELEASE_EVIDENCE_KEYS].sort()).toEqual(
+      Object.keys(completion.properties.release_evidence.properties).sort(),
+    );
+  });
+
+  it('agrees with ajv-formats on date-time validity', async () => {
+    // Dual-mode parity for expires_at, checked against the real Ajv format
+    // rather than a remembered rule: Date.parse accepts date-only strings,
+    // timezone-less strings, and rolls 2026-02-31 into March.
+    // The fallback-mode suite registers vi.doMock('ajv'); undo it here or the
+    // real module never loads.
+    vi.doUnmock('ajv');
+    vi.resetModules();
+    const { default: Ajv } = await import('ajv');
+    const { default: addFormats } = await import('ajv-formats');
+    const ajv = new Ajv({ strict: false });
+    addFormats(ajv);
+    const ajvValid = ajv.compile({ type: 'string', format: 'date-time' });
+
+    const cases = [
+      '2026-08-03T12:00:00Z',
+      '2026-08-03T12:00:00.123Z',
+      '2026-08-03T12:00:00+10:00',
+      '2026-08-03T12:00:00-07:30',
+      '2026-02-29T00:00:00Z',
+      '2024-02-29T00:00:00Z',
+      '2026-02-31T00:00:00Z',
+      '2026-13-01T00:00:00Z',
+      '2026-00-10T00:00:00Z',
+      '2026-08-32T00:00:00Z',
+      '2026-08-03T24:00:00Z',
+      '2026-08-03T12:60:00Z',
+      '2026-01-01',
+      '2026-08-03T12:00:00',
+      'whenever',
+      '',
+    ];
+    for (const value of cases) {
+      expect(isRfc3339DateTime(value), `disagreed with ajv on ${JSON.stringify(value)}`).toBe(
+        ajvValid(value),
+      );
+    }
   });
 
   it('keeps the semantic layer enums in step with the schema', async () => {
