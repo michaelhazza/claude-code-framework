@@ -103,7 +103,7 @@
       "additionalProperties": false,
       "minProperties": 1,
       "description": "Capability-REMOVING policy for this dispatch. Every field narrows what the executing role may do; no field can grant an authority the role did not already have. Absence of the object means no policy was declared, which is NOT the same as unrestricted — see references/execution-policy.md. A bare {} is invalid because it cannot be distinguished from an authoring mistake.",
-      "$comment": "This shape is duplicated between work-packet.schema.json (properties.execution_policy) and completion-packet.schema.json (definitions.executionPolicy) because validate-packet.mjs compiles each packet schema standalone with no addSchema, so a cross-file $ref would fail to resolve, be swallowed by the compile try/catch, and silently degrade that packet to the structural floor. The two copies are asserted byte-identical by validate-packet.test.mjs.",
+      "$comment": "This shape is duplicated between work-packet.schema.json (properties.execution_policy) and completion-packet.schema.json (definitions.executionPolicy) because validate-packet.mjs compiles each packet schema standalone with no addSchema, so a cross-file $ref would fail to resolve, be swallowed by the compile try/catch, and silently degrade that packet to the structural floor. validate-packet.test.mjs asserts every shared key stays identical and that allowed_files — folded into the echo so it is self-contained — is the only permitted divergence.",
       "properties": {
         "write_scope": {
           "type": "array",
