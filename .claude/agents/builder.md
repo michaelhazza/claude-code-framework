@@ -152,7 +152,20 @@ Plan gap (if any): [description]
 G1 attempts (per check): {lint: N, targeted tests: N}
 Notes for caller: [out-of-scope observations — dead code, smells, drift; do NOT fix in this chunk; route to tasks/todo.md]
 DID NOT TOUCH (intentionally): [adjacent issues noticed but deliberately left alone — scope-discipline evidence the coordinator can audit; an empty list is fine, an absent line is not]
+Documentation impact: none | reference | how_to | tutorial | explanation | multiple
+Changed docs: [doc paths touched — must be a subset of Files changed; empty only when impact is none]
+Doc exemption reason: [required when impact is `none` and Files changed contains non-doc code; omit otherwise]
 ```
+
+### Documentation impact (maps to completion-packet.v1)
+
+The last three lines carry the Diataxis classification that `documentation_impact`, `changed_docs` and `doc_exemption_reason` hold in a completion packet. Rules:
+
+- Classify by what a reader would need re-read, not by which files you happened to open. Changing a documented contract is `reference` even when no doc file changed — that case needs a doc edit, not an exemption.
+- `Changed docs` lists hand-authored prose only: `docs/`, `references/`, `tasks/`, and `.md`/`.mdx`/`.rst` files. Generated indexes and machine-written changelog regions do not count.
+- Anything other than `none` requires at least one entry in `Changed docs`.
+- `none` plus changed code requires a `Doc exemption reason`. "No behaviour a doc describes changed" is a valid reason; "ran out of time" is not — that is a plan gap.
+- Advisory, not a gate: `validatePacket` warns on a missing exemption rather than failing, because documentation judgement is not mechanically decidable. A warning you ignore twice is drift.
 
 ## Hard rules
 

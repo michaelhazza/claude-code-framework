@@ -183,6 +183,95 @@ describe.each([
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
+  // ---------------------------------------------------------------------
+  // release_evidence and documentation_impact — same dual-mode requirement.
+  // ---------------------------------------------------------------------
+
+  it('accepts release evidence with a canary backed by evidence paths', async () => {
+    const { validatePacket } = await load();
+    const packet = await loadFixture('completion-packet.claude.json');
+    packet.release_evidence = {
+      release_control_id: 'rc-2026-08-03-01',
+      canary_result: 'pass',
+      evidence_paths: ['tasks/builds/demo/canary.log'],
+    };
+    const result = await validatePacket('completion', packet);
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts a SUCCESS completion carrying a failed canary', async () => {
+    // Canaries run after the work completes; attaching the observation must
+    // not force a status rewrite. The release gate decides what it means.
+    const { validatePacket } = await load();
+    const packet = await loadFixture('completion-packet.claude.json');
+    packet.status = 'SUCCESS';
+    packet.release_evidence = {
+      canary_result: 'fail',
+      evidence_paths: ['tasks/builds/demo/canary.log'],
+    };
+    expect((await validatePacket('completion', packet)).ok).toBe(true);
+  });
+
+  it.each([
+    ['an empty release_evidence object', { release_evidence: {} }],
+    ['a passing canary with no evidence', { release_evidence: { canary_result: 'pass' } }],
+    [
+      'a failing canary with empty evidence',
+      { release_evidence: { canary_result: 'fail', evidence_paths: [] } },
+    ],
+    ['an out-of-enum canary result', { release_evidence: { canary_result: 'flaky' } }],
+  ])('rejects a completion packet with %s', async (_label, patch) => {
+    const { validatePacket } = await load();
+    const packet = { ...(await loadFixture('completion-packet.claude.json')), ...patch };
+    const result = await validatePacket('completion', packet);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects changed_docs that are not part of changed_files', async () => {
+    const { validatePacket } = await load();
+    const packet = await loadFixture('completion-packet.claude.json');
+    packet.changed_files = ['scripts/a.mjs'];
+    packet.changed_docs = ['docs/never-touched.md'];
+    packet.documentation_impact = 'reference';
+    const result = await validatePacket('completion', packet);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes('subset'))).toBe(true);
+  });
+
+  it('rejects a non-none documentation impact with no documents listed', async () => {
+    const { validatePacket } = await load();
+    const packet = await loadFixture('completion-packet.claude.json');
+    packet.documentation_impact = 'how_to';
+    packet.changed_docs = [];
+    expect((await validatePacket('completion', packet)).ok).toBe(false);
+  });
+
+  it('warns without failing when code changed and no doc exemption is stated', async () => {
+    // Advisory by design: documentation judgement is not mechanically
+    // decidable, and failing here would make an optional field mandatory.
+    const { validatePacket } = await load();
+    const packet = await loadFixture('completion-packet.claude.json');
+    packet.changed_files = ['scripts/packet-contract/validate-packet.mjs'];
+    packet.documentation_impact = 'none';
+    delete packet.doc_exemption_reason;
+    const result = await validatePacket('completion', packet);
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('doc_exemption_reason');
+  });
+
+  it('stays silent when the exemption reason is supplied', async () => {
+    const { validatePacket } = await load();
+    const packet = await loadFixture('completion-packet.claude.json');
+    packet.changed_files = ['scripts/packet-contract/validate-packet.mjs'];
+    packet.documentation_impact = 'none';
+    packet.doc_exemption_reason = 'Internal helper with no documented behaviour.';
+    const result = await validatePacket('completion', packet);
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+
   it('still accepts packets authored before the policy fields existed', async () => {
     // Frozen pre-2.63.0 shapes. The additive-compatibility proof: a consuming
     // repo's existing packets must not become invalid the moment this syncs.

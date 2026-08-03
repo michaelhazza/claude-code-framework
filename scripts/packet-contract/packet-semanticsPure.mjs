@@ -32,7 +32,27 @@ export const POLICY_ENUMS = {
 /** Policy keys holding repo-relative pattern lists. */
 export const POLICY_PATH_KEYS = ['allowed_files', 'write_scope', 'protected_paths'];
 
+/** Release-evidence enum, mirrored from completion-packet.schema.json. */
+export const CANARY_RESULTS = ['pass', 'fail', 'not_run'];
+
+/**
+ * Path prefixes and suffixes that count as documentation for the advisory
+ * doc-impact check. Generated indexes and machine-written regions do not
+ * count — only hand-authored prose.
+ */
+const DOC_PREFIXES = ['docs/', 'references/', 'tasks/'];
+const DOC_SUFFIXES = ['.md', '.mdx', '.rst'];
+
 const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+/** True when a changed-file path is hand-authored documentation. */
+function isDocPath(file) {
+  if (typeof file !== 'string') return false;
+  return (
+    DOC_PREFIXES.some((p) => file.startsWith(p)) ||
+    DOC_SUFFIXES.some((s) => file.endsWith(s))
+  );
+}
 
 /** True for a plain (non-array, non-null) object. */
 function isPlainObject(value) {
@@ -151,6 +171,87 @@ export function validatePacketSemantics(kind, packet) {
           `policy_violations is non-empty but policy_evaluation is ${packet.policy_evaluation} — report violated`,
         );
       }
+    }
+
+    errors.push(...releaseEvidenceErrors(packet.release_evidence));
+    const doc = documentationImpact(packet);
+    errors.push(...doc.errors);
+    warnings.push(...doc.warnings);
+  }
+
+  return { errors, warnings };
+}
+
+/**
+ * `release_evidence` invariants. A `pass`/`fail` canary must point at the
+ * evidence behind the claim; `not_run` needs nothing.
+ *
+ * @param {unknown} evidence
+ * @returns {string[]}
+ */
+function releaseEvidenceErrors(evidence) {
+  if (evidence === undefined) return [];
+  if (!isPlainObject(evidence)) return ['release_evidence must be a JSON object'];
+
+  const errors = [];
+  if (Object.keys(evidence).length === 0) {
+    errors.push('release_evidence must carry at least one field rather than an empty object');
+  }
+  if (evidence.canary_result !== undefined && !CANARY_RESULTS.includes(evidence.canary_result)) {
+    errors.push(`release_evidence.canary_result must be one of ${CANARY_RESULTS.join(', ')}`);
+  }
+  if (evidence.canary_result === 'pass' || evidence.canary_result === 'fail') {
+    if (!Array.isArray(evidence.evidence_paths) || evidence.evidence_paths.length === 0) {
+      errors.push(
+        `release_evidence.evidence_paths must be non-empty when canary_result is ${evidence.canary_result}`,
+      );
+    }
+  }
+  return errors;
+}
+
+/**
+ * Documentation-impact convention (.claude/agents/builder.md).
+ *
+ * The subset rule is an ERROR because it is a factual contradiction inside one
+ * packet. The missing-exemption rule is a WARNING: documentation judgement is
+ * not mechanically decidable, and a hard failure here would make an optional
+ * field effectively mandatory for every code change.
+ *
+ * @param {Record<string, unknown>} packet
+ * @returns {{errors: string[], warnings: string[]}}
+ */
+function documentationImpact(packet) {
+  const errors = [];
+  const warnings = [];
+  const impact = packet.documentation_impact;
+  const changedDocs = packet.changed_docs;
+  const changedFiles = Array.isArray(packet.changed_files) ? packet.changed_files : null;
+
+  if (changedDocs !== undefined && !Array.isArray(changedDocs)) {
+    return { errors: ['changed_docs must be an array'], warnings };
+  }
+
+  if (Array.isArray(changedDocs) && changedFiles) {
+    const known = new Set(changedFiles);
+    const orphans = changedDocs.filter((d) => !known.has(d));
+    if (orphans.length > 0) {
+      errors.push(`changed_docs must be a subset of changed_files; not listed: ${orphans.join(', ')}`);
+    }
+  }
+
+  if (impact !== undefined && impact !== 'none') {
+    if (!Array.isArray(changedDocs) || changedDocs.length === 0) {
+      errors.push(`documentation_impact is ${impact} but changed_docs is empty`);
+    }
+  }
+
+  if (impact === 'none' && changedFiles) {
+    const codeChanged = changedFiles.some((f) => !isDocPath(f));
+    if (codeChanged && packet.doc_exemption_reason === undefined) {
+      warnings.push(
+        'documentation_impact is none while non-doc files changed — state a doc_exemption_reason',
+      );
     }
   }
 

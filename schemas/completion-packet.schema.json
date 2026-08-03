@@ -266,6 +266,88 @@
         "minLength": 1
       },
       "description": "Human-readable policy violations observed during the run. Only meaningful when policy_evaluation is violated."
+    },
+    "documentation_impact": {
+      "type": "string",
+      "enum": [
+        "none",
+        "reference",
+        "how_to",
+        "tutorial",
+        "explanation",
+        "multiple"
+      ],
+      "description": "Diataxis class of documentation this change affects. Advisory in this contract: no gate consumes it yet. Absence means the producer did not classify, which is NOT the same as none."
+    },
+    "changed_docs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Documentation files this change touched. Must be a subset of changed_files."
+    },
+    "doc_exemption_reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Why no documentation changed despite code changing. Required by producer convention when documentation_impact is none and changed_files contains non-doc code; see .claude/agents/builder.md."
+    },
+    "release_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Post-completion release evidence linking this packet to what was actually deployed and observed. No tested-commit field: the top-level commit_sha already carries it.",
+      "properties": {
+        "release_control_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canary_result": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "not_run"
+          ]
+        },
+        "evidence_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "canary_result": {
+                "enum": [
+                  "pass",
+                  "fail"
+                ]
+              }
+            },
+            "required": [
+              "canary_result"
+            ]
+          },
+          "then": {
+            "required": [
+              "evidence_paths"
+            ],
+            "properties": {
+              "evidence_paths": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "$comment": "A SUCCESS completion MAY carry canary_result: fail. Canaries run after the work completes, so attaching the observation must not force a status rewrite; the consuming release gate decides what a failed canary means."
     }
   }
 }

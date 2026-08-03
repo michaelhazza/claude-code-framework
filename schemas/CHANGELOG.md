@@ -30,6 +30,20 @@ Every finding already carried `source_refs` (where the reviewer looked) and `ris
 
 **Consumers must:** nothing. Callers reading `.errors` are unaffected by the added `.warnings` key.
 
+## completion-packet.v1 — additive documentation impact and release evidence (2026-08-03, framework 2.63.0)
+
+**`completion-packet.schema.json` — new OPTIONAL `documentation_impact`, `changed_docs`, `doc_exemption_reason` and `release_evidence`. `contract_version` unchanged at `completion-packet.v1`; nothing to migrate.**
+
+`documentation_impact` is a Diataxis classification (`none | reference | how_to | tutorial | explanation | multiple`) declared by the producer at completion time, with `changed_docs` naming the files and `doc_exemption_reason` explaining a `none` alongside changed code. This makes the existing doc-sync judgement inspectable rather than implicit. The producer-side convention — how to classify, what counts as documentation, when the exemption is required — lives in `.claude/agents/builder.md` § *Documentation impact*, because a field with no instructed producer is a field nobody fills in.
+
+Enforcement split, deliberately: `changed_docs ⊄ changed_files` and a non-`none` impact with no documents listed are ERRORS (factual contradictions inside one packet), while a missing exemption reason is a WARNING. Documentation judgement is not mechanically decidable, and failing there would make an optional field mandatory for every code change.
+
+`release_evidence` (`release_control_id`, `canary_result`, `evidence_paths`) links a packet to what was deployed and observed. It carries no tested-commit field because the top-level `commit_sha` already does. A `pass`/`fail` canary must point at its evidence; `not_run` need not. A `SUCCESS` completion MAY carry `canary_result: fail` — canaries run after the work completes, so attaching the observation must not force a status rewrite, and the consuming release gate decides what a failed canary means.
+
+**Why additive:** as below. Both objects are optional and `minProperties: 1`, so an empty stub cannot masquerade as a filled-in one.
+
+**Consumers must:** nothing. Both are advisory in this contract; no gate reads them yet.
+
 ## build-status.v2 — additive runtime-identity fields (2026-08-02, framework 2.62.0)
 
 **`build-status.schema.json` — new OPTIONAL top-level `runtime` object and new OPTIONAL `runtime`/`role` string keys on `log[]` items. `contract_version` unchanged at `build-status.v2`; no enum changes; nothing to migrate.**
