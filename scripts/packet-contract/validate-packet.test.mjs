@@ -18,10 +18,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  FLOOR_UNCOVERED_LEGACY_PATHS,
   POLICY_ENUMS,
   POLICY_KEYS,
   POLICY_PATH_KEYS,
   RELEASE_EVIDENCE_KEYS,
+  SEMANTICALLY_COVERED_PATHS,
   isRfc3339DateTime,
 } from './packet-semanticsPure.mjs';
 
@@ -190,6 +192,21 @@ describe.each([
     ['a bare {} echoed policy', { effective_policy: {} }],
     ['an undeclared field in the echoed policy', { effective_policy: { write_scope: ['a/**'], shell_access: 'all' } }],
     ['violated with policy_violations omitted entirely', { policy_evaluation: 'violated' }],
+    // Array CONTENTS are invisible to the structural floor.
+    [
+      'a non-string policy violation',
+      { policy_evaluation: 'violated', policy_violations: [42] },
+    ],
+    [
+      'an empty-string policy violation',
+      { policy_evaluation: 'violated', policy_violations: [''] },
+    ],
+    [
+      'duplicate policy violations',
+      { policy_evaluation: 'violated', policy_violations: ['wrote outside scope', 'wrote outside scope'] },
+    ],
+    ['an empty doc_exemption_reason', { doc_exemption_reason: '' }],
+    ['duplicate egress hosts', { effective_policy: { network_egress: 'allowlist', egress_allowlist: ['a.example', 'a.example'] } }],
   ])('rejects a completion packet with %s', async (_label, patch) => {
     const { validatePacket } = await load();
     const packet = { ...(await loadFixture('completion-packet.claude.json')), ...patch };
@@ -234,6 +251,19 @@ describe.each([
       'an undeclared release_evidence field',
       { release_evidence: { release_control_id: 'rc-1', deployed_by: 'nobody' } },
     ],
+    ['an empty release_control_id', { release_evidence: { release_control_id: '' } }],
+    [
+      'a non-string evidence path',
+      { release_evidence: { canary_result: 'pass', evidence_paths: [42] } },
+    ],
+    [
+      'an empty-string evidence path',
+      { release_evidence: { canary_result: 'pass', evidence_paths: [''] } },
+    ],
+    [
+      'duplicate evidence paths',
+      { release_evidence: { evidence_paths: ['same.log', 'same.log'] } },
+    ],
     ['a passing canary with no evidence', { release_evidence: { canary_result: 'pass' } }],
     [
       'a failing canary with empty evidence',
@@ -245,6 +275,15 @@ describe.each([
     const packet = { ...(await loadFixture('completion-packet.claude.json')), ...patch };
     const result = await validatePacket('completion', packet);
     expect(result.ok).toBe(false);
+  });
+
+  it('rejects duplicate changed_docs entries', async () => {
+    const { validatePacket } = await load();
+    const packet = await loadFixture('completion-packet.claude.json');
+    packet.changed_files = ['docs/a.md'];
+    packet.changed_docs = ['docs/a.md', 'docs/a.md'];
+    packet.documentation_impact = 'reference';
+    expect((await validatePacket('completion', packet)).ok).toBe(false);
   });
 
   it('rejects changed_docs that are not part of changed_files', async () => {
@@ -373,6 +412,49 @@ describe('execution_policy — duplicated shape and hand-written enums cannot dr
     );
     expect([...RELEASE_EVIDENCE_KEYS].sort()).toEqual(
       Object.keys(completion.properties.release_evidence.properties).sort(),
+    );
+  });
+
+  it('mirrors every schema value-constraint in the semantic layer', async () => {
+    // The defect class both review rounds found: a schema constraint the
+    // structural floor cannot see and the semantic layer forgot to mirror, so
+    // the same packet's verdict depends on whether Ajv is installed. Walking
+    // the schemas here makes the NEXT such omission a build failure.
+    function constrainedPaths(node, path, out) {
+      if (!node || typeof node !== 'object') return out;
+      const constrained =
+        (node.type === 'array' &&
+          (node.uniqueItems === true ||
+            (node.items && (node.items.minLength !== undefined || node.items.type === 'string')))) ||
+        (node.type === 'string' &&
+          (node.minLength !== undefined || node.pattern !== undefined || node.format !== undefined));
+      if (constrained && path) out.push(path);
+      for (const [key, value] of Object.entries(node.properties ?? {})) {
+        constrainedPaths(value, path ? `${path}.${key}` : key, out);
+      }
+      for (const [key, value] of Object.entries(node.definitions ?? {})) {
+        constrainedPaths(value, `<${key}>`, out);
+      }
+      return out;
+    }
+
+    const found = [
+      ...constrainedPaths(await loadSchema('work-packet.schema.json'), '', []).map((p) => `work:${p}`),
+      ...constrainedPaths(await loadSchema('completion-packet.schema.json'), '', []).map(
+        (p) => `completion:${p}`,
+      ),
+    ];
+    const accounted = new Set([...SEMANTICALLY_COVERED_PATHS, ...FLOOR_UNCOVERED_LEGACY_PATHS]);
+    const unaccounted = found.filter((p) => !accounted.has(p));
+    expect(
+      unaccounted,
+      'schema constraint with no semantic-layer counterpart and no legacy exemption — mirror it in packet-semanticsPure.mjs or add it to FLOOR_UNCOVERED_LEGACY_PATHS with a reason',
+    ).toEqual([]);
+
+    // And the lists must not rot in the other direction.
+    const foundSet = new Set(found);
+    expect([...SEMANTICALLY_COVERED_PATHS, ...FLOOR_UNCOVERED_LEGACY_PATHS].filter((p) => !foundSet.has(p))).toEqual(
+      [],
     );
   });
 

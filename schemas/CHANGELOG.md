@@ -44,6 +44,12 @@ Three fallback-mode gaps closed in review, each one a case where the same packet
 2. **Strict RFC 3339 for `expires_at`.** `Date.parse` accepts a date-only `2026-01-01`, a timezone-less `2026-08-03T12:00:00`, and silently rolls `2026-02-31` into March; `ajv-formats` rejects all three. `isRfc3339DateTime` replaces it, and a parity test checks it against the real Ajv format across 16 vectors rather than a remembered rule.
 3. **`policy_evaluation: violated` with `policy_violations` absent.** Previously only the explicitly-empty array was rejected, so omitting the field entirely let a packet claim a violation while listing none.
 
+A second round found the same class again in adjacent fields — array CONTENTS are invisible to the floor, so `policy_violations: [42]`, `evidence_paths: [""]`, duplicate `changed_docs`, an empty `release_control_id` or `doc_exemption_reason`, and duplicate `egress_allowlist` hosts all passed without Ajv. Shared `nonEmptyStringArrayErrors` / `nonEmptyStringErrors` helpers now mirror those constraints.
+
+**The durable fix is the guard, not the patch.** `SEMANTICALLY_COVERED_PATHS` declares which schema paths this layer re-implements, and a test walks both schemas, collects every value-level constraint (`items.minLength`, `uniqueItems`, `minLength`, `pattern`, `format`), and fails if one is neither covered nor listed in `FLOOR_UNCOVERED_LEGACY_PATHS`. Verified by adding a constrained property to a schema: the suite fails naming the exact path and the fix. Two review rounds each found a different unmirrored constraint by hand; a third occurrence now fails the build instead.
+
+`FLOOR_UNCOVERED_LEGACY_PATHS` inventories 26 PRE-EXISTING fields (`objective`, `changed_files`, `summary`, `allowed_files`, …) whose value constraints the floor has never enforced. Deliberately unchanged here: closing them alters validation of contracts consumers already emit, which belongs in its own change with its own migration note. They are now inventoried rather than merely unnoticed.
+
 **Scope boundary:** this ships declarations only. Recompute-and-compare of the hash, `expires_at` evaluation at dispatch, matching patterns against a real checkout, symlink handling, and cross-field reconciliation against `allowed_resources` belong to the later enforcement build. A packet carrying `execution_policy` grants nothing and blocks nothing on its own.
 
 **Why additive:** same reasoning as every entry below. All new fields are optional; a frozen pre-2.63.0 work packet and completion packet are asserted still-valid in the suite.

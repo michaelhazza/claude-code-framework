@@ -59,6 +59,73 @@ export const RELEASE_EVIDENCE_KEYS = ['release_control_id', 'canary_result', 'ev
 /** Release-evidence enum, mirrored from completion-packet.schema.json. */
 export const CANARY_RESULTS = ['pass', 'fail', 'not_run'];
 
+/**
+ * Schema paths whose value-level constraints (`items.minLength`, `uniqueItems`,
+ * `minLength`, `pattern`, `format`) this layer re-implements, so they hold with
+ * and without Ajv.
+ *
+ * The coverage test in validate-packet.test.mjs walks both schemas, collects
+ * every constrained path, and fails if one is missing from here or from
+ * FLOOR_UNCOVERED_LEGACY_PATHS. Two review rounds each found a different field
+ * with an unmirrored constraint; this list is what turns the third occurrence
+ * into a build failure rather than a fourth review round.
+ */
+export const SEMANTICALLY_COVERED_PATHS = [
+  'work:execution_policy.write_scope',
+  'work:execution_policy.protected_paths',
+  'work:execution_policy.egress_allowlist',
+  'work:execution_policy.expires_at',
+  'completion:<executionPolicy>.allowed_files',
+  'completion:<executionPolicy>.write_scope',
+  'completion:<executionPolicy>.protected_paths',
+  'completion:<executionPolicy>.egress_allowlist',
+  'completion:<executionPolicy>.expires_at',
+  'completion:effective_policy_hash',
+  'completion:policy_violations',
+  'completion:changed_docs',
+  'completion:doc_exemption_reason',
+  'completion:release_evidence.release_control_id',
+  'completion:release_evidence.evidence_paths',
+];
+
+/**
+ * Pre-existing fields whose value constraints the floor has never enforced.
+ *
+ * NOT introduced by the execution-policy work and deliberately left alone —
+ * closing them is a behaviour change to contracts consumers already emit, and
+ * belongs in its own change with its own migration note. Listed explicitly so
+ * the coverage test cannot pass by accident, and so the gap is inventoried
+ * rather than merely unnoticed.
+ */
+export const FLOOR_UNCOVERED_LEGACY_PATHS = [
+  'work:packet_id',
+  'work:initiative_id',
+  'work:feature_slug',
+  'work:repo',
+  'work:branch',
+  'work:objective',
+  'work:governing_artefacts',
+  'work:allowed_files',
+  'work:allowed_resources',
+  'work:dependencies',
+  'work:verification_commands',
+  'work:output_locations',
+  'work:prohibited_actions',
+  'work:resume_id',
+  'work:role',
+  'work:runtime',
+  'completion:packet_id',
+  'completion:role',
+  'completion:runtime',
+  'completion:changed_files',
+  'completion:spec_sections',
+  'completion:summary',
+  'completion:findings',
+  'completion:unresolved_risks',
+  'completion:produced_artefacts',
+  'completion:did_not_touch',
+];
+
 /** Strict RFC 3339 date-time: full date, full time, mandatory offset. */
 const RFC3339_DATE_TIME =
   /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|([+-])(\d{2}):(\d{2}))$/;
@@ -125,6 +192,41 @@ function isPlainObject(value) {
 }
 
 /**
+ * Mirrors the schemas' `items: {type: string, minLength: 1}` plus
+ * `uniqueItems: true` for an optional array field.
+ *
+ * The floor sees none of that — array CONTENTS are invisible to it — so a
+ * `["", 42, "dup", "dup"]` would validate without Ajv while failing with it.
+ *
+ * @param {unknown} value
+ * @param {string} label
+ * @param {{unique?: boolean}} options
+ * @returns {string[]}
+ */
+function nonEmptyStringArrayErrors(value, label, { unique = true } = {}) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return [`${label} must be an array`];
+
+  const errors = [];
+  if (value.some((entry) => typeof entry !== 'string' || entry.length === 0)) {
+    errors.push(`${label} entries must be non-empty strings`);
+  }
+  if (unique && new Set(value).size !== value.length) {
+    errors.push(`${label} must not contain duplicate entries`);
+  }
+  return errors;
+}
+
+/** Mirrors a schema `{type: string, minLength: 1}` for an optional scalar. */
+function nonEmptyStringErrors(value, label) {
+  if (value === undefined) return [];
+  if (typeof value !== 'string' || value.length === 0) {
+    return [`${label} must be a non-empty string`];
+  }
+  return [];
+}
+
+/**
  * Invariants shared by work-packet `execution_policy` and completion-packet
  * `effective_policy`.
  *
@@ -178,16 +280,9 @@ function policyErrors(policy, label, { allowAllowedFiles }) {
   }
 
   for (const key of POLICY_PATH_KEYS) {
-    const value = policy[key];
-    if (value === undefined) continue;
-    if (!Array.isArray(value)) {
-      errors.push(`${label}.${key} must be an array`);
-      continue;
-    }
-    if (new Set(value).size !== value.length) {
-      errors.push(`${label}.${key} must not contain duplicate entries`);
-    }
+    errors.push(...nonEmptyStringArrayErrors(policy[key], `${label}.${key}`));
   }
+  errors.push(...nonEmptyStringArrayErrors(policy.egress_allowlist, `${label}.egress_allowlist`));
 
   if (policy.expires_at !== undefined && !isRfc3339DateTime(policy.expires_at)) {
     errors.push(
@@ -235,8 +330,9 @@ export function validatePacketSemantics(kind, packet) {
       }
     }
     const violations = packet.policy_violations;
+    errors.push(...nonEmptyStringArrayErrors(violations, 'policy_violations'));
     if (violations !== undefined && !Array.isArray(violations)) {
-      errors.push('policy_violations must be an array');
+      // Shape already reported above; skip the contradiction checks.
     } else {
       const listed = Array.isArray(violations) ? violations : [];
       // Checked against the field being ABSENT as well as empty: claiming a
@@ -279,6 +375,8 @@ function releaseEvidenceErrors(evidence) {
   if (unknown.length > 0) {
     errors.push(`release_evidence has undeclared field(s): ${unknown.sort().join(', ')}`);
   }
+  errors.push(...nonEmptyStringErrors(evidence.release_control_id, 'release_evidence.release_control_id'));
+  errors.push(...nonEmptyStringArrayErrors(evidence.evidence_paths, 'release_evidence.evidence_paths'));
   if (evidence.canary_result !== undefined && !CANARY_RESULTS.includes(evidence.canary_result)) {
     errors.push(`release_evidence.canary_result must be one of ${CANARY_RESULTS.join(', ')}`);
   }
@@ -310,8 +408,10 @@ function documentationImpact(packet) {
   const changedDocs = packet.changed_docs;
   const changedFiles = Array.isArray(packet.changed_files) ? packet.changed_files : null;
 
+  errors.push(...nonEmptyStringArrayErrors(changedDocs, 'changed_docs'));
+  errors.push(...nonEmptyStringErrors(packet.doc_exemption_reason, 'doc_exemption_reason'));
   if (changedDocs !== undefined && !Array.isArray(changedDocs)) {
-    return { errors: ['changed_docs must be an array'], warnings };
+    return { errors, warnings };
   }
 
   if (Array.isArray(changedDocs) && changedFiles) {
