@@ -15,7 +15,7 @@ Generated 2026-07-10T11:43:22.783Z by the Fable Framework Batch (WS2, F4). Class
 | class | rows |
 |---|---|
 | durable-invariant | 113 |
-| process-contract | 572 |
+| process-contract | 574 |
 | model-workaround | 67 |
 | residue | 0 |
 | no-rules markers | 64 |
@@ -134,6 +134,7 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/builder.md#ci-gate-pre-flight-apply-while-writing-these-gates-are-ci-only-not-in-g1` | directives under this heading | model-workaround | assumption: description-based skill/doc triggering is unreliable; sunset: re-evaluate when triggering proves reliable on the WS4 eval suite |
 | `.claude/agents/builder.md#step-4-g1-gate-scoped-lint-targeted-tests-only` | directives under this heading | process-contract | scoped-command list is PC; 3-attempt cap is MW (assumption: executing models do not reliably detect non-convergence; sunset: re-evaluate per model upgrade via the WS4 eval suite; caps registered in references/iteration-caps.md) |
 | `.claude/agents/builder.md#step-5-return-summary` | directives under this heading | process-contract |  |
+| `.claude/agents/builder.md#documentation-impact-maps-to-completion-packetv1` | directives under this heading | process-contract | producer convention for the completion-packet doc-impact fields (2.63.0); advisory validator, warning not gate |
 | `.claude/agents/builder.md#hard-rules` | directives under this heading | durable-invariant | never --no-verify / never amend / never commit are integrity floors |
 | `.claude/agents/builder.md#worktree-awareness-61` | directives under this heading | process-contract |  |
 | `.claude/agents/builder.md#project-specific-notes` | directives under this heading | process-contract |  |
@@ -182,6 +183,7 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/claude-plan-review.md#review-posture-per-plan` | directives under this heading | process-contract |  |
 | `.claude/agents/claude-plan-review.md#finding-triage` | directives under this heading | process-contract |  |
 | `.claude/agents/claude-plan-review.md#process` | directives under this heading | process-contract |  |
+| `.claude/agents/claude-plan-review.md#lens-sweep-run-on-every-plan` | directives under this heading | process-contract | four review lenses per references/review-lenses.md (2.63.0); coverage mandatory, tagging conditional |
 | `.claude/agents/claude-plan-review.md#rubric-pass-run-on-every-plan` | directives under this heading | process-contract |  |
 | `.claude/agents/claude-plan-review.md#output` | directives under this heading | process-contract |  |
 | `.claude/agents/claude-plan-review.md#rules` | directives under this heading | process-contract | lifetime cap 3 is MW (assumption: executing models do not reliably detect non-convergence; sunset: re-evaluate per model upgrade via the WS4 eval suite; caps registered in references/iteration-caps.md) |
