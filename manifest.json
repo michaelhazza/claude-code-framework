@@ -1,5 +1,5 @@
 {
-  "frameworkVersion": "2.62.0",
+  "frameworkVersion": "2.63.0",
   "managedFiles": [
     {
       "path": ".claude/agents/*.md",
@@ -309,6 +309,18 @@
     },
     {
       "path": "references/test-gate-policy.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/execution-policy.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "references/review-lenses.md",
       "category": "reference",
       "mode": "sync",
       "substituteAt": "never"
@@ -1047,6 +1059,24 @@
     },
     {
       "path": "scripts/packet-contract/validate-packet.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/execution-policyPure.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/packet-semanticsPure.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/packet-contract/execution-policyPure.test.mjs",
       "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"

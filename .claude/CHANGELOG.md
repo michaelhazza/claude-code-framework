@@ -32,6 +32,28 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.63.0 — 2026-08-03
+
+**Highlights:** Five contract additions distilled from the 2026-08-02 gstack cross-repository audit, shipped as one release because each is an additive schema change and separate releases would cost consumers five sync cycles. Reviewer findings gain evidence provenance and a review lens; work packets gain a capability-removing `execution_policy` with a normative composition contract and canonical hash; completion packets echo the effective policy, classify documentation impact, and attach release evidence. Everything here DECLARES — no enforcement authority, no merge or deploy capability, no external persistence, and nothing that can grant an authority a role did not already have.
+
+**Breaking:** none. Every field is optional and every `contract_version` is unchanged; a frozen pre-2.63.0 work packet and completion packet are asserted still-valid in the suite. Consumers need no migration — `sync.js` ships the schemas, two new helper modules and two new references, and nothing reads the new fields yet.
+
+**Added:**
+- `review-finding.schema.json`: optional `confidence`, `evidence_kind`, `verification_state` (the fable-mode `verified | inferred | assumed` vocabulary) and `lens`.
+- `work-packet.schema.json`: optional `execution_policy` — `write_scope`, `protected_paths`, `destructive_actions`, `credential_access`, `network_egress` + `egress_allowlist`, `deploy_authority` (a `const false`), `expires_at`.
+- `completion-packet.schema.json`: optional `effective_policy`, `effective_policy_hash`, `policy_evaluation` (`passed | violated | not_evaluated`), `policy_violations`, `documentation_impact`, `changed_docs`, `doc_exemption_reason`, `release_evidence`.
+- `references/execution-policy.md` — normative composition, normalization and hashing semantics, plus the explicit enforcement boundary.
+- `references/review-lenses.md` — the four plan-review lenses and the coverage-versus-tagging distinction.
+- `scripts/packet-contract/execution-policyPure.mjs` — `normalizeExecutionPolicy`, the single sanctioned computation of an effective policy and its hash.
+- `scripts/packet-contract/packet-semanticsPure.mjs` — bounded semantic invariants shared by both validator modes.
+
+**Changed:**
+- `validatePacket` now returns `{ok, errors, warnings}` (previously `{ok, errors}`) and runs the semantic layer after the structural check. The floor reads only top-level `required`/`enum`/`const`, so nested policy and release-evidence invariants would otherwise hold only where Ajv happens to be installed; deleting the semantic call fails 23 tests across both modes. Review closed six further fallback-only gaps across two rounds: undeclared keys inside the policy and release-evidence objects (the authority-shaped one), `Date.parse` accepting date-only, timezone-less and impossible-calendar `expires_at` values that `ajv-formats` rejects, `policy_evaluation: violated` passing when `policy_violations` was omitted rather than empty, and unvalidated array contents (non-string, empty-string and duplicate entries) in `policy_violations`, `changed_docs`, `evidence_paths` and `egress_allowlist`. The durable fix is a coverage guard: `SEMANTICALLY_COVERED_PATHS` plus a test that walks both schemas and fails when any value-level constraint has no semantic-layer counterpart and no documented legacy exemption — verified by adding a constrained property and watching the suite name it. `FLOOR_UNCOVERED_LEGACY_PATHS` inventories 26 pre-existing fields whose constraints the floor has never enforced; closing those changes validation of contracts consumers already emit and belongs in its own change.
+- `.claude/agents/builder.md`: the chunk verdict block gains Documentation impact / Changed docs / Doc exemption reason, with the classification convention. A contract field with no instructed producer is a field nobody fills in.
+- `.claude/agents/claude-plan-review.md`, `plan-reviewer.md`, `chatgpt-plan-review.md` and `SYSTEM_PROMPT_PLAN_V2`: a lens sweep on every plan review, plus a five-line decision brief in the prose logs. `prompt_version` deliberately stays `openai-plan-review.v2` — that identifier names the prompt tier, not each content revision.
+
+**Deliberately not adopted from the audit:** wholesale vendoring, an auto-update control plane, autonomous merge or deploy authority, external memory persistence, browser-cookie import, and duplicate generic personas. The browser-QA adapter, local learnings store and model-benchmark envelope are deferred pending a benchmark rather than built.
+
 ## 2.62.0 — 2026-08-02
 
 **Highlights:** Runtime-neutral pilot, Phases A + C plus the non-live half of Phase B (`framework-runtime-neutral-v3`). Work-packet and completion-packet JSON Schemas formalise the existing builder dispatch/verdict shapes into a contract any runtime's Builder path can validate against, with a round-trip harness proving structural comparability across a Claude-path and an OpenClaw-path fixture. `build-status.v2` gains optional additive runtime-identity fields (a build-level `runtime` object plus per-`log[]`-entry `runtime`/`role` stamps) so a future OpenClaw Builder run is attributable without invalidating any existing `status.json`. `references/runtime-roles.md` is the one canonical config point recording the two supported runtime/role mappings. A writer-side transition validator, board-sync permission diagnostics, and a recovery-state detector round out the release. **Live OpenClaw enablement is deferred** — see Deferred below.
