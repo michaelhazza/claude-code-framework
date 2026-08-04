@@ -32,6 +32,13 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.63.1 — 2026-08-04
+
+**Highlights:** patch — one comment line upstreamed from automation-v1.
+
+**Fixed:**
+- `.claude/hooks/path-portability-guard.js`: carry the `eslint-disable-next-line no-control-regex` annotation on `INVALID_CHARS_RE` in canonical. automation-v1 lints its `.claude/hooks/` and added the comment locally (CI remediation #748), which made the hook diverge from canonical and trip the behavioural-divergence guard on every `/claudeupdate`. Consumers that lint hooks get a clean pass; consumers that do not are unaffected — the change is a comment.
+
 ## 2.63.0 — 2026-08-03
 
 **Highlights:** Five contract additions distilled from the 2026-08-02 gstack cross-repository audit, shipped as one release because each is an additive schema change and separate releases would cost consumers five sync cycles. Reviewer findings gain evidence provenance and a review lens; work packets gain a capability-removing `execution_policy` with a normative composition contract and canonical hash; completion packets echo the effective policy, classify documentation impact, and attach release evidence. Everything here DECLARES — no enforcement authority, no merge or deploy capability, no external persistence, and nothing that can grant an authority a role did not already have.
