@@ -1010,6 +1010,18 @@
       "substituteAt": "never"
     },
     {
+      "path": "scripts/cleanfiles-audit-headless.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/cleanfiles-audit-headless.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/status/board-sync.mjs",
       "category": "helper-script",
       "mode": "sync",
