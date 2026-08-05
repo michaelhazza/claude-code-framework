@@ -980,7 +980,19 @@
       "substituteAt": "adoption"
     },
     {
+      "path": "templates/framework-upstream-queue.template.md",
+      "category": "template",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "docs/openclaw-pilot-adoption.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "docs/examples/learning-routing-fixture.md",
       "category": "reference",
       "mode": "sync",
       "substituteAt": "never"
