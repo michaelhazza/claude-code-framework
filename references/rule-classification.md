@@ -356,6 +356,11 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/finalisation-coordinator.md#step-8c-g5-local-ci-parity-gate-mandatory-pre-label-pre-runner-rollout-only` | directives under this heading | process-contract |  |
 | `.claude/agents/finalisation-coordinator.md#step-9-current-focusmd-statusjson-mergeready-deferred-write` | directives under this heading | process-contract |  |
 | `.claude/agents/finalisation-coordinator.md#step-115-merge-gate-refusal-table-pre-merge-enforcement-of-record` | directives under this heading | process-contract |  |
+| `.claude/agents/finalisation-coordinator.md#destination-effects-and-write-authority-rule-1` | directives under this heading | process-contract |  |
+| `.claude/agents/finalisation-coordinator.md#recurrence-escalation-rule-2` | directives under this heading | process-contract |  |
+| `.claude/agents/finalisation-coordinator.md#overlay-coverage-check-rule-3` | directives under this heading | process-contract |  |
+| `.claude/agents/finalisation-coordinator.md#pending-mirror-drain-rule-4` | directives under this heading | process-contract |  |
+| `.claude/agents/finalisation-coordinator.md#worked-routing-fixture` | directives under this heading | process-contract |  |
 | `.claude/agents/hotfix.md#when-to-invoke` | directives under this heading | process-contract |  |
 | `.claude/agents/hotfix.md#execution` | — | no-rules | |
 | `.claude/agents/hotfix.md#step-1-todowrite-skeleton` | directives under this heading | model-workaround | assumption: attention/state reliability degrades over long contexts (skipped steps, batched completions); sunset: re-evaluate per model upgrade via the eval suite |
@@ -808,6 +813,7 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/commands/cleanfiles.md#config-optional` | directives under this heading | process-contract |  |
 | `.claude/commands/cleanfiles.md#when-to-run` | directives under this heading | process-contract |  |
 | `.claude/commands/cleanfiles.md#report-format` | directives under this heading | process-contract |  |
+| `.claude/commands/cleanfiles.md#wire-the-clock` | directives under this heading | process-contract |  |
 | `.claude/commands/eval-prompts.md#eval-prompts` | directives under this heading | process-contract |  |
 | `.claude/commands/eval-prompts.md#what-to-do` | directives under this heading | process-contract |  |
 | `.claude/commands/eval-prompts.md#integration-contract` | directives under this heading | process-contract |  |
