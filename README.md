@@ -43,6 +43,7 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `.claude/CHANGELOG.md` | Framework history + upgrade protocol |
 | `docs/decisions/` | 7 ADRs (0001, 0002, 0005–0008, 0014) + README + template |
 | `docs/context-packs/` | 5 mode-scoped packs (review / implement / debug / handover / minimal) |
+| `docs/examples/` | Worked-example fixtures referenced by agent contracts (currently `learning-routing-fixture.md`, the Step 7a destination-routing fixture) |
 | `docs/spec-context.md` | Framing-assumptions template (operator fills in) |
 | `docs/spec-authoring-checklist.md` | Pre-spec checklist + Status header convention |
 | `docs/frontend-design-principles.md` | Consumer-simple UI doctrine: primary rule (start from the user's task, not the data model), pre-design checklist, ship/defer defaults, visuals-as-simplicity, complexity budget, progressive disclosure, grounding + behaviour-manifest contract, when-to-break rules |
@@ -72,7 +73,7 @@ Agent files and docs use `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{STACK
 | `references/runtime-roles.md` | Runtime/role mapping (Claude Coordinator/Architect/Builder/Reviewer/Test-Author/Finaliser; OpenClaw sequential Builder-only) + per-stage/commit runtime-identity stamping contract |
 | `schemas/` | Review-result JSON Schemas (v2 contract, Ajv-gated) + input-shape schemas (`pr-context`, `prior-rounds` — advisory) + work-packet/completion-packet Builder-dispatch contracts (`work-packet.schema.json`, `completion-packet.schema.json`) + schema CHANGELOG |
 | `scripts/` | Review driver (`chatgpt-review*.ts`), review coordinator library, migration runner, framework merge + validation (`framework-merge.js`, `validate-framework.js`), build-scheduler, mockup capture, code-graph + gates libraries, skill-routing evals (`skill-routing-evals*.ts` + `evals/skill-routing/` cases — framework CI only), packet-contract validation harness (`scripts/packet-contract/`), OpenClaw-pilot rejection-test tooling (`scripts/pilot/`), status transition-validator + recovery-checks (`scripts/status/`), helper scripts + their tests |
-| `templates/` | `github-workflows/` (CI/merge-gate workflow templates) + OpenClaw-pilot branch-protection templates (`CODEOWNERS.template`, `default-branch-ruleset.json`) |
+| `templates/` | `github-workflows/` (CI/merge-gate workflow templates) + OpenClaw-pilot branch-protection templates (`CODEOWNERS.template`, `default-branch-ruleset.json`) + `framework-upstream-queue.template.md` (bootstrap for the consumer upstream-queue ledger) |
 | `migrations/` | Per-version consumer migrations (run automatically by `/claudeupdate`) + `_helpers.js` + template |
 | `context/` | Reviewer `PROJECT_CONTEXT` injection templates (distinct from `.claude/context/agent-context.md`) |
 | `tasks/` | Empty scaffolding (current-focus, todo, ideas, bugs, lessons, runbooks/, review-logs/, builds/_example/) |
