@@ -32,6 +32,25 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.64.0 — 2026-08-05
+
+**Highlights:** minor — wire the finalisation learning loop into canon. The finalisation-coordinator now routes each extracted lesson to zero-to-many destinations (a skill overlay, an upstream queue) alongside its single `Target`, the KNOWLEDGE.md entry template is indexable by construction and enforced by the append guard, and `/cleanfiles audit` is genuinely read-only with a durable monthly clock. This is the first tracked run of the project-to-framework learning loop.
+
+**Added:**
+- `templates/framework-upstream-queue.template.md`: bootstrap for the consumer upstream-queue ledger the coordinator creates on first use.
+- `docs/examples/learning-routing-fixture.md`: the worked Step 7a routing fixture (three-effect example, two-cycle unattended-produce then attended-drain, duplicate-production no-double-append, and same-day/same-title/different-category identity cases).
+- `scripts/cleanfiles-audit-headless.mjs` (+ test): thin scheduler wrapper for `/cleanfiles audit` supplying cwd pinning, dated external-log redirection, a per-run timeout, and exit-code propagation the Windows Task Scheduler cannot express in a task action alone.
+- finalisation-coordinator Step 7a: `Overlay mirror?` and `Upstream queue?` destination-effect columns, recurrence escalation (Rule 2), overlay coverage check (Rule 3), pending-mirror drain (Rule 4), a worked-fixture reference, and a ninth `Target` enum value `required-parameter/type-contract`.
+- cleanfiles.md: a queue-staleness sweep target (target 13, read-only, 180-day) and a "Wire the clock" deployment section (operator-owned monthly Desktop scheduled task, external dated-log sink, repository-purity vs external-operational-output invariants).
+
+**Changed:**
+- finalisation-coordinator Step 7 KNOWLEDGE.md template is now the indexable `### [YYYY-MM-DD] [Category] -- [Pattern title]` form, and Step 7 closes with an index dry-run assertion. The v1 auto-apply prohibition is replaced by the normative destination write-authority truth table (`Target` stays todo-only in all contexts; queue rows are non-binding in-cycle bookkeeping; overlay mirrors are operator-gated, with an unattended pending-mirror path).
+- `knowledge-append-guard.js`: newly-appended KNOWLEDGE.md headings must match the indexable dated form, else block-with-guidance; scoped to the new content only, so legacy H2 entries never block an unrelated append.
+- `cleanfiles.md` target 11 uses the index generator's `--dry-run` path in audit mode; audit mode is now write-free by contract.
+
+**Fixed:**
+- `/cleanfiles audit` no longer regenerates the knowledge index (a header-timestamp rewrite) in audit mode, restoring the mode's read-only contract.
+
 ## 2.63.1 — 2026-08-04
 
 **Highlights:** patch — one comment line upstreamed from automation-v1.
