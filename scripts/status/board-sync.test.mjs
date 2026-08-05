@@ -14,17 +14,21 @@ import {
   buildCardBody,
   buildCardKey,
   buildDraftContentEditArgs,
+  buildNotSyncedMarker,
   canonicaliseRepo,
   checkBoardContract,
   checkBoardHygiene,
   chooseSurvivor,
   classifyBoardPermissionError,
   decideCardAction,
+  EXIT_NOT_SYNCED,
   extractKeyFromBody,
   extractUpdatedAtFromBody,
   mapRecordToCard,
   neutraliseCardText,
   normaliseItem,
+  NOT_SYNCED_REASONS,
+  notSyncedReasonFromDiagnostic,
   parseOwnerRepoFromGitUrl,
   REPO_FIELD_NAME,
   shouldArchive,
@@ -874,5 +878,59 @@ describe('classifyBoardPermissionError', () => {
   it('handles a non-Error input without throwing', () => {
     expect(classifyBoardPermissionError('plain string, not an Error')).toBe(null);
     expect(classifyBoardPermissionError(undefined)).toBe(null);
+  });
+});
+
+// Did-not-sync signalling. The defect these close: a missing `projects_board`
+// key made every board push a silent no-op across an unknown number of builds,
+// and because the sync path always exited 0, "board updated" and "board
+// silently not updated" were indistinguishable to every caller. The only way
+// it surfaced was an operator opening the board and finding an empty column.
+// The board stays non-blocking — these assert observability, not a gate.
+describe('did-not-sync signalling', () => {
+  it('builds the stable marker callers grep for', () => {
+    expect(buildNotSyncedMarker(NOT_SYNCED_REASONS.NO_CONFIG))
+      .toBe('[board-sync] NOT_SYNCED reason=no_config');
+  });
+
+  it('uses an exit code distinct from --init\'s operator-input failure (1)', () => {
+    expect(EXIT_NOT_SYNCED).toBe(3);
+    expect(EXIT_NOT_SYNCED).not.toBe(1);
+    expect(EXIT_NOT_SYNCED).not.toBe(0);
+  });
+
+  it('maps the missing-project-scope diagnostic onto its own reason', () => {
+    expect(notSyncedReasonFromDiagnostic('MISSING_PROJECT_SCOPE'))
+      .toBe(NOT_SYNCED_REASONS.MISSING_PROJECT_SCOPE);
+  });
+
+  it('maps the missing-board-access diagnostic onto its own reason', () => {
+    expect(notSyncedReasonFromDiagnostic('MISSING_BOARD_ACCESS'))
+      .toBe(NOT_SYNCED_REASONS.MISSING_BOARD_ACCESS);
+  });
+
+  it('degrades an unclassified gh failure to gh_failure rather than mislabelling it a permission problem', () => {
+    expect(notSyncedReasonFromDiagnostic(null)).toBe(NOT_SYNCED_REASONS.GH_FAILURE);
+    expect(notSyncedReasonFromDiagnostic('UNKNOWN')).toBe(NOT_SYNCED_REASONS.GH_FAILURE);
+    expect(notSyncedReasonFromDiagnostic(undefined)).toBe(NOT_SYNCED_REASONS.GH_FAILURE);
+  });
+
+  it('keeps the reason set closed and frozen so callers can branch on the value', () => {
+    expect(Object.isFrozen(NOT_SYNCED_REASONS)).toBe(true);
+    expect(Object.values(NOT_SYNCED_REASONS).sort()).toEqual([
+      'board_contract_mismatch',
+      'gh_failure',
+      'missing_board_access',
+      'missing_project_scope',
+      'no_config',
+      'no_repo_identity',
+      'unexpected_error',
+    ]);
+  });
+
+  it('emits every reason in the greppable format, with no free text at any call site', () => {
+    for (const reason of Object.values(NOT_SYNCED_REASONS)) {
+      expect(buildNotSyncedMarker(reason)).toMatch(/^\[board-sync\] NOT_SYNCED reason=[a-z_]+$/);
+    }
   });
 });

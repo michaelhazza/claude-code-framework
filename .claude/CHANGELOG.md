@@ -32,6 +32,20 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.64.1 — 2026-08-06
+
+**Highlights:** patch — the build board could stop being written to and nothing would say so. `board-sync.mjs` now emits a stable `NOT_SYNCED` marker and a distinct exit code on any run that did not reach the board, and the three coordinators are required to report that to the operator in-session rather than only to `progress.md`. Found in a consuming repo where `projects_board` had never been recorded: `loadBoardConfig()` returned null, the script warned and exited 0, and every coordinator push was a silent no-op for an unknown number of builds. The only thing that eventually surfaced it was an operator opening the board and finding an empty column. The board remains a view, not a gate — this change buys observability, not enforcement.
+
+**Added:**
+- `board-sync.mjs`: `EXIT_NOT_SYNCED` (3), the frozen `NOT_SYNCED_REASONS` set, and the pure helpers `buildNotSyncedMarker()` / `notSyncedReasonFromDiagnostic()`, all exported so the did-not-sync contract is unit-testable without shelling out to `gh` (the thin I/O layer stays untested by design). Marker format `[board-sync] NOT_SYNCED reason=<reason>` is contract; callers grep `NOT_SYNCED reason=`.
+- Every did-not-reach-the-board path now signals: missing config, unresolvable repo identity, `gh` failure reading board state (carrying the existing permission diagnostic through to a typed reason), board-contract mismatch, per-card sync failure, and the top-level unexpected-error catch. A single stale card is the same class of bug as a run that never landed, so per-card failures set it too.
+- spec-, feature- and finalisation-coordinator: a **board preflight** at context load — check `projects_board` is recorded and that `gh` can actually read the board, and tell the operator once, up front, with the exact remediation for each (record the config, which travels with the repo; or `gh auth refresh -s project`, which is per-machine because the token lives in the OS keyring).
+- 9 tests covering marker format, the exit code being distinct from `--init`'s 1, diagnostic-to-reason mapping, unclassified failures degrading to `gh_failure` rather than being mislabelled a permission problem, and the reason set staying closed and frozen.
+
+**Changed:**
+- All three coordinators' § Status contract: "Board-sync is non-blocking" becomes "non-blocking, but never silent" — on the marker the coordinator MUST both record it and report it to the operator in the same message as the phase transition. The build still never stops.
+- `board-sync.mjs` header contract: the "always exits 0 on the sync path" clause is replaced by fail-open-but-observable, with `--init`'s exit 1 explicitly reserved for operator-input errors so the two codes are never confused.
+
 ## 2.64.0 — 2026-08-05
 
 **Highlights:** minor — wire the finalisation learning loop into canon. The finalisation-coordinator now routes each extracted lesson to zero-to-many destinations (a skill overlay, an upstream queue) alongside its single `Target`, the KNOWLEDGE.md entry template is indexable by construction and enforced by the append guard, and `/cleanfiles audit` is genuinely read-only with a durable monthly clock. This is the first tracked run of the project-to-framework learning loop.

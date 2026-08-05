@@ -137,10 +137,21 @@ The generator and `board-sync.mjs` run together at every such write, including t
 - **`note` is operator language — the operator reads it on the card.** 1–4 short plain-English dot points (schema hard cap 6 × 200 chars): what was tested, what was found, how many issues were fixed, what happens next. Counts over detail. No file paths, no agent names, no internal jargon, no transcripts. Good: `"All tests green: 214 passed"` · `"CI failed once, fixed and re-run, now green"` · `"Merged as PR #741"`. Bad: `"G5 g5-scoped.sh exit 1 on workspace-actor-coverage"`.
 - `board-sync.mjs` renders `log[]` newest-first as the card's `## Activity` section — the card IS the operator's progress feed for an unattended session, and doubles as the compact build history later reviewers read. A missed append is a missed status write: same severity.
 
-**Board-sync is non-blocking.** A `board-sync.mjs` failure is recorded in `progress.md` and never blocks a build — the board is a view, not a gate.
+**Board preflight — run ONCE, at context load, before the first status write.** Confirm the board can actually be written to, rather than discovering it transition by transition:
+
+```bash
+# 1. Is the board's identity recorded at all?
+grep -q '"projects_board"' .claude/project-registries.json || echo "PREFLIGHT: projects_board not recorded"
+# 2. Can gh actually read it? (owner/number come from that config)
+gh project view <number> --owner <owner> --format json >/dev/null 2>&1 || echo "PREFLIGHT: gh cannot read the board"
+```
+
+If either check fails, tell the operator once, up front, with the exact remediation — record `projects_board: { owner, number }` in `.claude/project-registries.json` (travels with the repo, fixes every clone), or run `gh auth refresh -s project` (per-machine, the token lives in the OS keyring). Then continue; this is not a gate. Reporting it once at the start beats reporting it at every transition, and beats not reporting it at all.
+
+**Board-sync is non-blocking, but never silent.** A `board-sync.mjs` failure never blocks a build — the board is a view, not a gate. It is NOT swallowed, though: `board-sync.mjs` emits `[board-sync] NOT_SYNCED reason=<reason>` and exits `3` on any run that did not reach the board. When you see that marker you MUST (a) record it in `progress.md` AND (b) **tell the operator in-session, in the same message as the phase transition**, naming the reason and its remediation. Do not stop the build; do not bury it in a file. A line in a file the operator does not read is exactly how a missing `projects_board` config made every push a no-op across an unknown number of builds — the only thing that eventually surfaced it was an operator opening the board and finding an empty column.
 
 **Error handling.**
-- Board-sync failure → record, continue. Never a build stop.
+- Board-sync failure (`NOT_SYNCED` marker / exit 3) → record in `progress.md`, report to the operator in-session, continue. Never a build stop.
 - Generator hard error (duplicate `STATUS:GENERATED` markers) → **stop the transition and surface.** Do not proceed past Step 9/Step 12.4 on a phase transition whose status projection failed to write.
 - A status write rejected by `.claude/hooks/phase-lock.js` means the `status.json` write-allowlist did not land, or `.phase` disagrees with the write path — **fail loudly** rather than silently skipping the status write.
 

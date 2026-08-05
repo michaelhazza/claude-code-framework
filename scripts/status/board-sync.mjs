@@ -116,20 +116,33 @@
 // Error handling — deliberately asymmetric; this asymmetry IS the contract:
 //   - `gh` failure, network error, or missing `projects_board` config in
 //     `.claude/project-registries.json` -> RECORDED (console.warn) and
-//     NON-BLOCKING. This script always exits 0 on the sync path, no matter
-//     what `gh` does. DO NOT "harden" this into a hard failure later — the
-//     board is a view, not a gate (spec §7.4), and this is the one place in
-//     the pipeline where a failure is intentionally swallowed-with-a-record.
+//     NON-BLOCKING: this script never throws on the sync path and never stops
+//     a build, no matter what `gh` does. DO NOT "harden" this into a hard
+//     failure later — the board is a view, not a gate (spec §7.4), and this is
+//     the one place in the pipeline where a failure is intentionally
+//     swallowed-with-a-record.
+//   - OBSERVABLE, though. Any run that did not reach the board also emits the
+//     stable marker `[board-sync] NOT_SYNCED reason=<reason>` (closed reason
+//     set: NOT_SYNCED_REASONS) and sets exit code EXIT_NOT_SYNCED (3). This is
+//     NOT a gate — callers report it, they do not stop on it. It exists
+//     because "board updated" and "board silently not updated" were previously
+//     indistinguishable: a missing `projects_board` key made every push a
+//     silent no-op across an unknown number of builds, and the only way anyone
+//     found out was an operator opening the board and seeing an empty column.
+//     Marker format is contract; callers grep `NOT_SYNCED reason=`.
+//     Per-card `gh` failures set it too — a single stale card is the same
+//     class of bug as a whole run that never landed.
 //   - EXCEPTION: slug !== directory name -> REFUSE the upsert for that one
 //     record (fails closed even though the rest of this script is fail-
 //     open) — a wrong slug would otherwise upsert under the WRONG board
 //     identity and silently corrupt another build's card. Uses the exact
 //     same wording contract as generate-current-focus.mjs (C8):
 //     `slug <slug> does not match directory <dir>`.
-//   --init is the one exception to "always exit 0": it is an operator-run,
-//   interactive bootstrap command, so a hard failure there (bad --owner,
-//   missing --title, gh error) surfaces as a non-zero exit — the operator
-//   is actively watching the terminal, unlike the unattended sync path.
+//   --init keeps exit 1 for operator-input errors (bad --owner, missing
+//   --title, gh error): it is an operator-run, interactive bootstrap command
+//   and the operator is actively watching the terminal. Exit 1 stays reserved
+//   for that path; the sync path's did-not-reach-the-board signal is the
+//   distinct EXIT_NOT_SYNCED (3), so the two are never confused.
 //
 // Structure for testability: all decision logic lives in exported PURE
 // functions (no fs, no gh, no Date.now()) — canonicaliseRepo, buildCardKey,
@@ -393,6 +406,50 @@ export function shouldArchive(record, now) {
  *  turns the board into a gate, it only labels a swallowed failure. Returns
  *  null when the message shows no permission signal at all, so an unrelated
  *  gh failure (network, rate limit, malformed JSON) is not mislabelled. */
+/** Exit code for "this run did not reach the board". Distinct from 1, which
+ *  --init reserves for operator-input errors. The board stays NON-BLOCKING —
+ *  a coordinator does not stop a build on this code; it reports it. What the
+ *  code buys is that "board updated" and "board silently not updated" stop
+ *  being indistinguishable to any caller, which is the defect this exists to
+ *  close: a missing `projects_board` config made every push a no-op for an
+ *  unknown number of builds, and nothing upstream could tell. */
+export const EXIT_NOT_SYNCED = 3;
+
+/** Closed set of reasons a run did not reach the board. Kept closed so a
+ *  caller can branch on the value; a new failure mode adds a member here
+ *  rather than inventing free text at the call site. */
+export const NOT_SYNCED_REASONS = Object.freeze({
+  NO_CONFIG: 'no_config',
+  NO_REPO_IDENTITY: 'no_repo_identity',
+  MISSING_PROJECT_SCOPE: 'missing_project_scope',
+  MISSING_BOARD_ACCESS: 'missing_board_access',
+  BOARD_CONTRACT_MISMATCH: 'board_contract_mismatch',
+  GH_FAILURE: 'gh_failure',
+  UNEXPECTED_ERROR: 'unexpected_error',
+});
+
+/** The stable, greppable stdout marker. Format is contract: callers and CI
+ *  grep for `NOT_SYNCED reason=` — do not reword it. */
+export function buildNotSyncedMarker(reason) {
+  return `[board-sync] NOT_SYNCED reason=${reason}`;
+}
+
+/** Maps a classifyBoardPermissionError diagnostic onto a NOT_SYNCED reason.
+ *  Anything unclassified (network, rate limit, malformed JSON) degrades to
+ *  GH_FAILURE rather than being mislabelled as a permission problem. */
+export function notSyncedReasonFromDiagnostic(diagnostic) {
+  if (diagnostic === 'MISSING_PROJECT_SCOPE') return NOT_SYNCED_REASONS.MISSING_PROJECT_SCOPE;
+  if (diagnostic === 'MISSING_BOARD_ACCESS') return NOT_SYNCED_REASONS.MISSING_BOARD_ACCESS;
+  return NOT_SYNCED_REASONS.GH_FAILURE;
+}
+
+/** Impure companion to the two pure helpers above: emits the marker and sets
+ *  the exit code. Deliberately NOT a throw — the sync path stays fail-open. */
+function markNotSynced(reason) {
+  console.warn(buildNotSyncedMarker(reason));
+  process.exitCode = EXIT_NOT_SYNCED;
+}
+
 export function classifyBoardPermissionError(err) {
   const message = typeof err?.message === 'string' ? err.message : String(err ?? '');
   const lower = message.toLowerCase();
@@ -893,6 +950,7 @@ async function syncBoard(root, repository, boardConfig) {
       `[board-sync] gh failure reading board state — recorded, non-blocking: ${err.message}`
       + (diagnostic ? ` [diagnostic: ${diagnostic}]` : '')
     );
+    markNotSynced(notSyncedReasonFromDiagnostic(diagnostic));
     return;
   }
 
@@ -918,6 +976,7 @@ async function syncBoard(root, repository, boardConfig) {
       `  Project settings -> Status -> add the missing options, then delete any that are not listed.\n` +
       `  Refusing all writes rather than updating card bodies whose Status column would then be stale.`
     );
+    markNotSynced(NOT_SYNCED_REASONS.BOARD_CONTRACT_MISMATCH);
     return;
   }
 
@@ -979,6 +1038,10 @@ async function syncBoard(root, repository, boardConfig) {
         `[board-sync] gh failure syncing ${record.slug} — recorded, non-blocking: ${err.message}`
         + (diagnostic ? ` [diagnostic: ${diagnostic}]` : '')
       );
+      // Per-card failure still means a card the operator expects to see did
+      // not move. Same signal as a whole-run failure: a silently stale card is
+      // exactly the class of bug this marker exists to surface.
+      markNotSynced(notSyncedReasonFromDiagnostic(diagnostic));
     }
   }
 }
@@ -1006,12 +1069,14 @@ async function main() {
     console.warn(
       '[board-sync] projects_board not configured in .claude/project-registries.json — skipping sync (board is a view, not a gate)'
     );
+    markNotSynced(NOT_SYNCED_REASONS.NO_CONFIG);
     return;
   }
 
   const repository = repoFlag ?? detectRepoFromGitRemote(root);
   if (!repository) {
     console.warn('[board-sync] could not determine repository identity (no --repo and no git remote) — skipping sync');
+    markNotSynced(NOT_SYNCED_REASONS.NO_REPO_IDENTITY);
     return;
   }
 
@@ -1027,5 +1092,6 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   main().catch((err) => {
     console.warn(`[board-sync] unexpected error — recorded, non-blocking: ${err.message}`);
+    markNotSynced(NOT_SYNCED_REASONS.UNEXPECTED_ERROR);
   });
 }
