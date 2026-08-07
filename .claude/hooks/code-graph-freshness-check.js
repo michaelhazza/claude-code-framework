@@ -67,6 +67,7 @@ const SESSION_STATE_DIR = join(PROJECT_DIR, '.claude', 'session-state');
 const AUDIT_STAMP_PATH = join(SESSION_STATE_DIR, '.audit-context-packs.stamp');
 const REBUILD_LOCK_PATH = join(SESSION_STATE_DIR, '.code-graph-rebuild.lock');
 const REBUILD_LOCK_STALE_MS = 10 * 60_000; // a crashed rebuild cannot wedge the cold path past this
+const SPAWN_SETTLE_TIMEOUT_MS = 3_000; // wait this long for spawn/error before exiting anyway (never hang session start)
 
 // Paths for audit-context-packs: prefer consumer-local, fall back to framework submodule.
 const AUDIT_SCRIPT_LOCAL = join(PROJECT_DIR, 'scripts', 'audit-context-packs.ts');
@@ -276,31 +277,34 @@ function clearRebuildLock() {
  * detached child rebuilds the cache and re-establishes the watcher; the lock it
  * ran under is cleared by a later watcher-alive session or by stale-takeover.
  */
-function spawnDetachedRebuild() {
+function spawnDetachedRebuild(onSpawn, onError) {
   if (!existsSync(BUILD_SCRIPT_PATH)) return { skipped: true, reason: 'build script missing' };
+  let child;
   try {
-    const child = spawn('npx', ['tsx', BUILD_SCRIPT_PATH], {
+    child = spawn('npx', ['tsx', BUILD_SCRIPT_PATH], {
       cwd: PROJECT_DIR,
       detached: true,
       stdio: 'ignore',
       shell: process.platform === 'win32',
     });
-    // spawn() reports failures like ENOENT (npx not on PATH) ASYNCHRONOUSLY via
-    // an 'error' event, NOT by throwing into the try/catch above. Without this
-    // listener that error is unhandled and can crash the session-start hook —
-    // the opposite of the fail-open contract. Register it BEFORE unref() so the
-    // handler survives, clear the lock we hold so a real rebuild can be retried,
-    // and swallow the error (fail-open). The synchronous catch below still
-    // covers the rare throw-on-spawn path.
-    child.on('error', () => {
-      clearRebuildLock();
-    });
-    child.unref();
-    return { skipped: false };
   } catch (err) {
-    clearRebuildLock();
+    // Rare synchronous throw (e.g. bad options). Async failures come via 'error'.
     return { skipped: false, error: err };
   }
+  // spawn() reports success via 'spawn' and failure (ENOENT on npx, etc.)
+  // ASYNCHRONOUSLY via 'error'. The caller must NOT print "rebuilding in the
+  // background" or exit until we know which happened, or a failed spawn is both
+  // mis-reported as started AND its async error is dropped by an early
+  // process.exit(). We defer to onSpawn/onError, unref()-ing only on success so
+  // the parent stays attached long enough to observe the result. A bounded
+  // timeout guarantees session start never hangs if neither event arrives.
+  let settled = false;
+  const settle = (fn) => { if (settled) return; settled = true; clearTimeout(timer); fn(); };
+  child.on('spawn', () => settle(() => { try { child.unref(); } catch { /* ignore */ } onSpawn(); }));
+  child.on('error', (err) => settle(() => onError(err)));
+  const timer = setTimeout(() => settle(() => { try { child.unref(); } catch { /* ignore */ } onSpawn(); }), SPAWN_SETTLE_TIMEOUT_MS);
+  timer.unref();
+  return { deferred: true };
 }
 
 function runSessionStartChecks() {
@@ -324,23 +328,44 @@ function runSessionStartChecks() {
     process.stdout.write('Code intelligence cache rebuild already running in another session; session continues.\n');
     freshnessResult = { freshness: 'rebuild_in_progress' };
   } else {
-    const spawned = spawnDetachedRebuild();
+    const spawned = spawnDetachedRebuild(
+      () => {
+        // onSpawn: the rebuild actually started. Report it, run the audit, exit.
+        process.stdout.write('Code intelligence cache rebuilding in the background (watcher was down); session continues.\n');
+        maybeRunAudit();
+        process.exit(0);
+      },
+      (err) => {
+        // onError: the spawn FAILED (e.g. ENOENT on npx). Correct the record with
+        // a visible fail-open warning, release the lock so a later session can
+        // retry, run the audit, exit.
+        process.stderr.write(
+          `code-graph: background rebuild failed to start (${err && err.code ? err.code : 'spawn error'}). ` +
+          `Session continues; cache refresh skipped.\n`,
+        );
+        clearRebuildLock();
+        maybeRunAudit();
+        process.exit(0);
+      },
+    );
     if (spawned.skipped) {
       // branch: build-script-missing — framework not (yet) fully imported; degrade silently.
       clearRebuildLock();
-      freshnessResult = { freshness: 'skipped', reason: 'build script missing' };
-    } else if (spawned.error) {
-      // branch: spawn-failed — spawn itself threw (e.g. ENOENT on npx).
+      maybeRunAudit();
+      return { freshness: 'skipped', reason: 'build script missing' };
+    }
+    if (spawned.error) {
+      // branch: spawn threw synchronously (rare).
       clearRebuildLock();
       process.stderr.write(
         `code-graph-freshness-check: detached rebuild spawn failed (${spawned.error.code || spawned.error.message}). ` +
         `Cache is advisory; session continues.\n`,
       );
-      freshnessResult = { freshness: 'failed', reason: 'spawn' };
-    } else {
-      process.stdout.write('Code intelligence cache rebuilding in the background (watcher was down); session continues.\n');
-      freshnessResult = { freshness: 'rebuild_spawned' };
+      maybeRunAudit();
+      return { freshness: 'failed', reason: 'spawn' };
     }
+    // deferred: the onSpawn/onError handler owns the audit + exit.
+    return { freshness: 'rebuild_spawned', deferExit: true };
   }
 
   maybeRunAudit();
@@ -349,9 +374,10 @@ function runSessionStartChecks() {
 
 function main() {
   try {
-    runSessionStartChecks();
-    // branch: catch-handler — outer safety net; single terminal exit below.
-    process.exit(0);
+    const result = runSessionStartChecks();
+    // The deferred rebuild path exits from its own spawn/error handler; every
+    // other path exits here.
+    if (!(result && result.deferExit)) process.exit(0);
   } catch (err) {
     process.stderr.write(
       `code-graph-freshness-check: unexpected error: ${err && err.message}\n`,

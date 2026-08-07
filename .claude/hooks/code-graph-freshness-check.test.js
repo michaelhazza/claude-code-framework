@@ -221,9 +221,15 @@ function check(label, actual, expected, extra) {
 {
   const emptyBin = mkdtempSync(join(tmpdir(), 'cgfc-empty-bin-'));
   const { proj, run } = makeProject({ withGenerator: true });
+  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock');
   const r = run({ PATH: emptyBin, Path: emptyBin });
   check('H1 spawn-ENOENT: hook exits 0 (async spawn error handled)', r.status, 0, r.stderr);
   check('H1 spawn-ENOENT: no unhandled-error crash on stderr', /Uncaught|unhandled 'error'|ERR_UNHANDLED/.test(r.stderr || ''), false, r.stderr);
+  // M3: the async error handler emits a visible fail-open warning (the caller
+  // already said "rebuilding in the background") and releases the lock so a
+  // later session can retry.
+  check('M3 spawn-ENOENT: fail-open warning emitted', /background rebuild failed to start/.test(r.stderr || ''), true, r.stderr);
+  check('M3 spawn-ENOENT: rebuild lock cleared after failure', existsSync(lock), false, `lock still present: ${lock}`);
   rmSync(proj, { recursive: true, force: true });
   rmSync(emptyBin, { recursive: true, force: true });
 }

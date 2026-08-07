@@ -79,6 +79,24 @@ check('cwd pinning: child ran with cwd = repo dir', logText.includes(`FAKE_CLAUD
 check('repository purity: repo dir contents unchanged', repoBefore === repoAfter && repoBefore === 'seed.txt');
 check('repository purity: seed file body unchanged', readFileSync(join(repoDir, 'seed.txt'), 'utf8') === 'unchanged');
 
+// Scenario 2 (High): a NONEXISTENT executable emits both 'error' AND (after it)
+// 'close'. The wrapper must settle exactly once, exit 127, and never crash with
+// ERR_STREAM_WRITE_AFTER_END from a second log.end/write.
+const logDir2 = join(root, 'external-logs-2');
+const enoent = spawnSync(process.execPath, [WRAPPER], {
+  encoding: 'utf8',
+  env: {
+    ...process.env,
+    CLEANFILES_AUDIT_REPO: repoDir,
+    CLEANFILES_AUDIT_LOGDIR: logDir2,
+    CLEANFILES_AUDIT_CMD: JSON.stringify(['definitely-not-a-real-binary-xyzzy']),
+  },
+});
+check('spawn-ENOENT: wrapper exits exactly 127', enoent.status === 127);
+check('spawn-ENOENT: no write-after-end / unhandled crash', !/ERR_STREAM_WRITE_AFTER_END|Uncaught|unhandled/i.test(enoent.stderr || ''));
+const logs2 = existsSync(logDir2) ? readdirSync(logDir2).filter((f) => /^audit-\d{4}-\d{2}-\d{2}\.log$/.test(f)) : [];
+check('spawn-ENOENT: dated log still written cleanly', logs2.length === 1);
+
 rmSync(root, { recursive: true, force: true });
 
 console.log(`Cases: ${pass + fails.length}, passed: ${pass}, failed: ${fails.length}`);

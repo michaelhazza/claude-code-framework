@@ -25,15 +25,22 @@
 // diffable). Renames and modifications are not additions and are ignored.
 //
 // Exit codes:
-//   0  no new behavioural files, or every new file is declared. Also 0 (with a
-//      loud WARN) when the base ref cannot be resolved (tagless/shallow checkout)
-//      — a release runs where tags exist; a dev checkout should not hard-block.
-//   1  one or more new behavioural files lack a growth-gate declaration.
+//   0  no new behavioural files, or every new file is declared. Also 0 for the
+//      FIRST release (no previous version to diff against), and 0 with a WARN
+//      when the baseline is unresolvable ONLY under GATE_GROWTH_ADVISORY.
+//   1  one or more new behavioural files lack a valid growth-gate declaration,
+//      OR — the FAIL-CLOSED default — the baseline ref cannot be resolved while a
+//      previous version exists (tagless/shallow checkout, bad ref, git failure).
+//      A safety control does not silently disable itself; fetch tags / fix the
+//      ref, or set GATE_GROWTH_ADVISORY for local-only advisory mode.
 //
 // Config (env, all optional):
-//   GATE_ROOT       repo root (default process.cwd()).
-//   GATE_BASE_REF   ref to diff HEAD against (default: `v<previous-version>`
-//                   derived from the 2nd `## ` heading in .claude/CHANGELOG.md).
+//   GATE_ROOT              repo root (default process.cwd()).
+//   GATE_BASE_REF          ref to diff HEAD against (default: `v<previous-version>`
+//                          derived from the 2nd `## ` heading in .claude/CHANGELOG.md).
+//   GATE_GROWTH_ADVISORY   `1|true|yes` → downgrade an unresolvable-baseline
+//                          FAIL-CLOSED to a warning-exit-0 (LOCAL dev only;
+//                          never set in release/CI).
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -152,7 +159,14 @@ const declarations = [...section.matchAll(/^> growth-gate:\s*(.+)$/gm)].map((m) 
 // bare-name match is a fallback and is flagged as ambiguous if two additions
 // share it, so one declaration cannot silently cover two different new files.
 const FOOTPRINT_RE = /footprint:\s*(\d+\s*bytes|not-always-loaded)\b/i;
-const REPLACES_RE = /replaces:\s*\S/i;
+// `replaces:` must carry MEANINGFUL content, not just the field delimiter. Parse
+// the value between `replaces:` and `footprint:` (or end of line) and require a
+// word character — `replaces: ; footprint: 1200 bytes` has an EMPTY replaces
+// value (the `;` is the delimiter, not a value) and must fail.
+function hasReplacesValue(decl) {
+  const m = decl.match(/replaces:\s*([^]*?)\s*;?\s*(?:footprint:|$)/i);
+  return !!(m && /\w/.test(m[1]));
+}
 function nameMatchers(decl, b) {
   const byPath = decl.includes(b.file);
   const byName = new RegExp(`(^|[\\s\`(/])${b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s\`).,;:]|$)`).test(decl);
@@ -177,7 +191,7 @@ for (const b of behavioural) {
     }
   }
   const missing = [];
-  if (!REPLACES_RE.test(decl)) missing.push('non-empty `replaces:`');
+  if (!hasReplacesValue(decl)) missing.push('non-empty `replaces:` value');
   if (!FOOTPRINT_RE.test(decl)) missing.push('`footprint:` as `<N> bytes` or `not-always-loaded`');
   if (missing.length) {
     violations.push(`${b.kind} ${b.file}: declaration is missing ${missing.join(' + ')}`);

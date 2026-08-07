@@ -117,6 +117,17 @@ describe('verify-doc-size gate', () => {
     expect(out).toContain('registered in docs/doc-sync.md');
   });
 
+  it('M2: an exact backtick path in doc-sync PROSE (not a registry table row) does NOT register → warns', () => {
+    const root = tmpRoot();
+    write(root, 'docs/legacy-huge.md', 'z'.repeat(120 * 1024));
+    // The exact backticked path appears, but only in a prose sentence, not as a
+    // `| `docs/legacy-huge.md` | … |` registry row.
+    write(root, 'docs/doc-sync.md', 'Do not register `docs/legacy-huge.md`; it is being removed.\n');
+    const { code, out } = run(root);
+    expect(code).toBe(2);
+    expect(out).toContain('[action-needed] docs/legacy-huge.md');
+  });
+
   it('H4: a bare stem mentioned in doc-sync PROSE (no backtick path) does NOT count as registered → warns', () => {
     const root = tmpRoot();
     // A common-word stem: "plan". doc-sync mentions the word "plan" in prose but

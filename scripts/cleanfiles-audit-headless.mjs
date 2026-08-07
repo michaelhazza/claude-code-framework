@@ -84,28 +84,46 @@ function main() {
     windowsHide: true,
   });
 
-  child.stdout.pipe(log, { end: false });
-  child.stderr.pipe(log, { end: false });
+  // On a spawn failure the child has no stdio streams — guard the pipes.
+  if (child.stdout) child.stdout.pipe(log, { end: false });
+  if (child.stderr) child.stderr.pipe(log, { end: false });
 
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
-    log.write(`\n[wrapper] TIMEOUT after ${TIMEOUT_MS}ms — killing child\n`); // (2) per-run timeout
+    safeWrite(`\n[wrapper] TIMEOUT after ${TIMEOUT_MS}ms — killing child\n`); // (2) per-run timeout
     child.kill();
   }, TIMEOUT_MS);
 
-  child.on('error', (err) => {
+  // SINGLE settlement path. Node emits BOTH 'error' and (afterwards) 'close' on
+  // a failed spawn; ending/exiting from each races and writes-after-end. A
+  // `settled` flag makes exactly one of them win. A log 'error' listener keeps a
+  // stream failure from crashing the wrapper (fail-open: still exit).
+  let settled = false;
+  let pendingErrorCode = null;
+  function safeWrite(s) { try { log.write(s); } catch { /* stream ended/errored */ } }
+  function finish(code) {
+    if (settled) return;
+    settled = true;
     clearTimeout(timer);
-    log.write(`\n[wrapper] spawn error: ${err.message}\n`);
-    log.end(() => process.exit(127));
+    try { log.end(() => process.exit(code)); } catch { process.exit(code); }
+  }
+  log.on('error', () => { if (!settled) { settled = true; clearTimeout(timer); process.exit(pendingErrorCode ?? 1); } });
+
+  child.on('error', (err) => {
+    pendingErrorCode = 127;
+    safeWrite(`\n[wrapper] spawn error: ${err.message}\n`);
+    // Do NOT end/exit here — 'close' fires after 'error' on a failed spawn and
+    // owns the single settlement. Fallback in case 'close' never arrives.
+    setImmediate(() => finish(127));
   });
 
   child.on('close', (code, signal) => {
-    clearTimeout(timer);
-    // (3) exit-code propagation: verbatim child code; 124 on timeout-kill.
-    const exitCode = timedOut ? 124 : code == null ? (signal ? 1 : 0) : code;
-    log.write(`\n[wrapper] child exited code=${code} signal=${signal} -> wrapper exit ${exitCode}\n`);
-    log.end(() => process.exit(exitCode));
+    // (3) exit-code propagation: spawn-error 127 wins; else verbatim child code;
+    // 124 on timeout-kill.
+    const exitCode = pendingErrorCode != null ? pendingErrorCode : (timedOut ? 124 : code == null ? (signal ? 1 : 0) : code);
+    safeWrite(`\n[wrapper] child exited code=${code} signal=${signal} -> wrapper exit ${exitCode}\n`);
+    finish(exitCode);
   });
 }
 

@@ -158,6 +158,18 @@ describe('verify-growth-gate', () => {
     expect(out).toMatch(/replaces:|footprint:/);
   });
 
+  it('empty replaces value but VALID footprint (the `;` delimiter is not a value) → exit 1', () => {
+    const dir = baseRepo();
+    releaseCommit(
+      dir,
+      { '.claude/skills/new-skill/SKILL.md': 'x' },
+      '> growth-gate: .claude/skills/new-skill/SKILL.md — replaces: ; footprint: 1200 bytes',
+    );
+    const { code, out } = runGate(dir);
+    expect(code).toBe(1);
+    expect(out).toContain('replaces:');
+  });
+
   it('footprint with a non-conforming value (no bytes/not-always-loaded) → exit 1', () => {
     const dir = baseRepo();
     releaseCommit(

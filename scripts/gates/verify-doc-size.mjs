@@ -202,15 +202,16 @@ function info(message) {
     }
   }
   const docSync = read('docs/doc-sync.md') || '';
-  // Registration = the file's path appears as a BACKTICK-QUOTED path token in
-  // doc-sync.md, not an arbitrary substring. A plain `docSync.includes(stem)`
-  // false-greens any megadoc whose stem is a common word (docs/plan.md matches
-  // the word "plan" anywhere in the registry), defeating the whole gate. Collect
-  // the exact code-span tokens once and match the full repo-relative path or the
-  // exact bare filename.
-  const docSyncPaths = new Set(
-    [...docSync.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim()),
-  );
+  // Registration = the file's path is the KEY (first column) of a doc-sync
+  // registry ROW, not any backtick token anywhere in the file. Matching any code
+  // span still false-greens on prose like "do not register `docs/legacy.md`";
+  // only a table row `| `docs/foo.md` | … |` registers a doc. Extract the
+  // first-cell backtick path from table rows exclusively.
+  const docSyncPaths = new Set();
+  for (const line of docSync.split('\n')) {
+    const m = line.match(/^\s*\|\s*`([^`]+)`\s*\|/);
+    if (m) docSyncPaths.add(m[1].trim());
+  }
   let entries = [];
   try {
     entries = fs.readdirSync(docsDir, { withFileTypes: true });
