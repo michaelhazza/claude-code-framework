@@ -10,6 +10,7 @@ does not silently regrow. `scripts/gates/verify-doc-size.mjs` enforces them
 |---|---|---|
 | `tasks/current-focus.md` | operator portion ≤ 4KB and ≤ 50 lines | The `STATUS:GENERATED:BEGIN..END` region is EXCLUDED — it is regenerated (not accreted) and scales with active builds. The accretion risk is the operator-authored pointer block. |
 | `tasks/todo.md` | ≤ 200 lines | Archive completed / stale items to `tasks/todo-archive/<quarter>.md`. |
+| `CLAUDE.md` | ≤ 16KB and ≤ 400 lines | The one always-loaded doc the gate did not previously budget (measured ~30KB at one consumer, ~15KB adoption history). Warning-level, non-grace. Move version archaeology / adoption history to `references/` or `tasks/builds/`. |
 | `KNOWLEDGE.md` | ≤ 200KB and ≤ 150 live entries | Live entry = `### [` indexable heading + legacy `## ` entry heading. **GRACE** until the next quarterly archival sweep. |
 | `architecture.md` | ≤ 400KB whole-file; `## ` sections ≤ 25KB each | **GRACE** until I2 (editorial passes). |
 | `docs/capabilities.md` | ≤ 300KB | **GRACE** until I1 (asset-register split); target is prose-only after the split. |

@@ -595,6 +595,8 @@ For each closed item: remove from `tasks/todo.md` (or move to a `## Closed by {s
 
 Items in `tasks/todo.md` that are NOT closed by this build remain untouched.
 
+After the todo cleanup, run `node scripts/gates/verify-doc-size.mjs` from the repo root. If tasks/todo.md is still [action-needed], perform the archive move the gate prescribes (completed / RESOLVED items to tasks/todo-archive/<quarter>.md) as part of this step — that is this step's existing mandate, now measured. Report every other [action-needed] or [grace] line verbatim in the handoff summary so the operator sees standing doc debt at every finalisation; do NOT auto-archive KNOWLEDGE.md or current-focus.md here (quarterly-sweep and generator-owned surfaces respectively).
+
 ## Step 8a — Review-scratch sweep
 
 Deletes the review loop's raw working material now that its value has been extracted. Runs **after Step 7** deliberately — Step 7's KNOWLEDGE extraction is the last consumer the raw material could have.
