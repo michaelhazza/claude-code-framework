@@ -99,10 +99,14 @@ check('spawn-ENOENT: dated log still written cleanly', logs2.length === 1);
 
 // Scenario 3 (M1): a child that IGNORES termination must not hang the wrapper —
 // the hard grace timer settles it as 124 within bounded wall time.
-const stubHang = join(root, 'fake-hang.mjs');
+const stubHang = join(root, 'fake-hang.cjs'); // .cjs → CommonJS so require() is available
+const hangPidFile = join(root, 'hang.pid');
 writeFileSync(
   stubHang,
   [
+    // Record our pid, then ignore termination and stay alive — the wrapper must
+    // FORCE-kill us (SIGKILL, uncatchable) after the grace window.
+    `require('fs').writeFileSync(${JSON.stringify(hangPidFile)}, String(process.pid));`,
     "process.on('SIGTERM', () => {});",
     "process.on('SIGINT', () => {});",
     'setInterval(() => {}, 1000);',
@@ -125,6 +129,19 @@ const hang = spawnSync(process.execPath, [WRAPPER], {
 const hangElapsed = Date.now() - hangStart;
 check('hard-timeout: wrapper exits 124 on an ignore-SIGTERM child', hang.status === 124);
 check('hard-timeout: wrapper wall time stays bounded (<10s)', hangElapsed < 10000);
+// The child must have been force-killed, not left as an orphan. Give SIGKILL a
+// moment to be reaped, then prove the pid is gone (kill(pid, 0) throws ESRCH).
+let childAlive = false;
+try {
+  const hangPid = Number(readFileSync(hangPidFile, 'utf8').trim());
+  const deadline = Date.now() + 3000;
+  // poll until dead or deadline
+  // (synchronous busy-wait is fine in a short test)
+  while (Date.now() < deadline) {
+    try { process.kill(hangPid, 0); childAlive = true; } catch { childAlive = false; break; }
+  }
+} catch { childAlive = false; }
+check('hard-timeout: the ignore-SIGTERM child was force-killed (no orphan)', childAlive === false);
 
 rmSync(root, { recursive: true, force: true });
 

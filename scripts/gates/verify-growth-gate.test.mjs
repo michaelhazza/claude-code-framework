@@ -158,6 +158,19 @@ describe('verify-growth-gate', () => {
     expect(out).toMatch(/replaces:|footprint:/);
   });
 
+  it('a target that only SUBSTRING-contains the path (foo.md vs foo.md.backup) does NOT cover it → exit 1', () => {
+    const dir = baseRepo();
+    releaseCommit(
+      dir,
+      { '.claude/agents/foo.md': '---\nname: foo\n---\nx' },
+      // target names a DIFFERENT file whose name contains the real path as a prefix
+      '> growth-gate: .claude/agents/foo.md.backup — replaces: none: new; footprint: 1200 bytes',
+    );
+    const { code, out } = runGate(dir);
+    expect(code).toBe(1);
+    expect(out).toContain('foo.md');
+  });
+
   it('empty replaces value but VALID footprint (the `;` delimiter is not a value) → exit 1', () => {
     const dir = baseRepo();
     releaseCommit(

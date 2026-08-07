@@ -30,6 +30,8 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -120,7 +122,7 @@ function check(label, actual, expected, extra) {
 {
   const { proj, run } = makeProject({ withGenerator: true });
   const r = run();
-  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock');
+  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock.d');
   check('generator present: exit 0', r.status, 0, r.stderr);
   check('generator present: stdout reports background rebuild', /rebuilding in the background/.test(r.stdout || ''), true, `stdout=${r.stdout} stderr=${r.stderr}`);
   check('generator present: rebuild lock claimed', existsSync(lock), true, r.stdout);
@@ -144,7 +146,7 @@ function check(label, actual, expected, extra) {
   // A pid far beyond any plausible live process.
   const { proj, run } = makeProject({ withGenerator: true, watcherPid: 999999999 });
   const r = run();
-  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock');
+  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock.d');
   check('dead watcher pid: exit 0', r.status, 0, r.stderr);
   check('dead watcher pid: rebuild lock claimed', existsSync(lock), true, r.stdout);
   rmSync(proj, { recursive: true, force: true });
@@ -152,7 +154,7 @@ function check(label, actual, expected, extra) {
 {
   const { proj, run } = makeProject({ withGenerator: true, watcherPid: 'not-a-pid' });
   const r = run();
-  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock');
+  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock.d');
   check('garbage watcher pid: exit 0', r.status, 0, r.stderr);
   check('garbage watcher pid: rebuild lock claimed', existsSync(lock), true, r.stdout);
   rmSync(proj, { recursive: true, force: true });
@@ -174,7 +176,7 @@ function check(label, actual, expected, extra) {
   const { proj, run } = makeProject({ withGenerator: true });
   const ss = join(proj, '.claude', 'session-state');
   mkdirSync(ss, { recursive: true });
-  writeFileSync(join(ss, '.code-graph-rebuild.lock'), String(Date.now())); // fresh lock held by "another session"
+  mkdirSync(join(ss, '.code-graph-rebuild.lock.d')); // fresh lock held by "another session"
   const r = run();
   check('busy lock: exit 0', r.status, 0, r.stderr);
   check('busy lock: reports rebuild already running', /already running/.test(r.stdout || ''), true, r.stdout);
@@ -186,7 +188,7 @@ function check(label, actual, expected, extra) {
   const { proj, run } = makeProject({ withGenerator: true });
   const ss = join(proj, '.claude', 'session-state');
   mkdirSync(ss, { recursive: true });
-  writeFileSync(join(ss, '.code-graph-rebuild.lock'), String(Date.now() - 11 * 60_000)); // stale
+  { const _d = join(ss, '.code-graph-rebuild.lock.d'); mkdirSync(_d); const _t = new Date(Date.now() - 11 * 60_000); utimesSync(_d, _t, _t); } // stale
   const r = run();
   check('stale lock: exit 0', r.status, 0, r.stderr);
   check('stale lock: taken over, background rebuild proceeds', /rebuilding in the background/.test(r.stdout || ''), true, r.stdout);
@@ -221,7 +223,7 @@ function check(label, actual, expected, extra) {
 {
   const emptyBin = mkdtempSync(join(tmpdir(), 'cgfc-empty-bin-'));
   const { proj, run } = makeProject({ withGenerator: true });
-  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock');
+  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock.d');
   const r = run({ PATH: emptyBin, Path: emptyBin });
   check('H1 spawn-ENOENT: hook exits 0 (async spawn error handled)', r.status, 0, r.stderr);
   check('H1 spawn-ENOENT: no unhandled-error crash on stderr', /Uncaught|unhandled 'error'|ERR_UNHANDLED/.test(r.stderr || ''), false, r.stderr);
@@ -243,7 +245,7 @@ function check(label, actual, expected, extra) {
   const { proj, run } = makeProject({ withGenerator: true });
   const ss = join(proj, '.claude', 'session-state');
   mkdirSync(ss, { recursive: true });
-  writeFileSync(join(ss, '.code-graph-rebuild.lock'), String(Date.now() - 11 * 60_000)); // stale
+  { const _d = join(ss, '.code-graph-rebuild.lock.d'); mkdirSync(_d); const _t = new Date(Date.now() - 11 * 60_000); utimesSync(_d, _t, _t); } // stale
   const r1 = run();
   check('H2 takeover: first run takes over the stale lock', /rebuilding in the background/.test(r1.stdout || ''), true, r1.stdout);
   const r2 = run(); // lock is now fresh (held by the takeover) → busy, not a 2nd takeover
@@ -270,22 +272,31 @@ function check(label, actual, expected, extra) {
   rmSync(join(proj, 'docs', 'context-packs', 'b.md')); // membership changes
   run(); // fingerprint differs → audit re-runs
   const n3 = auditRuns();
+  // Content change with PRESERVED mtime: size differs → fingerprint differs →
+  // audit re-runs (an mtime-only fingerprint would have skipped it).
+  const packA = join(proj, 'docs', 'context-packs', 'a.md');
+  const beforeMtime = new Date(statSync(packA).mtimeMs);
+  writeFileSync(packA, 'a-much-longer-body-same-mtime'); // size changes
+  utimesSync(packA, beforeMtime, beforeMtime); // restore the original mtime
+  run();
+  const n4 = auditRuns();
   check('M2: audit runs on first session', n1 >= 1, true, `n1=${n1}`);
   check('M2: audit skipped when inputs unchanged', n2, n1, `n1=${n1} n2=${n2}`);
   check('M2: audit RE-RUNS after a context-pack deletion', n3 > n2, true, `n2=${n2} n3=${n3}`);
+  check('M2: audit RE-RUNS after a content change with preserved mtime (size)', n4 > n3, true, `n3=${n3} n4=${n4}`);
   rmSync(proj, { recursive: true, force: true });
 }
 
-// ── 12. H1(round4): CONCURRENT stale-lock takeover — exactly ONE contender wins.
-// The prior rm+wx takeover was raceable (B's rm could delete A's fresh lock);
-// the rename-arbiter must make simultaneous contenders resolve to a single
-// takeover. Launch N hooks at once against one stale lock and count how many
-// report "rebuilding in the background".
+// ── 12. CONCURRENT stale-lock takeover — exactly ONE contender wins. Prior
+// hand-rolled variants (rm+wx, rename-quarantine) were raceable; the directory
+// lock + single-reaper election + re-check-under-lock must make N simultaneous
+// contenders resolve to a single takeover. Launch N hooks at once against one
+// stale lock and count how many report "rebuilding in the background".
 {
   const { proj } = makeProject({ withGenerator: true });
   const ss = join(proj, '.claude', 'session-state');
   mkdirSync(ss, { recursive: true });
-  writeFileSync(join(ss, '.code-graph-rebuild.lock'), String(Date.now() - 11 * 60_000)); // stale
+  { const _d = join(ss, '.code-graph-rebuild.lock.d'); mkdirSync(_d); const _t = new Date(Date.now() - 11 * 60_000); utimesSync(_d, _t, _t); } // stale
   const N = 6;
   const outs = await Promise.all(
     Array.from({ length: N }, (_, i) => new Promise((resolve) => {

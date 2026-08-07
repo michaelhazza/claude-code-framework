@@ -33,7 +33,7 @@
  * Tests: scripts/cleanfiles-audit-headless.test.mjs
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 
@@ -96,12 +96,21 @@ function main() {
   const timer = setTimeout(() => {
     timedOut = true;
     safeWrite(`\n[wrapper] TIMEOUT after ${TIMEOUT_MS}ms — killing child\n`); // (2) per-run timeout
-    child.kill();
-    // Hard bound: if the child ignores the signal or never emits 'close', settle
-    // as 124 anyway so the wrapper's wall time stays bounded. (child.kill() on
-    // Windows terminates only the immediate child, not the whole process tree.)
+    child.kill(); // graceful SIGTERM first
+    // Hard bound: if the child ignores the signal or never emits 'close', FORCE
+    // terminate it (so we never leave an orphan for an unattended scheduler) and
+    // settle as 124. On POSIX SIGKILL cannot be caught/ignored; on Windows
+    // taskkill /T /F terminates the whole process tree (child.kill alone would
+    // leave grandchildren running).
     const grace = setTimeout(() => {
-      safeWrite(`\n[wrapper] child did not exit within ${TIMEOUT_GRACE_MS}ms of kill — wrapper exit 124\n`);
+      try {
+        if (process.platform === 'win32') {
+          if (child.pid) spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
+        } else {
+          child.kill('SIGKILL');
+        }
+      } catch { /* best-effort */ }
+      safeWrite(`\n[wrapper] child did not exit within ${TIMEOUT_GRACE_MS}ms of kill — force-killed; wrapper exit 124\n`);
       finish(124);
     }, TIMEOUT_GRACE_MS);
     grace.unref();

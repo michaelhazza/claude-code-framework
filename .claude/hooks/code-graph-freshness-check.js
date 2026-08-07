@@ -51,7 +51,7 @@
  *   - If the script is missing (pre-v2.13.0 consumer), silently skip.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, rmSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
 
@@ -65,8 +65,14 @@ const BUILD_SCRIPT_PATH = join(PROJECT_DIR, 'scripts', 'build-code-graph.ts');
 // (v2.65.0) appends this path to the consumer .gitignore when absent.
 const SESSION_STATE_DIR = join(PROJECT_DIR, '.claude', 'session-state');
 const AUDIT_STAMP_PATH = join(SESSION_STATE_DIR, '.audit-context-packs.stamp');
-const REBUILD_LOCK_PATH = join(SESSION_STATE_DIR, '.code-graph-rebuild.lock');
+// The lock is a DIRECTORY. mkdir is the one filesystem operation that is
+// atomically exclusive on POSIX and Windows alike (it fails if the target
+// exists), which makes it the correct dependency-free mutex — no read-then-act
+// TOCTOU. Staleness is the dir's own mtime.
+const REBUILD_LOCK_DIR = join(SESSION_STATE_DIR, '.code-graph-rebuild.lock.d');
+const REAPER_LOCK_DIR = join(SESSION_STATE_DIR, '.code-graph-reaper.lock.d');
 const REBUILD_LOCK_STALE_MS = 10 * 60_000; // a crashed rebuild cannot wedge the cold path past this
+const REAPER_STALE_MS = 60_000; // a reap is milliseconds; this long means the reaper itself crashed
 const SPAWN_SETTLE_TIMEOUT_MS = 3_000; // wait this long for spawn/error before exiting anyway (never hang session start)
 
 // Paths for audit-context-packs: prefer consumer-local, fall back to framework submodule.
@@ -198,18 +204,21 @@ function auditInputsFingerprint() {
   // deletion: if the newest context-pack is removed, the remaining max drops
   // BELOW the stamp and the audit is wrongly skipped even though the pack set
   // (which the audit validates) just changed. The fingerprint pins each input's
-  // name AND mtime, so any add / delete / edit changes it.
+  // name, SIZE and mtime — so any add / delete / edit changes it, including a
+  // content edit that preserves the mtime (coarse timestamp resolution,
+  // restore/copy tools, or explicitly-preserved timestamps) but changes size.
   const parts = [];
+  const stamp = (label, p) => {
+    try { const st = statSync(p); parts.push(`${label}:${st.size}:${st.mtimeMs}`); } catch { /* ignore */ }
+  };
   try {
     const arch = join(PROJECT_DIR, 'architecture.md');
-    if (existsSync(arch)) parts.push(`architecture.md:${statSync(arch).mtimeMs}`);
+    if (existsSync(arch)) stamp('architecture.md', arch);
   } catch { /* ignore */ }
   try {
     const packDir = join(PROJECT_DIR, 'docs', 'context-packs');
     if (existsSync(packDir)) {
-      for (const name of readdirSync(packDir).sort()) {
-        try { parts.push(`${name}:${statSync(join(packDir, name)).mtimeMs}`); } catch { /* ignore */ }
-      }
+      for (const name of readdirSync(packDir).sort()) stamp(name, join(packDir, name));
     }
   } catch { /* ignore */ }
   return parts.join('|');
@@ -235,49 +244,71 @@ function maybeRunAudit() {
   return res;
 }
 
+/** mtime of a lock directory in ms, or 0 if absent/unreadable (→ treated as very old). */
+function lockAgeMtime(dir) {
+  try { return statSync(dir).mtimeMs; } catch { return 0; }
+}
+
 /**
- * Atomically claim the rebuild lock so two sessions starting together cannot
- * both launch a CPU-heavy detached rebuild. Returns 'claimed' | 'takeover' |
- * 'busy'. 'wx' makes the create fail if the lock exists; a lock older than
- * REBUILD_LOCK_STALE_MS is taken over so a crashed rebuild cannot wedge the path.
+ * Claim the rebuild lock so two sessions starting together cannot both launch a
+ * CPU-heavy detached rebuild. Returns 'claimed' | 'takeover' | 'busy'.
+ *
+ * The lock is a DIRECTORY: mkdir is atomically exclusive, so the fresh claim has
+ * no read-then-act race — of N simultaneous contenders exactly one mkdir wins.
+ *
+ * Stale takeover is the hard part, and the earlier hand-rolled variants (rm+wx,
+ * rename-quarantine) were all raceable because they act on the lock PATH, whose
+ * contents can change between inspect and act, so one contender could reap
+ * another's FRESH lock. This version instead ELECTS A SINGLE REAPER via a second
+ * atomic mkdir: only the reaper may remove + re-create the main lock, so two
+ * reapers reaping the same generation is impossible. Provable invariant: a
+ * process replaces the main lock ONLY while holding the reaper lock, and the
+ * reaper lock admits exactly one holder. The sole residual is a reaper that
+ * CRASHES mid-reap (leaving the reaper lock held); that is recovered best-effort
+ * after REAPER_STALE_MS, and its worst case is one redundant background rebuild —
+ * never a wedged path.
  */
 function tryClaimRebuildLock() {
   ensureSessionStateDir();
-  try {
-    writeFileSync(REBUILD_LOCK_PATH, String(Date.now()), { flag: 'wx' });
-    return 'claimed';
-  } catch {
-    let ts = 0;
-    try { ts = Number.parseInt(readFileSync(REBUILD_LOCK_PATH, 'utf8').trim(), 10) || 0; } catch { /* unreadable */ }
-    if (Date.now() - ts >= REBUILD_LOCK_STALE_MS) {
-      // ATOMIC takeover. rm + wx-recreate is NOT safe: two contenders that both
-      // saw the stale lock can interleave as A.rm, A.create, B.rm (deletes A's
-      // fresh lock!), B.create — both "win". Instead, the atomic arbiter is a
-      // RENAME of the exact stale inode to a unique quarantine name: rename(2) is
-      // atomic, so of N contenders renaming the SAME source only ONE succeeds;
-      // every other sees ENOENT (the inode already moved) and is busy. Only the
-      // rename-winner then creates the fresh lock.
-      const quarantine = `${REBUILD_LOCK_PATH}.stale-${process.pid}-${Date.now()}`;
-      try {
-        renameSync(REBUILD_LOCK_PATH, quarantine);
-      } catch {
-        return 'busy'; // another contender already claimed/removed the stale lock
-      }
-      try { rmSync(quarantine, { force: true }); } catch { /* best-effort cleanup */ }
-      try {
-        writeFileSync(REBUILD_LOCK_PATH, String(Date.now()), { flag: 'wx' });
-        return 'takeover';
-      } catch {
-        return 'busy'; // a fresh lock reappeared (a concurrent claim) — do not double-run
-      }
+  // Fresh exclusive claim — atomic, race-free.
+  try { mkdirSync(REBUILD_LOCK_DIR); return 'claimed'; } catch { /* held */ }
+
+  if (Date.now() - lockAgeMtime(REBUILD_LOCK_DIR) < REBUILD_LOCK_STALE_MS) return 'busy';
+
+  // Stale — elect a SINGLE reaper. Only the reaper may replace the main lock.
+  let reaper = false;
+  try { mkdirSync(REAPER_LOCK_DIR); reaper = true; } catch { /* another reaper is active */ }
+  if (!reaper) {
+    // Recover a crashed reaper (best-effort; the atomic mkdir below still admits
+    // only one winner even if several sessions race this recovery).
+    if (Date.now() - lockAgeMtime(REAPER_LOCK_DIR) >= REAPER_STALE_MS) {
+      try { rmSync(REAPER_LOCK_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+      try { mkdirSync(REAPER_LOCK_DIR); reaper = true; } catch { /* lost the race */ }
     }
-    return 'busy';
   }
+  if (!reaper) return 'busy';
+
+  let result = 'busy';
+  try {
+    // RE-CHECK under the reaper lock. Our staleness decision was made before we
+    // acquired the reaper; another reaper may have already replaced the main lock
+    // with a FRESH one in between (it then released the reaper, letting us acquire
+    // it). Reaping now would destroy that fresh lock and double-run. Only reap if
+    // the main lock is STILL stale at this point.
+    if (Date.now() - lockAgeMtime(REBUILD_LOCK_DIR) >= REBUILD_LOCK_STALE_MS) {
+      rmSync(REBUILD_LOCK_DIR, { recursive: true, force: true });
+      try { mkdirSync(REBUILD_LOCK_DIR); result = 'takeover'; }
+      catch { result = 'busy'; } // a fresh claimer slipped in between rm and mkdir — do not double-run
+    }
+  } finally {
+    try { rmSync(REAPER_LOCK_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+  return result;
 }
 
 /** Best-effort lock removal (called once a live watcher proves the rebuild finished). */
 function clearRebuildLock() {
-  try { rmSync(REBUILD_LOCK_PATH, { force: true }); } catch { /* fail-open */ }
+  try { rmSync(REBUILD_LOCK_DIR, { recursive: true, force: true }); } catch { /* fail-open */ }
 }
 
 /**

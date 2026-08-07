@@ -172,15 +172,27 @@ function parseDecl(raw) {
 const parsed = [...section.matchAll(/^> growth-gate:\s*(.+)$/gm)].map((m) => parseDecl(m[1]));
 
 // Target match: the full repo-relative path (preferred, unambiguous) or the bare
-// name — but ONLY within the target section.
+// name — but ONLY within the target section, and as a WHOLE TOKEN, not a
+// substring. `.claude/agents/foo.md` must not be satisfied by a target of
+// `.claude/agents/foo.md.backup` (the trailing `.backup` breaks the token).
+function pathInTarget(target, file) {
+  const esc = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[\\s\`(])${esc}(?![\\w./-])`).test(target);
+}
 function targetMatchers(decl, b) {
-  const byPath = decl.target.includes(b.file);
-  const byName = new RegExp(`(^|[\\s\`(/])${b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s\`).,;:]|$)`).test(decl.target);
+  const byPath = pathInTarget(decl.target, b.file);
+  // byName is the bare-name convenience (`> growth-gate: new-agent — …`). It must
+  // match the name ONLY when it stands alone, NOT when it is embedded in a path
+  // (preceded by `/`) or extended by a suffix — otherwise the stem of a DIFFERENT
+  // file (`.claude/agents/foo.md.backup`) would satisfy an addition named `foo`.
+  // Path-form targets are covered by byPath instead.
+  const esc = b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const byName = new RegExp(`(^|[\\s\`(])${esc}(?![\\w./-])`).test(decl.target);
   return { byPath, byName };
 }
 const violations = [];
 for (const b of behavioural) {
-  const pathMatches = parsed.filter((d) => d.target.includes(b.file));
+  const pathMatches = parsed.filter((d) => pathInTarget(d.target, b.file));
   const nameMatches = parsed.filter((d) => targetMatchers(d, b).byName);
   const decl = pathMatches[0] || nameMatches[0];
   if (!decl) {
@@ -190,7 +202,7 @@ for (const b of behavioural) {
   // Ambiguity guard: a bare-name-only target shared by >1 addition, with no
   // full-path target, cannot be trusted to cover this specific file.
   if (pathMatches.length === 0) {
-    const otherNameSharers = behavioural.filter((o) => o !== b && targetMatchers(decl, o).byName && !parsed.some((d) => d.target.includes(o.file)));
+    const otherNameSharers = behavioural.filter((o) => o !== b && targetMatchers(decl, o).byName && !parsed.some((d) => pathInTarget(d.target, o.file)));
     if (otherNameSharers.length > 0) {
       violations.push(`${b.kind} ${b.file}: declaration matches by bare name only and is shared with ${otherNameSharers.length} other addition(s) — use the full path \`${b.file}\` as the declaration target`);
       continue;
