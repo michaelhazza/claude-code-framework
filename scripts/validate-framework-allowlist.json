@@ -1,5 +1,5 @@
 {
-  "_comment": "Allowlist for scripts/validate-framework.js. consumerFiles: paths that exist only in CONSUMER repos — the framework's managed docs legitimately cite them ('if present' cites). Supports exact repo-relative paths and 'dir/**' prefixes. knownIssues: temporarily suppressed genuinely-broken links, each { file, target, note } — fix the doc and remove the entry; stale entries fail validation. hookLibraries: repo-relative paths of .claude/hooks/ files that are shared libraries require()d by entry hooks rather than registered in settings.json — the hook-wiring check skips them; stale entries fail validation. Empty as of v2.44: every non-test .js under .claude/hooks/ is a registered entry hook.",
+  "_comment": "Allowlist for scripts/validate-framework.js. consumerFiles: paths that exist only in CONSUMER repos — the framework's managed docs legitimately cite them ('if present' cites). Supports exact repo-relative paths and 'dir/**' prefixes. knownIssues: temporarily suppressed genuinely-broken links, each { file, target, note } — fix the doc and remove the entry; stale entries fail validation. hookLibraries: repo-relative paths of .claude/hooks/ files the hook-wiring check skips — either shared libraries require()d by entry hooks, OR intentionally-unregistered opt-in entry hooks that a consumer re-registers locally. Stale entries fail validation (an entry that IS registered in settings.json, or is absent from disk, is rejected). As of v2.67.0 (FUQ-2): code-graph-freshness-check.js is an opt-in entry hook — it ships in .claude/hooks/ but is no longer registered in the shipped settings.json (measured zero cache reads across ~90 sessions); consumers that want session-start freshness checks re-add the SessionStart entry themselves.",
   "consumerFiles": [
     "CLAUDE.md",
     "KNOWLEDGE.md",
@@ -16,5 +16,7 @@
     "references/import-graph/**"
   ],
   "knownIssues": [],
-  "hookLibraries": []
+  "hookLibraries": [
+    ".claude/hooks/code-graph-freshness-check.js"
+  ]
 }
