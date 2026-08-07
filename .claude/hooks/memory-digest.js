@@ -284,14 +284,29 @@ function buildIndexMatched(dir, knowledgeLines) {
   const focusTokens = tokenize(focusRaw, FOCUS_STOPWORDS);
   if (focusTokens.size === 0) return []; // no domain to match against
 
-  // Dedup by BODY, not title: an entry whose actual body lines already appear in
-  // the recency block is a duplicate even if its index title differs (title drift,
-  // supersede-rename). Build a set of normalised non-empty content lines from the
-  // recency block; a matched entry is dropped when most of its body is already there.
-  const knowledgeBodySet = new Set();
-  for (const l of knowledgeLines) {
-    const norm = l.trim().toLowerCase();
-    if (norm.length >= TOKEN_MIN_LEN) knowledgeBodySet.add(norm);
+  // Dedup by BODY, not title: an entry whose body already appears in the recency
+  // block is a duplicate even if its index title differs (title drift,
+  // supersede-rename). This is EXACT body equality, not majority overlap: an
+  // entry is dropped ONLY when its full normalised body equals one already shown.
+  // A "≥50% of lines already present" heuristic would discard a genuinely-new
+  // entry that happens to share boilerplate/template lines with a shown one —
+  // silently losing unique knowledge. Keys exclude the heading line (that IS the
+  // title we are deliberately ignoring).
+  const entryBodyKey = (lines) =>
+    lines
+      .filter((l) => !/^#{2,3}\s/.test(l))
+      .map((l) => l.trim().toLowerCase())
+      .filter((l) => l.length >= TOKEN_MIN_LEN)
+      .join('\n');
+  const shownBodyKeys = new Set();
+  {
+    let cur = [];
+    const flush = () => { const k = entryBodyKey(cur); if (k) shownBodyKeys.add(k); cur = []; };
+    for (const l of knowledgeLines) {
+      if (/^#{2,3}\s/.test(l)) flush();
+      else cur.push(l);
+    }
+    flush();
   }
   const scored = [];
   for (const e of entries) {
@@ -324,13 +339,10 @@ function buildIndexMatched(dir, knowledgeLines) {
     if (used >= INDEX_MATCH_MAX_ENTRIES) break;
     const body = sliceEntryAtLine(sourceLines(e.file), e.lineNo, MATCHED_ENTRY_MAX_LINES);
     if (body.length === 0) continue;
-    // Body-hash dedup: skip when the majority of this entry's content lines are
-    // already present in the recency block.
-    const bodyContent = body.filter((l) => l.trim().length >= TOKEN_MIN_LEN);
-    if (bodyContent.length > 0) {
-      const overlap = bodyContent.filter((l) => knowledgeBodySet.has(l.trim().toLowerCase())).length;
-      if (overlap * 2 >= bodyContent.length) continue; // ≥50% already shown
-    }
+    // Exact body-equality dedup: skip only when this entry's full normalised body
+    // is identical to one already in the recency block (a true duplicate).
+    const key = entryBodyKey(body);
+    if (key && shownBodyKeys.has(key)) continue;
     const chunk = [`[${e.file}:${e.lineNo}]`, ...body];
     if (out.length + chunk.length > MATCHED_MAX_LINES) break;
     out.push(...chunk);

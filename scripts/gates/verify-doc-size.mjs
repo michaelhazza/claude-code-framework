@@ -202,6 +202,15 @@ function info(message) {
     }
   }
   const docSync = read('docs/doc-sync.md') || '';
+  // Registration = the file's path appears as a BACKTICK-QUOTED path token in
+  // doc-sync.md, not an arbitrary substring. A plain `docSync.includes(stem)`
+  // false-greens any megadoc whose stem is a common word (docs/plan.md matches
+  // the word "plan" anywhere in the registry), defeating the whole gate. Collect
+  // the exact code-span tokens once and match the full repo-relative path or the
+  // exact bare filename.
+  const docSyncPaths = new Set(
+    [...docSync.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim()),
+  );
   let entries = [];
   try {
     entries = fs.readdirSync(docsDir, { withFileTypes: true });
@@ -214,8 +223,7 @@ function info(message) {
     if (graceRootDocs.has(rel)) continue;
     const b = bytes(read(rel) || '');
     if (b <= 100 * KB) continue;
-    const stem = ent.name.replace(/\.md$/, '');
-    const registered = docSync.includes(ent.name) || docSync.includes(stem);
+    const registered = docSyncPaths.has(rel) || docSyncPaths.has(ent.name);
     if (grandfathered.has(rel)) {
       info(`${rel}: ${fmtKB(b)} > 100KB but grandfathered in .claude/doc-size-baseline.json`);
       continue;

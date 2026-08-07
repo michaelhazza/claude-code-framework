@@ -122,7 +122,7 @@ describe('verify-growth-gate', () => {
     expect(out).toContain('new_behavioural=0');
   });
 
-  it('unresolvable base ref → exit 0 with WARN (fail-open)', () => {
+  it('unresolvable base ref (with a previous version) → exit 1 FAIL-CLOSED', () => {
     const dir = baseRepo();
     releaseCommit(dir, { '.claude/skills/new-skill/SKILL.md': 'x' }, 'no declaration');
     const res = spawnSync(process.execPath, [GATE], {
@@ -130,7 +130,42 @@ describe('verify-growth-gate', () => {
       encoding: 'utf8',
       env: { ...process.env, GATE_ROOT: dir, GATE_BASE_REF: 'v9.9.9-does-not-exist' },
     });
+    expect(res.status).toBe(1);
+    expect(`${res.stdout}${res.stderr}`).toMatch(/FAIL-CLOSED|unresolvable/);
+  });
+
+  it('unresolvable base ref + GATE_GROWTH_ADVISORY=1 → exit 0 (advisory opt-in)', () => {
+    const dir = baseRepo();
+    releaseCommit(dir, { '.claude/skills/new-skill/SKILL.md': 'x' }, 'no declaration');
+    const res = spawnSync(process.execPath, [GATE], {
+      cwd: HERE,
+      encoding: 'utf8',
+      env: { ...process.env, GATE_ROOT: dir, GATE_BASE_REF: 'v9.9.9-nope', GATE_GROWTH_ADVISORY: '1' },
+    });
     expect(res.status).toBe(0);
-    expect(`${res.stdout}${res.stderr}`).toContain('WARN');
+    expect(`${res.stdout}${res.stderr}`).toContain('advisory');
+  });
+
+  it('declaration with EMPTY replaces/footprint values → exit 1', () => {
+    const dir = baseRepo();
+    releaseCommit(
+      dir,
+      { '.claude/skills/new-skill/SKILL.md': 'x' },
+      '> growth-gate: .claude/skills/new-skill/SKILL.md — replaces: ; footprint:',
+    );
+    const { code, out } = runGate(dir);
+    expect(code).toBe(1);
+    expect(out).toMatch(/replaces:|footprint:/);
+  });
+
+  it('footprint with a non-conforming value (no bytes/not-always-loaded) → exit 1', () => {
+    const dir = baseRepo();
+    releaseCommit(
+      dir,
+      { '.claude/skills/new-skill/SKILL.md': 'x' },
+      '> growth-gate: .claude/skills/new-skill/SKILL.md — replaces: none: new; footprint: smallish',
+    );
+    const { code } = runGate(dir);
+    expect(code).toBe(1);
   });
 });

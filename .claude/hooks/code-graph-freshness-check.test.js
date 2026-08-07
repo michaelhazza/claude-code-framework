@@ -215,6 +215,61 @@ function check(label, actual, expected, extra) {
   rmSync(proj, { recursive: true, force: true });
 }
 
+// ── 9. H1: spawn('npx') ENOENT (npx not on PATH) → async 'error' is handled,
+// hook still exits 0 (no unhandled-error crash). Runs with PATH pointing at an
+// empty bin dir so npx cannot resolve; dead watcher forces the rebuild branch.
+{
+  const emptyBin = mkdtempSync(join(tmpdir(), 'cgfc-empty-bin-'));
+  const { proj, run } = makeProject({ withGenerator: true });
+  const r = run({ PATH: emptyBin, Path: emptyBin });
+  check('H1 spawn-ENOENT: hook exits 0 (async spawn error handled)', r.status, 0, r.stderr);
+  check('H1 spawn-ENOENT: no unhandled-error crash on stderr', /Uncaught|unhandled 'error'|ERR_UNHANDLED/.test(r.stderr || ''), false, r.stderr);
+  rmSync(proj, { recursive: true, force: true });
+  rmSync(emptyBin, { recursive: true, force: true });
+}
+
+// ── 10. H2: after a stale-lock takeover, the takeover re-creates the lock with
+// an EXCLUSIVE (wx) write, so an immediately-following contender sees a held
+// lock and reports busy — it does NOT also take over. (True simultaneous racing
+// is not deterministically unit-testable in a subprocess harness; this asserts
+// the exclusive-arbiter mechanism the fix relies on.)
+{
+  const { proj, run } = makeProject({ withGenerator: true });
+  const ss = join(proj, '.claude', 'session-state');
+  mkdirSync(ss, { recursive: true });
+  writeFileSync(join(ss, '.code-graph-rebuild.lock'), String(Date.now() - 11 * 60_000)); // stale
+  const r1 = run();
+  check('H2 takeover: first run takes over the stale lock', /rebuilding in the background/.test(r1.stdout || ''), true, r1.stdout);
+  const r2 = run(); // lock is now fresh (held by the takeover) → busy, not a 2nd takeover
+  check('H2 takeover: immediate second contender is busy (exclusive lock held)', /already running/.test(r2.stdout || ''), true, r2.stdout);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 11. M2: the audit stamp is a membership fingerprint, not a max-mtime, so a
+// context-pack DELETION re-triggers the audit (max-mtime would drop below the
+// stamp and wrongly skip). Watcher-alive branch → only the audit runs.
+{
+  const { proj, run, log } = makeProject({ watcherPid: process.pid });
+  mkdirSync(join(proj, 'scripts'), { recursive: true });
+  writeFileSync(join(proj, 'scripts', 'audit-context-packs.ts'), '// stub audit\n');
+  writeFileSync(join(proj, 'architecture.md'), '# arch\n');
+  mkdirSync(join(proj, 'docs', 'context-packs'), { recursive: true });
+  writeFileSync(join(proj, 'docs', 'context-packs', 'a.md'), 'a');
+  writeFileSync(join(proj, 'docs', 'context-packs', 'b.md'), 'b');
+  const auditRuns = () => (stubCalls(log).match(/audit-context-packs/g) || []).length;
+  run();
+  const n1 = auditRuns();
+  run(); // inputs unchanged → skipped
+  const n2 = auditRuns();
+  rmSync(join(proj, 'docs', 'context-packs', 'b.md')); // membership changes
+  run(); // fingerprint differs → audit re-runs
+  const n3 = auditRuns();
+  check('M2: audit runs on first session', n1 >= 1, true, `n1=${n1}`);
+  check('M2: audit skipped when inputs unchanged', n2, n1, `n1=${n1} n2=${n2}`);
+  check('M2: audit RE-RUNS after a context-pack deletion', n3 > n2, true, `n2=${n2} n3=${n3}`);
+  rmSync(proj, { recursive: true, force: true });
+}
+
 // ── Cleanup + report ───────────────────────────────────────────────────────
 
 rmSync(STUB_BIN, { recursive: true, force: true });

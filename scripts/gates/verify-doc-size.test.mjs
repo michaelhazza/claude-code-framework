@@ -108,13 +108,24 @@ describe('verify-doc-size gate', () => {
     expect(out).toContain('[action-needed] docs/new-huge-spec.md');
   });
 
-  it('docs/ root megadoc registered in doc-sync → info, not a warning', () => {
+  it('docs/ root megadoc registered in doc-sync (backtick path) → info, not a warning', () => {
     const root = tmpRoot();
     write(root, 'docs/new-huge-spec.md', 'z'.repeat(120 * 1024));
-    write(root, 'docs/doc-sync.md', '| new-huge-spec.md | some trigger |\n');
+    write(root, 'docs/doc-sync.md', '| `docs/new-huge-spec.md` | some trigger |\n');
     const { code, out } = run(root);
     expect(code).toBe(0);
     expect(out).toContain('registered in docs/doc-sync.md');
+  });
+
+  it('H4: a bare stem mentioned in doc-sync PROSE (no backtick path) does NOT count as registered → warns', () => {
+    const root = tmpRoot();
+    // A common-word stem: "plan". doc-sync mentions the word "plan" in prose but
+    // never registers `docs/plan.md` as a path — must NOT false-green.
+    write(root, 'docs/plan.md', 'p'.repeat(120 * 1024));
+    write(root, 'docs/doc-sync.md', 'This registry describes when to update each plan and spec in the repo.\n');
+    const { code, out } = run(root);
+    expect(code).toBe(2);
+    expect(out).toContain('[action-needed] docs/plan.md');
   });
 
   it('docs/ root megadoc grandfathered in baseline → info, not a warning', () => {

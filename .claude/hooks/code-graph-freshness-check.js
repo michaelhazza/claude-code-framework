@@ -192,21 +192,26 @@ function ensureSessionStateDir() {
  * every docs/context-packs/*). 0 when none exist — an absent input never
  * triggers a run. Used to skip the ~sub-second audit spawn in steady state.
  */
-function auditInputsMtime() {
-  let max = 0;
+function auditInputsFingerprint() {
+  // A MEMBERSHIP fingerprint, not a max mtime. Max-mtime silently misses a
+  // deletion: if the newest context-pack is removed, the remaining max drops
+  // BELOW the stamp and the audit is wrongly skipped even though the pack set
+  // (which the audit validates) just changed. The fingerprint pins each input's
+  // name AND mtime, so any add / delete / edit changes it.
+  const parts = [];
   try {
     const arch = join(PROJECT_DIR, 'architecture.md');
-    if (existsSync(arch)) max = Math.max(max, statSync(arch).mtimeMs);
+    if (existsSync(arch)) parts.push(`architecture.md:${statSync(arch).mtimeMs}`);
   } catch { /* ignore */ }
   try {
     const packDir = join(PROJECT_DIR, 'docs', 'context-packs');
     if (existsSync(packDir)) {
-      for (const name of readdirSync(packDir)) {
-        try { max = Math.max(max, statSync(join(packDir, name)).mtimeMs); } catch { /* ignore */ }
+      for (const name of readdirSync(packDir).sort()) {
+        try { parts.push(`${name}:${statSync(join(packDir, name)).mtimeMs}`); } catch { /* ignore */ }
       }
     }
   } catch { /* ignore */ }
-  return max;
+  return parts.join('|');
 }
 
 /**
@@ -217,14 +222,14 @@ function auditInputsMtime() {
  * in the gitignored session-state dir, so it never dirties git status.
  */
 function maybeRunAudit() {
-  const cur = auditInputsMtime();
-  let stamp = 0;
-  try { stamp = Number.parseFloat(readFileSync(AUDIT_STAMP_PATH, 'utf8').trim()) || 0; } catch { /* no stamp yet */ }
-  if (cur !== 0 && cur <= stamp) return { audit: 'skipped', reason: 'inputs_unchanged' };
+  const cur = auditInputsFingerprint();
+  let stamp = '';
+  try { stamp = readFileSync(AUDIT_STAMP_PATH, 'utf8').trim(); } catch { /* no stamp yet */ }
+  if (cur !== '' && cur === stamp) return { audit: 'skipped', reason: 'inputs_unchanged' };
   const res = runAuditContextPacks();
-  if (res.audit === 'ok' && cur !== 0) {
+  if (res.audit === 'ok' && cur !== '') {
     ensureSessionStateDir();
-    try { writeFileSync(AUDIT_STAMP_PATH, String(cur)); } catch { /* fail-open */ }
+    try { writeFileSync(AUDIT_STAMP_PATH, cur); } catch { /* fail-open */ }
   }
   return res;
 }
@@ -244,7 +249,17 @@ function tryClaimRebuildLock() {
     let ts = 0;
     try { ts = Number.parseInt(readFileSync(REBUILD_LOCK_PATH, 'utf8').trim(), 10) || 0; } catch { /* unreadable */ }
     if (Date.now() - ts >= REBUILD_LOCK_STALE_MS) {
-      try { writeFileSync(REBUILD_LOCK_PATH, String(Date.now())); return 'takeover'; } catch { /* fall through */ }
+      // ATOMIC takeover: a plain overwrite here would let two sessions that both
+      // read the same stale timestamp both "take over" and both launch a rebuild.
+      // Instead, remove the stale lock and re-create it with 'wx' (exclusive):
+      // the exclusive create is the atomic arbiter — even if several sessions
+      // rm concurrently, only ONE wx create succeeds and returns 'takeover';
+      // the rest get EEXIST and return 'busy'.
+      try { rmSync(REBUILD_LOCK_PATH, { force: true }); } catch { /* fall through */ }
+      try {
+        writeFileSync(REBUILD_LOCK_PATH, String(Date.now()), { flag: 'wx' });
+        return 'takeover';
+      } catch { /* another session won the exclusive re-create */ }
     }
     return 'busy';
   }
@@ -270,9 +285,20 @@ function spawnDetachedRebuild() {
       stdio: 'ignore',
       shell: process.platform === 'win32',
     });
+    // spawn() reports failures like ENOENT (npx not on PATH) ASYNCHRONOUSLY via
+    // an 'error' event, NOT by throwing into the try/catch above. Without this
+    // listener that error is unhandled and can crash the session-start hook —
+    // the opposite of the fail-open contract. Register it BEFORE unref() so the
+    // handler survives, clear the lock we hold so a real rebuild can be retried,
+    // and swallow the error (fail-open). The synchronous catch below still
+    // covers the rare throw-on-spawn path.
+    child.on('error', () => {
+      clearRebuildLock();
+    });
     child.unref();
     return { skipped: false };
   } catch (err) {
+    clearRebuildLock();
     return { skipped: false, error: err };
   }
 }

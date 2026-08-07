@@ -73,14 +73,33 @@ if (!currentVersion) {
   process.exit(1);
 }
 
+// Advisory mode downgrades a fail-closed (can't resolve the baseline) to a
+// warning-exit-0 for LOCAL dev. It must be opt-in — release/CI defaults to
+// fail-CLOSED so a tagless/shallow checkout or a bad ref can never silently
+// disable the enforcement this gate exists to be.
+const ADVISORY = /^(1|true|yes)$/i.test(process.env.GATE_GROWTH_ADVISORY || '');
+function unresolved(msg) {
+  if (ADVISORY) {
+    console.log(`[GATE] ${GATE_ID}: WARN ${msg} — GATE_GROWTH_ADVISORY set, skipping (advisory).`);
+    process.exit(0);
+  }
+  console.error(`[FAIL] ${GATE_ID}: ${msg}. The growth control cannot verify new additions and defaults to FAIL-CLOSED. Fix the baseline (fetch tags / correct GATE_BASE_REF), or set GATE_GROWTH_ADVISORY=1 for local-only advisory mode.`);
+  process.exit(1);
+}
+
 // Resolve the base ref.
 const headings = [...changelog.matchAll(/^## (\d+\.\d+\.\d+)\b/gm)].map((m) => m[1]);
 const prevVersion = headings.find((v) => v !== currentVersion);
 const baseRef = process.env.GATE_BASE_REF || (prevVersion ? `v${prevVersion}` : null);
 
-if (!baseRef || !gitOk(['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`])) {
-  console.log(`[GATE] ${GATE_ID}: WARN base ref ${baseRef || '(none)'} unresolvable — cannot diff for new files; skipping (fail-open). Release-time run has tags.`);
+// No previous version at all = the first release. There is nothing to diff
+// against, so there are legitimately no "new since last release" files — pass.
+if (!prevVersion && !process.env.GATE_BASE_REF) {
+  console.log(`[GATE] ${GATE_ID}: violations=0 base=(first release) new_behavioural=0`);
   process.exit(0);
+}
+if (!baseRef || !gitOk(['rev-parse', '--verify', '--quiet', `${baseRef}^{commit}`])) {
+  unresolved(`base ref ${baseRef || '(none)'} is unresolvable — cannot diff for new files`);
 }
 
 // New (Added) files since baseRef.
@@ -88,8 +107,7 @@ let diff = '';
 try {
   diff = git(['diff', '--name-status', '--diff-filter=A', `${baseRef}`, 'HEAD']);
 } catch (err) {
-  console.log(`[GATE] ${GATE_ID}: WARN git diff failed (${err.message}) — skipping (fail-open).`);
-  process.exit(0);
+  unresolved(`git diff against ${baseRef} failed (${err.message})`);
 }
 
 const added = diff
@@ -128,15 +146,41 @@ if (secStart >= 0) {
 }
 const declarations = [...section.matchAll(/^> growth-gate:\s*(.+)$/gm)].map((m) => m[1]);
 
+// A declaration must name the addition and carry NON-EMPTY replaces: + footprint:
+// values (an empty `replaces: ; footprint:` is not an audit). footprint must be
+// `<N> bytes` or `not-always-loaded`. Match by FULL PATH first (unambiguous); a
+// bare-name match is a fallback and is flagged as ambiguous if two additions
+// share it, so one declaration cannot silently cover two different new files.
+const FOOTPRINT_RE = /footprint:\s*(\d+\s*bytes|not-always-loaded)\b/i;
+const REPLACES_RE = /replaces:\s*\S/i;
+function nameMatchers(decl, b) {
+  const byPath = decl.includes(b.file);
+  const byName = new RegExp(`(^|[\\s\`(/])${b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s\`).,;:]|$)`).test(decl);
+  return { byPath, byName };
+}
 const violations = [];
 for (const b of behavioural) {
-  const decl = declarations.find(
-    (d) => (d.includes(b.file) || new RegExp(`\\b${b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(d)),
-  );
+  const matches = declarations.filter((d) => { const m = nameMatchers(d, b); return m.byPath || m.byName; });
+  const pathMatches = declarations.filter((d) => d.includes(b.file));
+  const decl = pathMatches[0] || matches[0];
   if (!decl) {
     violations.push(`${b.kind} ${b.file}: no \`> growth-gate:\` declaration in the v${currentVersion} CHANGELOG section`);
-  } else if (!/replaces:/i.test(decl) || !/footprint:/i.test(decl)) {
-    violations.push(`${b.kind} ${b.file}: declaration is missing ${!/replaces:/i.test(decl) ? '`replaces:`' : ''}${!/replaces:/i.test(decl) && !/footprint:/i.test(decl) ? ' + ' : ''}${!/footprint:/i.test(decl) ? '`footprint:`' : ''}`);
+    continue;
+  }
+  // Ambiguity guard: a bare-name-only declaration shared by >1 addition, with no
+  // full-path declaration, cannot be trusted to cover this specific file.
+  if (pathMatches.length === 0) {
+    const otherNameSharers = behavioural.filter((o) => o !== b && nameMatchers(decl, o).byName && !declarations.some((d) => d.includes(o.file)));
+    if (otherNameSharers.length > 0) {
+      violations.push(`${b.kind} ${b.file}: declaration matches by bare name only and is shared with ${otherNameSharers.length} other addition(s) — use the full path \`${b.file}\` in the declaration`);
+      continue;
+    }
+  }
+  const missing = [];
+  if (!REPLACES_RE.test(decl)) missing.push('non-empty `replaces:`');
+  if (!FOOTPRINT_RE.test(decl)) missing.push('`footprint:` as `<N> bytes` or `not-always-loaded`');
+  if (missing.length) {
+    violations.push(`${b.kind} ${b.file}: declaration is missing ${missing.join(' + ')}`);
   }
 }
 

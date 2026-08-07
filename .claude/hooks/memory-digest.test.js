@@ -204,6 +204,53 @@ function check(label, actual, expected, extra) {
   rmSync(proj, { recursive: true, force: true });
 }
 
+// ── 9b. Exact-body dedup (H3): a matched entry that SHARES boilerplate lines
+// with the recency block but carries UNIQUE content is still surfaced. The old
+// "≥50% of lines already shown" heuristic would have dropped it, losing the
+// unique knowledge; exact body-equality keeps it.
+{
+  const proj = makeProj('md-idx-dedup-unique-');
+  mkdirSync(join(proj, 'references'), { recursive: true });
+  // Old matchable entry: 1 unique line + 2 shared boilerplate lines.
+  let k = '### 2026-01-02 Widget calibration drift\nWIDGET_UNIQUE calibration detail that is new\nSHARED boilerplate note one\nSHARED boilerplate note two\n\n';
+  // Recent entry 1 carries ONLY the two shared lines (so 2 of the old entry\'s 3
+  // content lines overlap → ≥50% → the old heuristic dropped it).
+  k += '### 2026-06-01 Recent entry 1\nSHARED boilerplate note one\nSHARED boilerplate note two\n\n';
+  for (let i = 2; i <= 6; i++) k += `### 2026-06-0${i} Recent entry ${i}\nrecent body ${i}\n\n`;
+  writeFileSync(join(proj, 'KNOWLEDGE.md'), k);
+  writeFileSync(join(proj, 'tasks', 'current-focus.md'), 'Status: BUILDING\nSlug: widget-calibration-fix\n');
+  writeFileSync(
+    join(proj, 'references', 'knowledge-index.md'),
+    'KNOWLEDGE.md:1 | 2026-01-02 | Widget calibration drift | widget, calibration, drift\n',
+  );
+  const r = runHook(proj);
+  const out = r.stdout || '';
+  check('idx-dedup-unique: unique-content entry surfaced (not dropped)', out.includes('WIDGET_UNIQUE'), true, out);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 9c. Exact-body dedup (H3): a matched entry whose body is IDENTICAL to a
+// recency entry (title differs) IS dropped as a true duplicate.
+{
+  const proj = makeProj('md-idx-dedup-dup-');
+  mkdirSync(join(proj, 'references'), { recursive: true });
+  let k = '### 2026-01-02 Widget drift (old title)\nDUP_BODY identical calibration note\nDUP_BODY second identical line\n\n';
+  k += '### 2026-06-01 Widget drift (new title)\nDUP_BODY identical calibration note\nDUP_BODY second identical line\n\n';
+  for (let i = 2; i <= 6; i++) k += `### 2026-06-0${i} Recent entry ${i}\nrecent body ${i}\n\n`;
+  writeFileSync(join(proj, 'KNOWLEDGE.md'), k);
+  writeFileSync(join(proj, 'tasks', 'current-focus.md'), 'Status: BUILDING\nSlug: widget-calibration-fix\n');
+  writeFileSync(
+    join(proj, 'references', 'knowledge-index.md'),
+    'KNOWLEDGE.md:1 | 2026-01-02 | Widget drift old | widget, calibration, drift\n',
+  );
+  const r = runHook(proj);
+  const out = r.stdout || '';
+  // The identical body appears once (from the recency block), not twice.
+  const occurrences = (out.match(/DUP_BODY identical calibration note/g) || []).length;
+  check('idx-dedup-dup: identical body not duplicated by index-match', occurrences <= 1, true, out);
+  rmSync(proj, { recursive: true, force: true });
+}
+
 // ── 10. Index present + no keyword match → no matched block ──────────────────
 {
   const proj = makeProj('md-idx-nomatch-');
