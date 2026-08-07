@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.66.5 — 2026-08-07
+
+**Highlights:** patch — fifth review round on the F1 safety controls, closing two High lifecycle gaps (an unbounded number of hung background rebuilds; POSIX killing only the direct child) and two Medium hardenings. No behavioural-surface additions; no migration. The locking ACQUISITION protocol is unchanged from v2.66.4 — this release is about process lifecycle.
+
+**Fixed:**
+- `code-graph-freshness-check.js` (High): the rebuild lock directory now records `owner.pid` once `'spawn'` confirms, and a stale takeover KILLS that owner's process tree (POSIX process-group SIGKILL / Windows `taskkill /T /F`) before reaping. Moving the rebuild detached in v2.65.0 had removed the old synchronous `BUILD_TIMEOUT_MS` lifetime bound, so a rebuild that spawned and then hung would never touch the lock mtime, be reaped every 10 minutes, and accumulate hung processes without bound. Killing on reap bounds live rebuilds to AT MOST ONE: a takeover now implies its predecessor is dead. Test: a live ignore-SIGTERM owner is provably dead after the takeover.
+- `scripts/cleanfiles-audit-headless.mjs` (High): on POSIX the audit child is spawned `detached` so it leads its own process GROUP, and the timeout path signals the group (`kill(-pid)`) — graceful SIGTERM, then uncatchable SIGKILL. A headless Claude run spawns subprocesses; killing only the immediate child left those grandchildren orphaned for an unattended scheduler. Test: the stub spawns an ignore-SIGTERM grandchild and both pids are proven dead after the wrapper returns.
+- `code-graph-freshness-check.js` (Medium): context-pack inputs are now CONTENT-HASHED (sha1) in the audit fingerprint, so a same-size edit with a preserved mtime re-triggers the audit. `architecture.md` remains size+mtime as a deliberate, now explicitly documented, session-start latency tradeoff — the comment no longer claims "any edit" is detected.
+- `scripts/cleanfiles-audit-headless.mjs` (Medium): on Windows — the wrapper's primary scheduled deployment target — the command is invoked through the shell with explicit per-arg quoting, so an npm-installed `claude.cmd` shim actually runs (Node refuses to spawn `.cmd` directly since the CVE-2024-27980 hardening, and `shell: true` arg joining does not quote embedded spaces like `/cleanfiles audit`). A win32-gated `.cmd` fixture test proves shim execution and exit-code propagation; on POSIX it records an explicit skip rather than silently passing.
+
 ## 2.66.4 — 2026-08-07
 
 **Highlights:** patch — fourth review round on the F1 safety controls: two High (the lock takeover was still raceable; the timed-out audit child was left as an orphan) and two Medium. No behavioural-surface additions; no migration.
