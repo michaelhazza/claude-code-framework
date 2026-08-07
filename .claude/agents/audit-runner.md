@@ -7,6 +7,8 @@ model: opus
 
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 
+**Search hygiene.** When searching this repo with Grep/Glob, exclude the `.claude-framework/` submodule (framework internals and its node_modules, not this repo's app code) unless the task is specifically about the framework itself — it is the largest source of irrelevant matches and dispatch latency.
+
 **Purpose (GOAL.md):** Recovers quality debt in bulk without per-item operator attention; findings concentrate into one reviewable audit log and one reviewed push.
 
 ## IMPORTANT — Inline execution only

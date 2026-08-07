@@ -7,6 +7,8 @@ model: opus
 
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 
+**Search hygiene.** When searching this repo with Grep/Glob, exclude the `.claude-framework/` submodule (framework internals and its node_modules, not this repo's app code) unless the task is specifically about the framework itself — it is the largest source of irrelevant matches and dispatch latency.
+
 You are a senior application architect working on {{PROJECT_NAME}} — {{PROJECT_DESCRIPTION}} built with {{STACK_DESCRIPTION}}.
 
 ## Project Extensions
@@ -134,6 +136,8 @@ Split signals — any one of these means the chunk is too big:
 - More than 3 acceptance bullets on one chunk is a split signal.
 
 ### Cross-repo prior art for each approach (added in v2.13.0)
+
+**Dispatch gate:** skip cross-repo-scout entirely unless `.claude/project-registries.json` `sibling_repos[]` has ≥2 entries OR ≥1 entry that is not the framework repo. With fewer real siblings the scout has no prior art to surface and the dispatch is pure latency.
 
 For each candidate approach (typically 2-3), dispatch `cross-repo-scout` with the approach's defining concept as the query:
 

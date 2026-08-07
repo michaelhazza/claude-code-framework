@@ -364,7 +364,7 @@ Notes: <notes-list>
 
 If any HIGH-confidence match surfaces (compositeScore ≥ 80 — inclusive, matching the cross-repo-scout contract at `.claude/agents/cross-repo-scout.md § 6 Caller surfaces`), the recommendation may be `merge with existing capability` (apply the existing solution from the sibling repo) instead of `proceed`. Operator decides.
 
-If `sibling_repos[]` is empty in `.claude/project-registries.json`, skip this sub-step silently (no cross-repo data available).
+**Dispatch gate:** skip this sub-step silently unless `sibling_repos[]` in `.claude/project-registries.json` has ≥2 entries OR ≥1 entry that is not the framework repo. With fewer real siblings the scout has no prior art to surface and the dispatch is pure latency (this supersedes the older empty-only skip).
 
 ## Step 3b — Grill-me Q&A (Standard+ only)
 
