@@ -104,9 +104,13 @@ const hangPidFile = join(root, 'hang.pid');
 writeFileSync(
   stubHang,
   [
-    // Record our pid, then ignore termination and stay alive — the wrapper must
-    // FORCE-kill us (SIGKILL, uncatchable) after the grace window.
-    `require('fs').writeFileSync(${JSON.stringify(hangPidFile)}, String(process.pid));`,
+    // Spawn a GRANDCHILD that also ignores SIGTERM (a headless Claude run spawns
+    // subprocesses), record both pids, then ignore termination and stay alive —
+    // the wrapper must FORCE-kill the whole tree after the grace window; killing
+    // only the direct child would orphan the grandchild.
+    "const { spawn } = require('child_process');",
+    "const gc = spawn(process.execPath, ['-e', \"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)\"], { stdio: 'ignore' });",
+    `require('fs').writeFileSync(${JSON.stringify(hangPidFile)}, process.pid + '\\n' + gc.pid);`,
     "process.on('SIGTERM', () => {});",
     "process.on('SIGINT', () => {});",
     'setInterval(() => {}, 1000);',
@@ -129,19 +133,53 @@ const hang = spawnSync(process.execPath, [WRAPPER], {
 const hangElapsed = Date.now() - hangStart;
 check('hard-timeout: wrapper exits 124 on an ignore-SIGTERM child', hang.status === 124);
 check('hard-timeout: wrapper wall time stays bounded (<10s)', hangElapsed < 10000);
-// The child must have been force-killed, not left as an orphan. Give SIGKILL a
-// moment to be reaped, then prove the pid is gone (kill(pid, 0) throws ESRCH).
-let childAlive = false;
-try {
-  const hangPid = Number(readFileSync(hangPidFile, 'utf8').trim());
+// The child AND its grandchild must have been force-killed, not left as
+// orphans. Give SIGKILL a moment, then prove both pids are gone (kill(pid, 0)
+// throws ESRCH on a dead process).
+function stillAlive(pid) {
   const deadline = Date.now() + 3000;
-  // poll until dead or deadline
-  // (synchronous busy-wait is fine in a short test)
+  let alive = true;
   while (Date.now() < deadline) {
-    try { process.kill(hangPid, 0); childAlive = true; } catch { childAlive = false; break; }
+    try { process.kill(pid, 0); alive = true; } catch { return false; }
   }
-} catch { childAlive = false; }
+  return alive;
+}
+let childAlive = false;
+let grandchildAlive = false;
+try {
+  const pids = readFileSync(hangPidFile, 'utf8').trim().split('\n').map(Number);
+  childAlive = stillAlive(pids[0]);
+  grandchildAlive = pids[1] ? stillAlive(pids[1]) : false;
+} catch { childAlive = false; grandchildAlive = false; }
 check('hard-timeout: the ignore-SIGTERM child was force-killed (no orphan)', childAlive === false);
+check('hard-timeout: the GRANDCHILD was force-killed too (tree kill)', grandchildAlive === false);
+
+// Scenario 4 (win32 only): the primary deployment target installs `claude` as an
+// npm .cmd shim, which the wrapper must invoke through the shell (Node refuses
+// direct .cmd spawn since CVE-2024-27980). Prove a real .cmd runs and its exit
+// code propagates. On POSIX this platform path cannot execute — recorded as a
+// skip, not silently dropped.
+if (process.platform === 'win32') {
+  const stubCmd = join(root, 'fake-claude-shim.cmd');
+  writeFileSync(stubCmd, '@echo off\r\necho CMD_SHIM_RAN arg=%1\r\nexit /b 5\r\n');
+  const logDir4 = join(root, 'external-logs-4');
+  const cmdRes = spawnSync(process.execPath, [WRAPPER], {
+    encoding: 'utf8',
+    timeout: 15000,
+    env: {
+      ...process.env,
+      CLEANFILES_AUDIT_REPO: repoDir,
+      CLEANFILES_AUDIT_LOGDIR: logDir4,
+      CLEANFILES_AUDIT_CMD: JSON.stringify([stubCmd, '/cleanfiles audit']),
+    },
+  });
+  const logs4 = existsSync(logDir4) ? readdirSync(logDir4).filter((f) => /^audit-/.test(f)) : [];
+  const logText4 = logs4.length ? readFileSync(join(logDir4, logs4[0]), 'utf8') : '';
+  check('win32 .cmd shim: shim executed through the shell', logText4.includes('CMD_SHIM_RAN'));
+  check('win32 .cmd shim: exit code propagates (5)', cmdRes.status === 5);
+} else {
+  check('win32 .cmd shim: skipped (POSIX host — cannot execute the win32 path)', true);
+}
 
 rmSync(root, { recursive: true, force: true });
 

@@ -54,6 +54,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const REFERENCES_DIR = join(PROJECT_DIR, 'references');
@@ -70,6 +71,10 @@ const AUDIT_STAMP_PATH = join(SESSION_STATE_DIR, '.audit-context-packs.stamp');
 // exists), which makes it the correct dependency-free mutex — no read-then-act
 // TOCTOU. Staleness is the dir's own mtime.
 const REBUILD_LOCK_DIR = join(SESSION_STATE_DIR, '.code-graph-rebuild.lock.d');
+// The lock dir carries owner metadata: the detached rebuild's pid, written once
+// 'spawn' confirms. Reaping a stale lock KILLS that owner (and its process
+// group) first — so a hung rebuild is terminated, not accumulated beside.
+const REBUILD_OWNER_PATH = join(REBUILD_LOCK_DIR, 'owner.pid');
 const REAPER_LOCK_DIR = join(SESSION_STATE_DIR, '.code-graph-reaper.lock.d');
 const REBUILD_LOCK_STALE_MS = 10 * 60_000; // a crashed rebuild cannot wedge the cold path past this
 const REAPER_STALE_MS = 60_000; // a reap is milliseconds; this long means the reaper itself crashed
@@ -203,22 +208,29 @@ function auditInputsFingerprint() {
   // A MEMBERSHIP fingerprint, not a max mtime. Max-mtime silently misses a
   // deletion: if the newest context-pack is removed, the remaining max drops
   // BELOW the stamp and the audit is wrongly skipped even though the pack set
-  // (which the audit validates) just changed. The fingerprint pins each input's
-  // name, SIZE and mtime — so any add / delete / edit changes it, including a
-  // content edit that preserves the mtime (coarse timestamp resolution,
-  // restore/copy tools, or explicitly-preserved timestamps) but changes size.
+  // (which the audit validates) just changed.
+  //
+  // Context packs are small, so they are CONTENT-HASHED — any edit changes the
+  // fingerprint, including a same-size edit with a preserved mtime.
+  // architecture.md is large (can be ~1MB) and is fingerprinted by size+mtime as
+  // a deliberate session-start latency tradeoff: a same-size edit with an
+  // explicitly-preserved mtime on architecture.md will be missed until either
+  // changes. That is the documented limit of this check, not an oversight.
   const parts = [];
-  const stamp = (label, p) => {
-    try { const st = statSync(p); parts.push(`${label}:${st.size}:${st.mtimeMs}`); } catch { /* ignore */ }
+  const stampHash = (label, p) => {
+    try { parts.push(`${label}:${createHash('sha1').update(readFileSync(p)).digest('hex').slice(0, 16)}`); } catch { /* ignore */ }
   };
   try {
     const arch = join(PROJECT_DIR, 'architecture.md');
-    if (existsSync(arch)) stamp('architecture.md', arch);
+    if (existsSync(arch)) {
+      const st = statSync(arch);
+      parts.push(`architecture.md:${st.size}:${st.mtimeMs}`);
+    }
   } catch { /* ignore */ }
   try {
     const packDir = join(PROJECT_DIR, 'docs', 'context-packs');
     if (existsSync(packDir)) {
-      for (const name of readdirSync(packDir).sort()) stamp(name, join(packDir, name));
+      for (const name of readdirSync(packDir).sort()) stampHash(name, join(packDir, name));
     }
   } catch { /* ignore */ }
   return parts.join('|');
@@ -250,6 +262,22 @@ function lockAgeMtime(dir) {
 }
 
 /**
+ * Kill the previous rebuild owner AND its process tree. Detached POSIX children
+ * are process-group leaders, so kill(-pid) takes the whole group; Windows uses
+ * taskkill /T /F. SIGKILL is uncatchable — a hung rebuild cannot ignore it.
+ */
+function killOwnerTree(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  try {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true });
+    } else {
+      try { process.kill(-pid, 'SIGKILL'); } catch { process.kill(pid, 'SIGKILL'); }
+    }
+  } catch { /* already dead */ }
+}
+
+/**
  * Claim the rebuild lock so two sessions starting together cannot both launch a
  * CPU-heavy detached rebuild. Returns 'claimed' | 'takeover' | 'busy'.
  *
@@ -263,10 +291,12 @@ function lockAgeMtime(dir) {
  * atomic mkdir: only the reaper may remove + re-create the main lock, so two
  * reapers reaping the same generation is impossible. Provable invariant: a
  * process replaces the main lock ONLY while holding the reaper lock, and the
- * reaper lock admits exactly one holder. The sole residual is a reaper that
- * CRASHES mid-reap (leaving the reaper lock held); that is recovered best-effort
- * after REAPER_STALE_MS, and its worst case is one redundant background rebuild —
- * never a wedged path.
+ * reaper lock admits exactly one holder. Reaping first KILLS the recorded owner
+ * (see killOwnerTree), so live rebuilds are bounded to AT MOST ONE — a hung
+ * rebuild is terminated by the takeover, never accumulated beside. The sole
+ * residual is a reaper that CRASHES mid-reap (leaving the reaper lock held);
+ * that is recovered best-effort after REAPER_STALE_MS, and its worst case is one
+ * redundant background rebuild — never a wedged path.
  */
 function tryClaimRebuildLock() {
   ensureSessionStateDir();
@@ -296,6 +326,17 @@ function tryClaimRebuildLock() {
     // it). Reaping now would destroy that fresh lock and double-run. Only reap if
     // the main lock is STILL stale at this point.
     if (Date.now() - lockAgeMtime(REBUILD_LOCK_DIR) >= REBUILD_LOCK_STALE_MS) {
+      // KILL the previous owner before reaping. Without this, a HUNG rebuild
+      // (spawned fine, never finishes, never touches the lock mtime) would be
+      // orphaned by the takeover and a new rebuild launched beside it — and
+      // again every STALE_MS, accumulating hung processes without bound. Killing
+      // on reap bounds live rebuilds to AT MOST ONE: takeover implies the
+      // predecessor is dead. (A hung rebuild with no later session lives until
+      // the next session start — that is the enforcement point.)
+      try {
+        const ownerPid = Number.parseInt(readFileSync(REBUILD_OWNER_PATH, 'utf8').trim(), 10);
+        killOwnerTree(ownerPid);
+      } catch { /* no owner recorded (crashed before spawn) — nothing to kill */ }
       rmSync(REBUILD_LOCK_DIR, { recursive: true, force: true });
       try { mkdirSync(REBUILD_LOCK_DIR); result = 'takeover'; }
       catch { result = 'busy'; } // a fresh claimer slipped in between rm and mkdir — do not double-run
@@ -343,10 +384,10 @@ function spawnDetachedRebuild(onSpawn, onError, onUnknown) {
   // possible) rather than claiming a rebuild that may never have started.
   let settled = false;
   const settle = (fn) => { if (settled) return; settled = true; clearTimeout(timer); fn(); };
-  child.on('spawn', () => settle(() => { try { child.unref(); } catch { /* ignore */ } onSpawn(); }));
+  child.on('spawn', () => settle(() => { try { child.unref(); } catch { /* ignore */ } onSpawn(child.pid); }));
   child.on('error', (err) => settle(() => onError(err)));
   const timer = setTimeout(() => settle(() => {
-    if (child.pid) { try { child.unref(); } catch { /* ignore */ } onSpawn(); }
+    if (child.pid) { try { child.unref(); } catch { /* ignore */ } onSpawn(child.pid); }
     else onUnknown();
   }), SPAWN_SETTLE_TIMEOUT_MS);
   timer.unref();
@@ -375,8 +416,10 @@ function runSessionStartChecks() {
     freshnessResult = { freshness: 'rebuild_in_progress' };
   } else {
     const spawned = spawnDetachedRebuild(
-      () => {
-        // onSpawn: the rebuild actually started. Report it, run the audit, exit.
+      (pid) => {
+        // onSpawn: the rebuild actually started. Record its pid inside the lock
+        // dir (kill-on-reap metadata), report it, run the audit, exit.
+        try { writeFileSync(REBUILD_OWNER_PATH, String(pid)); } catch { /* best-effort */ }
         process.stdout.write('Code intelligence cache rebuilding in the background (watcher was down); session continues.\n');
         maybeRunAudit();
         process.exit(0);

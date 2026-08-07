@@ -81,12 +81,44 @@ function main() {
   log.write(`\n===== cleanfiles-audit-headless @ ${started} (repo: ${REPO}) =====\n`);
   log.write(`[wrapper] command: ${JSON.stringify(COMMAND)}\n`);
 
-  const child = spawn(COMMAND[0], COMMAND.slice(1), {
-    cwd: REPO, // (1) cwd pinning
-    env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
+  let child;
+  if (process.platform === 'win32') {
+    // The scheduled deployment target. An npm-installed `claude` is a .cmd shim,
+    // which Node refuses to spawn directly since the CVE-2024-27980 hardening —
+    // go through the shell with explicit per-arg quoting (spawn's own shell:true
+    // arg joining does not quote embedded spaces like `/cleanfiles audit`).
+    const cmdline = COMMAND.map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ');
+    child = spawn(cmdline, {
+      cwd: REPO, // (1) cwd pinning
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      shell: true,
+    });
+  } else {
+    // POSIX: detached → the child leads its OWN process group, so the timeout
+    // path can kill the whole tree with kill(-pid) — a headless Claude run
+    // spawns subprocesses, and killing only the direct child would orphan them.
+    child = spawn(COMMAND[0], COMMAND.slice(1), {
+      cwd: REPO, // (1) cwd pinning
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
+  }
+
+  /** Signal the child's whole tree (POSIX group / Windows taskkill on force). */
+  function killTree(signal) {
+    if (!child.pid) return;
+    try {
+      if (process.platform === 'win32') {
+        if (signal === 'SIGKILL') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
+        else child.kill(); // graceful path; the force path above takes the tree
+      } else {
+        try { process.kill(-child.pid, signal); } catch { child.kill(signal); }
+      }
+    } catch { /* already dead */ }
+  }
 
   // On a spawn failure the child has no stdio streams — guard the pipes.
   if (child.stdout) child.stdout.pipe(log, { end: false });
@@ -96,21 +128,14 @@ function main() {
   const timer = setTimeout(() => {
     timedOut = true;
     safeWrite(`\n[wrapper] TIMEOUT after ${TIMEOUT_MS}ms — killing child\n`); // (2) per-run timeout
-    child.kill(); // graceful SIGTERM first
-    // Hard bound: if the child ignores the signal or never emits 'close', FORCE
+    killTree('SIGTERM'); // graceful, whole group on POSIX
+    // Hard bound: if the tree ignores the signal or never emits 'close', FORCE
     // terminate it (so we never leave an orphan for an unattended scheduler) and
-    // settle as 124. On POSIX SIGKILL cannot be caught/ignored; on Windows
-    // taskkill /T /F terminates the whole process tree (child.kill alone would
-    // leave grandchildren running).
+    // settle as 124. SIGKILL to the POSIX process GROUP is uncatchable and takes
+    // grandchildren too; Windows taskkill /T /F terminates the tree.
     const grace = setTimeout(() => {
-      try {
-        if (process.platform === 'win32') {
-          if (child.pid) spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true });
-        } else {
-          child.kill('SIGKILL');
-        }
-      } catch { /* best-effort */ }
-      safeWrite(`\n[wrapper] child did not exit within ${TIMEOUT_GRACE_MS}ms of kill — force-killed; wrapper exit 124\n`);
+      killTree('SIGKILL');
+      safeWrite(`\n[wrapper] child did not exit within ${TIMEOUT_GRACE_MS}ms of kill — force-killed (tree); wrapper exit 124\n`);
       finish(124);
     }, TIMEOUT_GRACE_MS);
     grace.unref();

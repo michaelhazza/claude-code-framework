@@ -280,10 +280,18 @@ function check(label, actual, expected, extra) {
   utimesSync(packA, beforeMtime, beforeMtime); // restore the original mtime
   run();
   const n4 = auditRuns();
+  // Packs are content-hashed: even a SAME-SIZE edit with a preserved mtime must
+  // re-trigger (size:mtime alone would produce an identical fingerprint).
+  const beforeMtime2 = new Date(statSync(packA).mtimeMs);
+  writeFileSync(packA, 'b-much-longer-body-same-mtime'); // same length, different bytes
+  utimesSync(packA, beforeMtime2, beforeMtime2);
+  run();
+  const n5 = auditRuns();
   check('M2: audit runs on first session', n1 >= 1, true, `n1=${n1}`);
   check('M2: audit skipped when inputs unchanged', n2, n1, `n1=${n1} n2=${n2}`);
   check('M2: audit RE-RUNS after a context-pack deletion', n3 > n2, true, `n2=${n2} n3=${n3}`);
   check('M2: audit RE-RUNS after a content change with preserved mtime (size)', n4 > n3, true, `n3=${n3} n4=${n4}`);
+  check('M2: audit RE-RUNS after a SAME-SIZE pack edit with preserved mtime (hash)', n5 > n4, true, `n4=${n4} n5=${n5}`);
   rmSync(proj, { recursive: true, force: true });
 }
 
@@ -317,6 +325,42 @@ function check(label, actual, expected, extra) {
   );
   const takeovers = outs.filter((o) => /rebuilding in the background/.test(o)).length;
   check('H1-round4 concurrent takeover: exactly ONE contender takes over', takeovers, 1, `takeovers=${takeovers} of ${N}`);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 13. High(round5): stale-lock takeover KILLS the hung previous rebuild. A
+// rebuild that spawned fine but hangs never updates the lock mtime; without
+// kill-on-reap each takeover would orphan it and launch another beside it,
+// accumulating hung processes without bound. Record a live hung "rebuild" pid
+// as the lock owner, make the lock stale, run the hook → takeover; the hung pid
+// must be dead afterwards.
+{
+  const { proj, run } = makeProject({ withGenerator: true });
+  const ss = join(proj, '.claude', 'session-state');
+  mkdirSync(ss, { recursive: true });
+  const lockDir = join(ss, '.code-graph-rebuild.lock.d');
+  mkdirSync(lockDir);
+  // A hung "rebuild": ignores SIGTERM (SIGKILL is uncatchable), detached so it
+  // leads its own process group like a real detached rebuild.
+  const hung = spawn(process.execPath, ['-e', "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"], {
+    detached: true, stdio: 'ignore',
+  });
+  hung.unref();
+  writeFileSync(join(lockDir, 'owner.pid'), String(hung.pid));
+  const _t = new Date(Date.now() - 11 * 60_000);
+  utimesSync(lockDir, _t, _t); // stale
+  const r = run();
+  check('kill-on-reap: takeover proceeds (background rebuild)', /rebuilding in the background/.test(r.stdout || ''), true, r.stdout);
+  // The hung process is THIS test's child: after SIGKILL it is a zombie until
+  // libuv reaps it, and kill(pid, 0) succeeds on zombies — so poll via the
+  // 'exit' event (which fires on reap), not via signal-0 probing.
+  const dead = await new Promise((resolve) => {
+    if (hung.exitCode !== null || hung.signalCode !== null) return resolve(true);
+    hung.on('exit', () => resolve(true));
+    setTimeout(() => resolve(false), 3000);
+  });
+  check('kill-on-reap: hung previous rebuild is DEAD after takeover', dead, true, `pid=${hung.pid}`);
+  try { process.kill(-hung.pid, 'SIGKILL'); } catch { /* already dead — expected */ }
   rmSync(proj, { recursive: true, force: true });
 }
 
