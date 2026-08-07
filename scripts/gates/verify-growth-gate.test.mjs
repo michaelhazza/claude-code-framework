@@ -170,6 +170,23 @@ describe('verify-growth-gate', () => {
     expect(out).toContain('replaces:');
   });
 
+  it('an addition mentioned ONLY inside another declaration\'s replaces: is NOT covered → exit 1', () => {
+    const dir = baseRepo();
+    releaseCommit(
+      dir,
+      {
+        '.claude/agents/new-agent.md': '---\nname: new-agent\n---\nx',
+        '.claude/commands/new-command.md': '---\nname: new-command\n---\ny',
+      },
+      // new-command has NO declaration of its own; its name appears only in
+      // new-agent's replaces: rationale — that must NOT count as declaring it.
+      '> growth-gate: .claude/agents/new-agent.md — replaces: new-command; footprint: 1200 bytes',
+    );
+    const { code, out } = runGate(dir);
+    expect(code).toBe(1);
+    expect(out).toContain('new-command');
+  });
+
   it('footprint with a non-conforming value (no bytes/not-always-loaded) → exit 1', () => {
     const dir = baseRepo();
     releaseCommit(

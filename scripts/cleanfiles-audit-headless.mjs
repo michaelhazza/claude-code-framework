@@ -45,6 +45,10 @@ const LOG_DIR =
   process.env.CLEANFILES_AUDIT_LOGDIR ||
   join(LOCALAPPDATA, 'ClaudeCodeFramework', 'cleanfiles-audit');
 const TIMEOUT_MS = Number(process.env.CLEANFILES_AUDIT_TIMEOUT_MS || 15 * 60 * 1000);
+// After the timeout kill, wait at most this long for 'close'; then settle as 124
+// regardless, so an ignored signal / non-exiting child cannot leave the wrapper
+// alive forever (the wrapper's whole reason for existing is a bounded per-run).
+const TIMEOUT_GRACE_MS = Number(process.env.CLEANFILES_AUDIT_TIMEOUT_GRACE_MS || 5 * 1000);
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 
 // The command the wrapper runs. Overridable as a JSON array for testing so the
@@ -93,6 +97,14 @@ function main() {
     timedOut = true;
     safeWrite(`\n[wrapper] TIMEOUT after ${TIMEOUT_MS}ms — killing child\n`); // (2) per-run timeout
     child.kill();
+    // Hard bound: if the child ignores the signal or never emits 'close', settle
+    // as 124 anyway so the wrapper's wall time stays bounded. (child.kill() on
+    // Windows terminates only the immediate child, not the whole process tree.)
+    const grace = setTimeout(() => {
+      safeWrite(`\n[wrapper] child did not exit within ${TIMEOUT_GRACE_MS}ms of kill — wrapper exit 124\n`);
+      finish(124);
+    }, TIMEOUT_GRACE_MS);
+    grace.unref();
   }, TIMEOUT_MS);
 
   // SINGLE settlement path. Node emits BOTH 'error' and (afterwards) 'close' on

@@ -22,7 +22,7 @@
  * Exit 0 on all pass, 1 on any fail.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -273,6 +273,39 @@ function check(label, actual, expected, extra) {
   check('M2: audit runs on first session', n1 >= 1, true, `n1=${n1}`);
   check('M2: audit skipped when inputs unchanged', n2, n1, `n1=${n1} n2=${n2}`);
   check('M2: audit RE-RUNS after a context-pack deletion', n3 > n2, true, `n2=${n2} n3=${n3}`);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 12. H1(round4): CONCURRENT stale-lock takeover — exactly ONE contender wins.
+// The prior rm+wx takeover was raceable (B's rm could delete A's fresh lock);
+// the rename-arbiter must make simultaneous contenders resolve to a single
+// takeover. Launch N hooks at once against one stale lock and count how many
+// report "rebuilding in the background".
+{
+  const { proj } = makeProject({ withGenerator: true });
+  const ss = join(proj, '.claude', 'session-state');
+  mkdirSync(ss, { recursive: true });
+  writeFileSync(join(ss, '.code-graph-rebuild.lock'), String(Date.now() - 11 * 60_000)); // stale
+  const N = 6;
+  const outs = await Promise.all(
+    Array.from({ length: N }, (_, i) => new Promise((resolve) => {
+      const c = spawn(process.execPath, [HOOK], {
+        env: {
+          ...process.env,
+          CLAUDE_PROJECT_DIR: proj,
+          PATH: STUB_BIN + delimiter + process.env.PATH,
+          Path: STUB_BIN + delimiter + (process.env.Path || process.env.PATH),
+          STUB_LOG: join(proj, `stub-conc-${i}.log`),
+        },
+      });
+      let out = '';
+      c.stdout.on('data', (d) => { out += d; });
+      c.on('close', () => resolve(out));
+      c.on('error', () => resolve(out));
+    })),
+  );
+  const takeovers = outs.filter((o) => /rebuilding in the background/.test(o)).length;
+  check('H1-round4 concurrent takeover: exactly ONE contender takes over', takeovers, 1, `takeovers=${takeovers} of ${N}`);
   rmSync(proj, { recursive: true, force: true });
 }
 

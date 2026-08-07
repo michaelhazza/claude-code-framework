@@ -51,7 +51,7 @@
  *   - If the script is missing (pre-v2.13.0 consumer), silently skip.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync, spawn } from 'node:child_process';
 
@@ -250,17 +250,26 @@ function tryClaimRebuildLock() {
     let ts = 0;
     try { ts = Number.parseInt(readFileSync(REBUILD_LOCK_PATH, 'utf8').trim(), 10) || 0; } catch { /* unreadable */ }
     if (Date.now() - ts >= REBUILD_LOCK_STALE_MS) {
-      // ATOMIC takeover: a plain overwrite here would let two sessions that both
-      // read the same stale timestamp both "take over" and both launch a rebuild.
-      // Instead, remove the stale lock and re-create it with 'wx' (exclusive):
-      // the exclusive create is the atomic arbiter — even if several sessions
-      // rm concurrently, only ONE wx create succeeds and returns 'takeover';
-      // the rest get EEXIST and return 'busy'.
-      try { rmSync(REBUILD_LOCK_PATH, { force: true }); } catch { /* fall through */ }
+      // ATOMIC takeover. rm + wx-recreate is NOT safe: two contenders that both
+      // saw the stale lock can interleave as A.rm, A.create, B.rm (deletes A's
+      // fresh lock!), B.create — both "win". Instead, the atomic arbiter is a
+      // RENAME of the exact stale inode to a unique quarantine name: rename(2) is
+      // atomic, so of N contenders renaming the SAME source only ONE succeeds;
+      // every other sees ENOENT (the inode already moved) and is busy. Only the
+      // rename-winner then creates the fresh lock.
+      const quarantine = `${REBUILD_LOCK_PATH}.stale-${process.pid}-${Date.now()}`;
+      try {
+        renameSync(REBUILD_LOCK_PATH, quarantine);
+      } catch {
+        return 'busy'; // another contender already claimed/removed the stale lock
+      }
+      try { rmSync(quarantine, { force: true }); } catch { /* best-effort cleanup */ }
       try {
         writeFileSync(REBUILD_LOCK_PATH, String(Date.now()), { flag: 'wx' });
         return 'takeover';
-      } catch { /* another session won the exclusive re-create */ }
+      } catch {
+        return 'busy'; // a fresh lock reappeared (a concurrent claim) — do not double-run
+      }
     }
     return 'busy';
   }
@@ -277,7 +286,7 @@ function clearRebuildLock() {
  * detached child rebuilds the cache and re-establishes the watcher; the lock it
  * ran under is cleared by a later watcher-alive session or by stale-takeover.
  */
-function spawnDetachedRebuild(onSpawn, onError) {
+function spawnDetachedRebuild(onSpawn, onError, onUnknown) {
   if (!existsSync(BUILD_SCRIPT_PATH)) return { skipped: true, reason: 'build script missing' };
   let child;
   try {
@@ -297,12 +306,18 @@ function spawnDetachedRebuild(onSpawn, onError) {
   // mis-reported as started AND its async error is dropped by an early
   // process.exit(). We defer to onSpawn/onError, unref()-ing only on success so
   // the parent stays attached long enough to observe the result. A bounded
-  // timeout guarantees session start never hangs if neither event arrives.
+  // timeout is a THIRD outcome — never reported as success: if `child.pid` is
+  // set the OS did create the process (positive evidence → treat as spawned),
+  // otherwise onUnknown fails open (warn + release the lock so a retry is
+  // possible) rather than claiming a rebuild that may never have started.
   let settled = false;
   const settle = (fn) => { if (settled) return; settled = true; clearTimeout(timer); fn(); };
   child.on('spawn', () => settle(() => { try { child.unref(); } catch { /* ignore */ } onSpawn(); }));
   child.on('error', (err) => settle(() => onError(err)));
-  const timer = setTimeout(() => settle(() => { try { child.unref(); } catch { /* ignore */ } onSpawn(); }), SPAWN_SETTLE_TIMEOUT_MS);
+  const timer = setTimeout(() => settle(() => {
+    if (child.pid) { try { child.unref(); } catch { /* ignore */ } onSpawn(); }
+    else onUnknown();
+  }), SPAWN_SETTLE_TIMEOUT_MS);
   timer.unref();
   return { deferred: true };
 }
@@ -342,6 +357,17 @@ function runSessionStartChecks() {
         process.stderr.write(
           `code-graph: background rebuild failed to start (${err && err.code ? err.code : 'spawn error'}). ` +
           `Session continues; cache refresh skipped.\n`,
+        );
+        clearRebuildLock();
+        maybeRunAudit();
+        process.exit(0);
+      },
+      () => {
+        // onUnknown: neither 'spawn' nor 'error' arrived within the settle window
+        // AND no pid was assigned — spawn status is unconfirmed. Do NOT claim a
+        // rebuild started; fail open, release the lock so a later session retries.
+        process.stderr.write(
+          'code-graph: background rebuild spawn status unconfirmed; releasing lock, session continues.\n',
         );
         clearRebuildLock();
         maybeRunAudit();

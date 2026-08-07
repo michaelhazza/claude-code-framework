@@ -151,48 +151,54 @@ if (secStart >= 0) {
   const nextIdx = rest.search(/^## \S/m);
   section = nextIdx >= 0 ? rest.slice(0, nextIdx) : rest;
 }
-const declarations = [...section.matchAll(/^> growth-gate:\s*(.+)$/gm)].map((m) => m[1]);
-
-// A declaration must name the addition and carry NON-EMPTY replaces: + footprint:
-// values (an empty `replaces: ; footprint:` is not an audit). footprint must be
-// `<N> bytes` or `not-always-loaded`. Match by FULL PATH first (unambiguous); a
-// bare-name match is a fallback and is flagged as ambiguous if two additions
-// share it, so one declaration cannot silently cover two different new files.
-const FOOTPRINT_RE = /footprint:\s*(\d+\s*bytes|not-always-loaded)\b/i;
-// `replaces:` must carry MEANINGFUL content, not just the field delimiter. Parse
-// the value between `replaces:` and `footprint:` (or end of line) and require a
-// word character — `replaces: ; footprint: 1200 bytes` has an EMPTY replaces
-// value (the `;` is the delimiter, not a value) and must fail.
-function hasReplacesValue(decl) {
-  const m = decl.match(/replaces:\s*([^]*?)\s*;?\s*(?:footprint:|$)/i);
-  return !!(m && /\w/.test(m[1]));
+// Parse each declaration into its STRUCTURED fields:
+//   growth-gate: <target> — replaces: <value>; footprint: <value>
+// Ownership is matched ONLY against <target>, never against the replaces:/
+// footprint: values — otherwise a file named inside another declaration's
+// `replaces:` rationale would be counted as "declared". The target section is
+// everything before the first ` — ` (em-dash) separator.
+const FOOTPRINT_RE = /^\s*(\d+\s*bytes|not-always-loaded)\s*$/i;
+function parseDecl(raw) {
+  const sep = raw.indexOf(' — ');
+  const target = (sep >= 0 ? raw.slice(0, sep) : raw).trim();
+  const body = sep >= 0 ? raw.slice(sep + ' — '.length) : '';
+  const rm = body.match(/replaces:\s*([^]*?)\s*;\s*footprint:\s*(.*)$/i);
+  return {
+    target,
+    replacesValue: rm ? rm[1].trim() : '',
+    footprintValue: rm ? rm[2].trim() : '',
+  };
 }
-function nameMatchers(decl, b) {
-  const byPath = decl.includes(b.file);
-  const byName = new RegExp(`(^|[\\s\`(/])${b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s\`).,;:]|$)`).test(decl);
+const parsed = [...section.matchAll(/^> growth-gate:\s*(.+)$/gm)].map((m) => parseDecl(m[1]));
+
+// Target match: the full repo-relative path (preferred, unambiguous) or the bare
+// name — but ONLY within the target section.
+function targetMatchers(decl, b) {
+  const byPath = decl.target.includes(b.file);
+  const byName = new RegExp(`(^|[\\s\`(/])${b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s\`).,;:]|$)`).test(decl.target);
   return { byPath, byName };
 }
 const violations = [];
 for (const b of behavioural) {
-  const matches = declarations.filter((d) => { const m = nameMatchers(d, b); return m.byPath || m.byName; });
-  const pathMatches = declarations.filter((d) => d.includes(b.file));
-  const decl = pathMatches[0] || matches[0];
+  const pathMatches = parsed.filter((d) => d.target.includes(b.file));
+  const nameMatches = parsed.filter((d) => targetMatchers(d, b).byName);
+  const decl = pathMatches[0] || nameMatches[0];
   if (!decl) {
-    violations.push(`${b.kind} ${b.file}: no \`> growth-gate:\` declaration in the v${currentVersion} CHANGELOG section`);
+    violations.push(`${b.kind} ${b.file}: no \`> growth-gate:\` declaration (with this file as its target) in the v${currentVersion} CHANGELOG section`);
     continue;
   }
-  // Ambiguity guard: a bare-name-only declaration shared by >1 addition, with no
-  // full-path declaration, cannot be trusted to cover this specific file.
+  // Ambiguity guard: a bare-name-only target shared by >1 addition, with no
+  // full-path target, cannot be trusted to cover this specific file.
   if (pathMatches.length === 0) {
-    const otherNameSharers = behavioural.filter((o) => o !== b && nameMatchers(decl, o).byName && !declarations.some((d) => d.includes(o.file)));
+    const otherNameSharers = behavioural.filter((o) => o !== b && targetMatchers(decl, o).byName && !parsed.some((d) => d.target.includes(o.file)));
     if (otherNameSharers.length > 0) {
-      violations.push(`${b.kind} ${b.file}: declaration matches by bare name only and is shared with ${otherNameSharers.length} other addition(s) — use the full path \`${b.file}\` in the declaration`);
+      violations.push(`${b.kind} ${b.file}: declaration matches by bare name only and is shared with ${otherNameSharers.length} other addition(s) — use the full path \`${b.file}\` as the declaration target`);
       continue;
     }
   }
   const missing = [];
-  if (!hasReplacesValue(decl)) missing.push('non-empty `replaces:` value');
-  if (!FOOTPRINT_RE.test(decl)) missing.push('`footprint:` as `<N> bytes` or `not-always-loaded`');
+  if (!/\w/.test(decl.replacesValue)) missing.push('non-empty `replaces:` value');
+  if (!FOOTPRINT_RE.test(decl.footprintValue)) missing.push('`footprint:` as `<N> bytes` or `not-always-loaded`');
   if (missing.length) {
     violations.push(`${b.kind} ${b.file}: declaration is missing ${missing.join(' + ')}`);
   }

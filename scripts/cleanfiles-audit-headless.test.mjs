@@ -97,6 +97,35 @@ check('spawn-ENOENT: no write-after-end / unhandled crash', !/ERR_STREAM_WRITE_A
 const logs2 = existsSync(logDir2) ? readdirSync(logDir2).filter((f) => /^audit-\d{4}-\d{2}-\d{2}\.log$/.test(f)) : [];
 check('spawn-ENOENT: dated log still written cleanly', logs2.length === 1);
 
+// Scenario 3 (M1): a child that IGNORES termination must not hang the wrapper —
+// the hard grace timer settles it as 124 within bounded wall time.
+const stubHang = join(root, 'fake-hang.mjs');
+writeFileSync(
+  stubHang,
+  [
+    "process.on('SIGTERM', () => {});",
+    "process.on('SIGINT', () => {});",
+    'setInterval(() => {}, 1000);',
+  ].join('\n'),
+);
+const logDir3 = join(root, 'external-logs-3');
+const hangStart = Date.now();
+const hang = spawnSync(process.execPath, [WRAPPER], {
+  encoding: 'utf8',
+  timeout: 15000, // safety net so a real hang fails the test instead of blocking forever
+  env: {
+    ...process.env,
+    CLEANFILES_AUDIT_REPO: repoDir,
+    CLEANFILES_AUDIT_LOGDIR: logDir3,
+    CLEANFILES_AUDIT_CMD: JSON.stringify([process.execPath, stubHang]),
+    CLEANFILES_AUDIT_TIMEOUT_MS: '400',
+    CLEANFILES_AUDIT_TIMEOUT_GRACE_MS: '600',
+  },
+});
+const hangElapsed = Date.now() - hangStart;
+check('hard-timeout: wrapper exits 124 on an ignore-SIGTERM child', hang.status === 124);
+check('hard-timeout: wrapper wall time stays bounded (<10s)', hangElapsed < 10000);
+
 rmSync(root, { recursive: true, force: true });
 
 console.log(`Cases: ${pass + fails.length}, passed: ${pass}, failed: ${fails.length}`);
