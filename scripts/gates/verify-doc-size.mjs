@@ -134,6 +134,20 @@ function info(message) {
   }
 }
 
+// ── CLAUDE.md: byte + line budget (the one always-loaded doc not yet watched) ─
+{
+  const rel = 'CLAUDE.md';
+  const s = read(rel);
+  if (s === null) info(`${rel} absent — skipped`);
+  else {
+    const b = bytes(s);
+    const l = lines(s);
+    const fix = 'move adoption history and version archaeology to references/ or tasks/builds/ — CLAUDE.md is loaded into every session and carries only always-needed guidance';
+    if (b > 16 * KB) warn(rel, false, `${fmtKB(b)} > 16.0KB budget`, fix);
+    if (l > 400) warn(rel, false, `${l} lines > 400-line budget`, fix);
+  }
+}
+
 // ── KNOWLEDGE.md: byte + live-entry budget (GRACE) ─────────────────────────
 {
   const rel = 'KNOWLEDGE.md';

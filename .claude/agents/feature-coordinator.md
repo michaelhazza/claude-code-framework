@@ -1,11 +1,11 @@
 ---
 name: feature-coordinator
-description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (hard-default manual mode; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk G1 (builder runs scoped lint on touched files plus builder-owned targeted pure-function tests where applicable; coordinator re-runs scoped lint as a backup check). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
+description: "Phase 2 INLINE orchestrator: architect plan, claude-plan-review + chatgpt-plan-review, operator plan gate, then per-chunk builder with G1, G2 integrated gate, branch-level review pass, and handoff to finalisation. Operator types 'launch feature coordinator'; adopted inline, never dispatched."
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
 
-**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+**Project context (read first).** If `.claude/context/agent-context.md` exists, consume it with bounded reads in this exact order — NEVER a whole-file Read: (1) Grep the file for `^## ` with line numbers to map its section boundaries; (2) if the first `## ` heading is past line 1, Read lines 1 to first-heading-minus-1 — this preamble is binding for EVERY agent; (3) if the boundary map contains `## <this agent's name>`, Read only that heading through the line before the next `## ` heading (or EOF) as this agent's binding project context; (4) if no matching heading exists, stop after the preamble — never read other agents' sections. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 
 **Purpose (GOAL.md):** Turns an approved spec into reviewed, integrated code with exactly one operator gate (the plan), concentrating operator attention where direction is set and automating everything after it.
 

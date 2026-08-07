@@ -1,6 +1,6 @@
 # Agent context — project-specific operating notes for the agent fleet
 
-This file is the **only** place to add project-specific behaviour for a framework agent. It is the fleet-wide analogue of `CLAUDE.md`: every framework agent under `.claude/agents/` reads this file at the start of every run and treats the `##` section matching its own name as **binding project context**.
+This file is the **only** place to add project-specific behaviour for a framework agent. It is the fleet-wide analogue of `CLAUDE.md`. Every framework agent under `.claude/agents/` consumes it with **bounded, sectioned reads** at the start of every run — never a whole-file read: it Greps for `^## ` headings to map section boundaries, reads this preamble (everything above the first `## ` heading, which is **binding for every agent**), and then, if a `## <its own name>` section exists, reads only that section as **binding project context**. An agent WITH a matching section reads the preamble plus its own section only; an agent WITHOUT a section reads the preamble only and stops — it never reads other agents' sections.
 
 **Contract (ADR-0006):**
 

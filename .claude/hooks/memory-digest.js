@@ -61,6 +61,13 @@ const LESSONS_MAX_ENTRIES = 5;
 const LESSONS_MAX_LINES = 40;
 const KNOWLEDGE_MAX_ENTRIES = 3;
 const KNOWLEDGE_MAX_LINES = 55;
+const KNOWLEDGE_ENTRY_MAX_LINES = 12; // body lines per recent entry (heading excluded), mirrors MATCHED_ENTRY_MAX_LINES
+// A KNOWLEDGE entry heading is `### [` (dated, canonical since 2026) or a
+// legacy `## ` entry — the SAME census predicate verify-doc-size.mjs uses to
+// count live entries. Deliberately NOT /^#{2,3}\s/: a bare `### Subheading`
+// inside a long entry is body text, and must not reset the per-entry cap or
+// count as one of the KNOWLEDGE_MAX_ENTRIES recent entries.
+const KNOWLEDGE_ENTRY_HEADING = /^(?:### \[|## )/;
 
 // Index-matched resurfacing (references/knowledge-index.md → current-focus domain).
 const INDEX_MAX_BYTES = 262_144; // 256KB head — one compact line per index entry
@@ -202,7 +209,7 @@ function buildKnowledge(dir) {
 
   const headings = [];
   for (let i = 0; i < lines.length; i++) {
-    if (/^#{2,3}\s/.test(lines[i])) headings.push(i);
+    if (KNOWLEDGE_ENTRY_HEADING.test(lines[i])) headings.push(i);
   }
   if (headings.length === 0) return []; // no recognisable entries — silent
 
@@ -214,10 +221,26 @@ function buildKnowledge(dir) {
   let block = trimBlankEdges(lines.slice(startIdx));
   if (block.length > KNOWLEDGE_MAX_LINES) {
     block = block.slice(block.length - KNOWLEDGE_MAX_LINES); // keep the newest tail
-    const h = block.findIndex((l) => /^#{2,3}\s/.test(l));
+    const h = block.findIndex((l) => KNOWLEDGE_ENTRY_HEADING.test(l));
     if (h > 0) block = block.slice(h); // realign to a clean heading boundary
   }
-  return block;
+  // Per-entry cap: awareness needs the headline + a few body lines, not the
+  // full forensic text. Contract: the heading does NOT count against the
+  // budget — an entry renders as heading + up to KNOWLEDGE_ENTRY_MAX_LINES
+  // body lines + a truncation marker. Full text stays one Read away.
+  const capped = [];
+  let bodyLines = 0;
+  for (const line of block) {
+    if (KNOWLEDGE_ENTRY_HEADING.test(line)) {
+      bodyLines = 0;
+      capped.push(line);
+      continue;
+    }
+    bodyLines++;
+    if (bodyLines <= KNOWLEDGE_ENTRY_MAX_LINES) capped.push(line);
+    else if (bodyLines === KNOWLEDGE_ENTRY_MAX_LINES + 1) capped.push('… (entry truncated — full text: KNOWLEDGE.md tail)');
+  }
+  return capped;
 }
 
 // ── index-matched resurfacing ────────────────────────────────────────────────

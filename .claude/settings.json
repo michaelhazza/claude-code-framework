@@ -97,11 +97,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/code-graph-freshness-check.js",
-            "timeout": 180
-          },
-          {
-            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/framework-merge-reminder.js"
           },
           {

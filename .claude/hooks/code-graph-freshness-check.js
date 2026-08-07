@@ -2,6 +2,12 @@
 /**
  * SessionStart hook: code-graph-freshness-check
  *
+ * OPT-IN as of v2.67.0 — no longer registered in the shipped settings.json.
+ * Consumers that want session-start freshness checks re-add the SessionStart
+ * entry locally. Rationale: measured zero cache consumption across ~90
+ * sessions at two consumers (2026-08-07 audit); the cache remains available
+ * on demand via scripts/build-code-graph.ts.
+ *
  * Keeps the code intelligence cache (Phase 0) fresh across Claude Code
  * sessions where the dev server is not running.
  *

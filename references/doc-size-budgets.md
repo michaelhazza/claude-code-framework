@@ -10,10 +10,14 @@ does not silently regrow. `scripts/gates/verify-doc-size.mjs` enforces them
 |---|---|---|
 | `tasks/current-focus.md` | operator portion ≤ 4KB and ≤ 50 lines | The `STATUS:GENERATED:BEGIN..END` region is EXCLUDED — it is regenerated (not accreted) and scales with active builds. The accretion risk is the operator-authored pointer block. |
 | `tasks/todo.md` | ≤ 200 lines | Archive completed / stale items to `tasks/todo-archive/<quarter>.md`. |
+| `CLAUDE.md` | ≤ 16KB and ≤ 400 lines | The one always-loaded doc the gate did not previously budget (measured ~30KB at one consumer, ~15KB adoption history). Warning-level, non-grace. Move version archaeology / adoption history to `references/` or `tasks/builds/`. |
 | `KNOWLEDGE.md` | ≤ 200KB and ≤ 150 live entries | Live entry = `### [` indexable heading + legacy `## ` entry heading. **GRACE** until the next quarterly archival sweep. |
 | `architecture.md` | ≤ 400KB whole-file; `## ` sections ≤ 25KB each | **GRACE** until I2 (editorial passes). |
 | `docs/capabilities.md` | ≤ 300KB | **GRACE** until I1 (asset-register split); target is prose-only after the split. |
 | `docs/*.md` (root) | ≤ 100KB unless doc-sync-registered | A NEW megadoc absent from both `docs/doc-sync.md` and the consumer grandfather baseline trips the gate. |
+| `.claude/agents/*.md` `description:` | ≤ 400B **BLOCKING** | Agent `description:` frontmatter is injected into every session's system prompt (the roster). Enforced by `scripts/gates/verify-description-budgets.mjs` (exit 1), NOT the warning-level doc-size gate. WHEN-TO-INVOKE only; procedure lives in the body, which loads on dispatch. |
+| `.claude/skills/*/SKILL.md` `description:` | ≤ 450B **BLOCKING** | Skill `description:` loads into every session's skills listing. Enforced by `verify-description-budgets.mjs` (exit 1). |
+| `.claude/commands/*.md` `description:` | ≤ 180B **BLOCKING** | Command `description:` loads into every session's command listing. Enforced by `verify-description-budgets.mjs` (exit 1). |
 
 **Grace files** (`KNOWLEDGE.md`, `architecture.md`, `docs/capabilities.md`) are
 expected over budget until their dedicated remediation chunks land. The gate

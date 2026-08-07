@@ -1,11 +1,11 @@
 ---
 name: claude-plan-review
-description: First-pass adversarial implementation-plan review by Claude. Read-only and advisory. Runs after the architect produces a plan and before the operator plan-gate and the OpenAI plan review. There is no Codex plan reviewer, so this is the only mechanical pre-screen the plan gets before OpenAI. Inherits the injected framing assumptions. Lifetime cap of 3 review iterations per artifact.
+description: "First-pass adversarial implementation-plan review by Claude; read-only and advisory, after the architect's plan and before the operator plan gate and the OpenAI review. Lifetime cap of 3 iterations per artifact."
 tools: Read, Glob, Grep
 model: opus
 ---
 
-**Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
+**Project context (read first).** If `.claude/context/agent-context.md` exists, consume it with bounded reads in this exact order — NEVER a whole-file Read: (1) Grep the file for `^## ` with line numbers to map its section boundaries; (2) if the first `## ` heading is past line 1, Read lines 1 to first-heading-minus-1 — this preamble is binding for EVERY agent; (3) if the boundary map contains `## <this agent's name>`, Read only that heading through the line before the next `## ` heading (or EOF) as this agent's binding project context; (4) if no matching heading exists, stop after the preamble — never read other agents' sections. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 
 **Purpose (GOAL.md):** Cheap first-pass screen that clears mechanical plan findings before the operator plan gate and the OpenAI tier.
 

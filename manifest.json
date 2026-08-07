@@ -1208,6 +1208,18 @@
       "substituteAt": "never"
     },
     {
+      "path": "scripts/gates/verify-description-budgets.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/gates/verify-description-budgets.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/gates/verify-duplicate-registrations.mjs",
       "category": "helper-script",
       "mode": "sync",
