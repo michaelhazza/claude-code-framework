@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.66.3 — 2026-08-07
+
+**Highlights:** patch — third review round on the F1 safety controls: two High (a still-raceable lock takeover; declaration ownership matching the wrong field) and two Medium. No behavioural-surface additions; no migration.
+
+**Fixed:**
+- `code-graph-freshness-check.js` (High): stale-lock takeover is now genuinely atomic. The prior remove-then-exclusive-create was raceable — two contenders that both saw the stale lock could interleave so that one removes the other's freshly-created lock and both proceed. Takeover now RENAMES the exact stale inode to a unique quarantine name; `rename(2)` is atomic, so of N contenders only one rename of that inode succeeds and the rest get ENOENT and back off. A concurrency test (6 simultaneous contenders) asserts exactly one takeover.
+- `scripts/gates/verify-growth-gate.mjs` (High): declarations are parsed into structured `target — replaces: … ; footprint: …` fields, and a new file's ownership is matched ONLY against the target, never against the `replaces:`/`footprint:` values. A file whose name appears only inside another declaration's `replaces:` rationale is no longer treated as declared (adversarial two-addition test added).
+- `scripts/cleanfiles-audit-headless.mjs` (Medium): the per-run timeout is now HARD. After the kill signal, a bounded grace timer settles the wrapper as 124 even if the child ignores the signal or never emits `'close'`, so the wrapper's wall time stays bounded (test with an ignore-SIGTERM child). Note: on Windows `child.kill()` still terminates only the immediate child, not the whole tree.
+- `code-graph-freshness-check.js` (Medium): the spawn-settle timeout is a distinct third outcome, not success. If `child.pid` is set it is positive evidence the process was created (treat as spawned); otherwise the hook fails open — warns that spawn status is unconfirmed and releases the lock — rather than reporting a rebuild that may never have started.
+
 ## 2.66.2 — 2026-08-07
 
 **Highlights:** patch — second focused review round on the F1 safety controls closed one High and four Medium residues left by v2.66.1. No behavioural-surface additions; no migration.
