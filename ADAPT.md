@@ -168,15 +168,9 @@ In both cases, do NOT duplicate canonical content (route conventions, schema rul
 
 ## 10. Phase 5 — Verify
 
-If the `validate-setup` agent is in the chosen profile, run it:
+Run the `/framework-doctor` command for a read-only health report (inventory vs README claims, dangling cross-references, unmanaged files in managed directories, orphaned `.framework-new`, consumer version drift).
 
-```
-validate-setup: confirm framework health
-```
-
-It checks every agent file references files that exist, every context-pack anchor resolves, and the framework version matches the changelog.
-
-If `validate-setup` is NOT in the profile, run a manual smoke check:
+Then run a manual smoke check:
 
 1. `ls .claude/agents/` — count matches profile (4 / 10 / 28, excluding `_retired/`).
 2. `ls .claude/hooks/` — 6 hook scripts present (plus their `.test.js` files and `package.json`).
@@ -289,7 +283,7 @@ git commit -m "feat: adopt claude-code-framework v<current framework version> as
 - The framework ships `.claude/context/agent-context.md` as an `adopt-only` template (deployed once, never clobbered). Populate the `## <agent-name>` sections your repo needs; agents with no project notes need no section.
 - A very long section may link out to a `references/<topic>.md` file to keep the global file navigable (e.g. `finalisation-coordinator`'s G5 CI-parity command table → `references/g5-ci-parity-commands.md`).
 - This is the fleet-wide analogue of `CLAUDE.md`: one file the whole agent fleet reads, owned by the repo, never overwritten by a sync.
-- The inline `LOCAL-OVERRIDE` mechanism is **deprecated for agent files** (still available for non-agent managed files). `validate-setup` fails the build if any `.claude/agents/*.md` reintroduces a `LOCAL-OVERRIDE` block (populated or empty — agents declare no slots at all).
+- The inline `LOCAL-OVERRIDE` mechanism is **deprecated for agent files** (still available for non-agent managed files). `/claudeupdate`'s 6d2 behavioural-divergence guard fails the update if any `.claude/agents/*.md` diverges from framework-canonical — which a reintroduced `LOCAL-OVERRIDE` block (populated or empty — agents declare no slots at all) does.
 
 Full rationale: `docs/decisions/0006-no-inline-agent-overrides.md`. Distinct from the reviewer `PROJECT_CONTEXT` system in `context/` — see `context/README.md`.
 
@@ -326,9 +320,9 @@ MINIMAL 4 plus: `spec-coordinator`, `feature-coordinator`, `finalisation-coordin
 
 Use when the project has multiple in-flight features and benefits from spec → plan → build phase separation. Default for most projects.
 
-### FULL (29 agents) — large project / multi-stream development
+### FULL — large project / multi-stream development
 
-STANDARD 10 plus: `adversarial-reviewer`, `audit-runner`, `bug-fixer`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `claude-spec-review`, `claude-plan-review`, `codebase-explainer`, `context-pack-loader`, `cross-repo-scout`, `dual-reviewer`, `experiment-runner`, `incident-commander`, `mockup-coordinator`, `mockup-designer`, `mockup-reviewer`, `validate-setup`.
+STANDARD 10 plus: `adversarial-reviewer`, `audit-runner`, `bug-fixer`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `claude-spec-review`, `claude-plan-review`, `context-pack-loader`, `cross-repo-scout`, `dual-reviewer`, `incident-commander`, `mockup-coordinator`, `mockup-designer`, `mockup-reviewer`. (FULL ships every active agent; `check-profiles.js` reconciles this enumeration against disk — it carries known pre-existing drift, tracked separately from the v2.65.0 retirements.)
 
 Use when the project supports the overhead — `chatgpt-*` agents need ChatGPT-web access, `dual-reviewer` needs the Codex CLI, `audit-runner` needs a mature codebase to audit. Otherwise STANDARD covers it.
 

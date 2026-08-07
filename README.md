@@ -102,7 +102,7 @@ Pick at adoption time:
 
 - **MINIMAL (4)** — `triage-agent`, `pr-reviewer`, `architect`, `spec-reviewer`. Solo dev, self-review baseline.
 - **STANDARD (10)** — MINIMAL + `spec-coordinator`, `feature-coordinator`, `finalisation-coordinator`, `spec-conformance`, `builder`, `hotfix`. Default for most projects.
-- **FULL (29)** — STANDARD + `adversarial-reviewer`, `audit-runner`, `bug-fixer`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `claude-spec-review`, `claude-plan-review`, `codebase-explainer`, `context-pack-loader`, `cross-repo-scout`, `dual-reviewer`, `experiment-runner`, `incident-commander`, `mockup-coordinator`, `mockup-designer`, `mockup-reviewer`, `regression-scribe`, `validate-setup`. Large projects with capacity for the overhead.
+- **FULL** — STANDARD + `adversarial-reviewer`, `audit-runner`, `bug-fixer`, `chatgpt-pr-review`, `chatgpt-spec-review`, `chatgpt-plan-review`, `claude-spec-review`, `claude-plan-review`, `context-pack-loader`, `cross-repo-scout`, `dual-reviewer`, `incident-commander`, `mockup-coordinator`, `mockup-designer`, `mockup-reviewer`, `regression-scribe`. Large projects with capacity for the overhead. (FULL ships every active agent; `check-profiles.js` reconciles this list against disk — the enumeration has known pre-existing drift, tracked separately from the v2.65.0 agent retirements.)
 
 ## Upgrading from a previous framework version
 

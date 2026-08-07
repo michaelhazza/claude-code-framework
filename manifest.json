@@ -1207,6 +1207,21 @@
       "path": ".claude/agents/reality-checker.md",
       "removedIn": "2.21.0",
       "action": "warn-only"
+    },
+    {
+      "path": ".claude/agents/codebase-explainer.md",
+      "removedIn": "2.65.0",
+      "action": "warn-only"
+    },
+    {
+      "path": ".claude/agents/validate-setup.md",
+      "removedIn": "2.65.0",
+      "action": "warn-only"
+    },
+    {
+      "path": ".claude/agents/experiment-runner.md",
+      "removedIn": "2.65.0",
+      "action": "warn-only"
     }
   ],
   "doNotTouch": [

@@ -67,7 +67,7 @@ function ticks(names: string[]): string {
 function defaults(): Fixture {
   const minimal = ['triage-agent', 'pr-reviewer'];
   const standardExtras = ['architect', 'builder'];
-  const fullExtras = ['hotfix', 'spec-reviewer', 'validate-setup'];
+  const fullExtras = ['hotfix', 'spec-reviewer', 'incident-commander'];
   return {
     agents: [...minimal, ...standardExtras, ...fullExtras],
     minimal,
@@ -377,21 +377,21 @@ describe('profile claims', () => {
 
   it('ADAPT FULL enumeration omitting an agent (the regression-scribe class) is caught three ways', () => {
     const f = defaults();
-    const root = buildFixture({ adapt: { fullExtras: f.fullExtras.slice(0, -1) } }); // omit validate-setup
+    const root = buildFixture({ adapt: { fullExtras: f.fullExtras.slice(0, -1) } }); // omit incident-commander
     const result = runGate(root);
     // 1. header count no longer matches the enumeration
     const hdr = findingsBy(result, 'profile-full-count-vs-enum').filter((x) => x.file === 'ADAPT.md');
     expect(hdr).toHaveLength(1);
     expect(hdr[0].claimed).toBe(7);
     expect(hdr[0].actual).toBe(6);
-    // 2. FULL enumeration vs disk: validate-setup missing
+    // 2. FULL enumeration vs disk: incident-commander missing
     const miss = findingsBy(result, 'profile-full-vs-disk-missing').filter((x) => x.file === 'ADAPT.md');
     expect(miss).toHaveLength(1);
-    expect(miss[0].message).toContain('validate-setup');
+    expect(miss[0].message).toContain('incident-commander');
     // 3. cross-doc: README FULL lists it, ADAPT section 12 does not
     const cross = findingsBy(result, 'profile-full-names');
     expect(cross).toHaveLength(1);
-    expect(cross[0].message).toContain('only in README: [validate-setup]');
+    expect(cross[0].message).toContain('only in README: [incident-commander]');
   });
 
   it('a profile naming an agent that does not exist on disk is flagged', () => {

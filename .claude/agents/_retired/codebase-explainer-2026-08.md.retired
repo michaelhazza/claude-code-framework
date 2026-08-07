@@ -1,9 +1,15 @@
 ---
 name: codebase-explainer
-description: Produces a human-readable narrative tour of the codebase for new engineers, contractors, or external code reviewers. Different audience from architecture.md (which is agent-facing dense reference). Output is human-facing prose with a clear progression from "what does this product do" to "where would I make this change."
+description: "[RETIRED 2.65.0] Produced a human-readable narrative tour of the codebase for new engineers, contractors, or external code reviewers. Different audience from architecture.md (agent-facing dense reference)."
 tools: Read, Glob, Grep, Write, TodoWrite
 model: opus
+retired: 2026-08-07
+retired_in_framework_version: 2.65.0
+superseded_by: none
+retired_reason: "Framework cost-optimization audit (report A12): near-zero invocation in practice; the human-onboarding tour it produced overlaps architecture.md plus repo-local codebase docs, and no build step depended on it. Retired to shrink the always-read fleet footprint. No successor agent. See .claude/CHANGELOG.md v2.65.0."
 ---
+
+> **RETIRED in framework v2.65.0 (2026-08-07).** No longer synced into the active fleet (lives under `_retired/`, outside the `.claude/agents/*.md` glob). Kept for history. Do not invoke. Original definition preserved below.
 
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 

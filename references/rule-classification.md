@@ -98,7 +98,6 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/bug-fixer.md#linked-pr-detection` | directives under this heading | process-contract | file classified at file-level default (not per-directive extracted this pass) — spot-check candidate; never-auto-finalise gate and 2-attempt check cap noted |
 | `.claude/agents/bug-fixer.md#execution-fix-mode` | directives under this heading | process-contract | file classified at file-level default (not per-directive extracted this pass) — spot-check candidate; never-auto-finalise gate and 2-attempt check cap noted |
 | `.claude/agents/bug-fixer.md#step-0-parse-trigger-phrase` | directives under this heading | process-contract | file classified at file-level default (not per-directive extracted this pass) — spot-check candidate; never-auto-finalise gate and 2-attempt check cap noted |
-| `.claude/agents/bug-fixer.md#experiment-eligible-label-recommendation` | directives under this heading | process-contract | file classified at file-level default (not per-directive extracted this pass) — spot-check candidate; never-auto-finalise gate and 2-attempt check cap noted |
 | `.claude/agents/bug-fixer.md#step-1-todowrite-skeleton` | directives under this heading | process-contract | file classified at file-level default (not per-directive extracted this pass) — spot-check candidate; never-auto-finalise gate and 2-attempt check cap noted |
 | `.claude/agents/bug-fixer.md#step-2-issue-actionability-check` | directives under this heading | process-contract | file classified at file-level default (not per-directive extracted this pass) — spot-check candidate; never-auto-finalise gate and 2-attempt check cap noted |
 | `.claude/agents/bug-fixer.md#step-2a-resolve-pr-base-branch` | directives under this heading | process-contract | file classified at file-level default (not per-directive extracted this pass) — spot-check candidate; never-auto-finalise gate and 2-attempt check cap noted |
@@ -208,18 +207,6 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/claude-spec-review.md#rubric-pass-run-on-every-spec` | directives under this heading | process-contract |  |
 | `.claude/agents/claude-spec-review.md#output` | directives under this heading | process-contract |  |
 | `.claude/agents/claude-spec-review.md#rules` | directives under this heading | process-contract | lifetime cap 3 is MW (assumption: executing models do not reliably detect non-convergence; sunset: re-evaluate per model upgrade via the WS4 eval suite; caps registered in references/iteration-caps.md) |
-| `.claude/agents/codebase-explainer.md#when-invoked` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-1-todowrite-skeleton` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-2-read-framing-inputs` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-3-decide-structure` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-4-write-the-tour` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-5-worked-example-how-a-request-flows` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-6-where-to-make-a-change-by-domain` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-7-where-to-not-make-a-change` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-8-where-to-read-next` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-9-update-mode` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#step-10-output-and-finish` | directives under this heading | process-contract |  |
-| `.claude/agents/codebase-explainer.md#rules` | directives under this heading | process-contract |  |
 | `.claude/agents/context-pack-loader.md#when-invoked` | directives under this heading | process-contract |  |
 | `.claude/agents/context-pack-loader.md#step-1-read-the-pack-file` | directives under this heading | process-contract |  |
 | `.claude/agents/context-pack-loader.md#step-2-load-named-sections` | directives under this heading | process-contract |  |
@@ -250,15 +237,6 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/dual-reviewer.md#rules` | directives under this heading | durable-invariant | never force-push / never --amend / never --no-verify; CI-only test gates |
 | `.claude/agents/dual-reviewer.md#project-specific-notes` | — | no-rules | |
 | `.claude/agents/dual-reviewer.md#main-loop-max-5-iterations` | directives under this heading | process-contract |  |
-| `.claude/agents/experiment-runner.md#experiment-runner` | directives under this heading | process-contract |  |
-| `.claude/agents/experiment-runner.md#1-caller-contract-inputs` | directives under this heading | process-contract |  |
-| `.claude/agents/experiment-runner.md#2-output` | directives under this heading | process-contract |  |
-| `.claude/agents/experiment-runner.md#3-loop-contract` | directives under this heading | process-contract |  |
-| `.claude/agents/experiment-runner.md#4-consecutive-counter-rules` | directives under this heading | model-workaround | assumption: model persists on non-converging strategies; sunset: per model upgrade via eval |
-| `.claude/agents/experiment-runner.md#5-recommendation-surfaces` | directives under this heading | process-contract |  |
-| `.claude/agents/experiment-runner.md#6-tsv-row-append-appenditerationrowslug-row` | directives under this heading | process-contract |  |
-| `.claude/agents/experiment-runner.md#7-example-invocation` | — | no-rules | |
-| `.claude/agents/experiment-runner.md#worked-example-endpoint-p95-profiling` | directives under this heading | process-contract |  |
 | `.claude/agents/feature-coordinator.md#invocation` | directives under this heading | process-contract |  |
 | `.claude/agents/feature-coordinator.md#context-loading-step-0` | directives under this heading | process-contract |  |
 | `.claude/agents/feature-coordinator.md#step-1-top-level-todowrite-list` | directives under this heading | process-contract |  |
@@ -557,22 +535,8 @@ Residue found this pass is handled as kill-list items (decision gate DG-2) rathe
 | `.claude/agents/triage-agent.md#context-loading` | directives under this heading | process-contract |  |
 | `.claude/agents/triage-agent.md#two-modes-of-operation` | — | no-rules | |
 | `.claude/agents/triage-agent.md#mode-1-capture` | directives under this heading | process-contract |  |
-| `.claude/agents/triage-agent.md#experiment-eligible-tag` | directives under this heading | process-contract |  |
 | `.claude/agents/triage-agent.md#mode-2-triage` | directives under this heading | process-contract |  |
 | `.claude/agents/triage-agent.md#rules` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#when-to-invoke` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-1-todowrite-skeleton` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-2-inventory` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-3-agent-referenced-files` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-3a-agent-canonical-rule-adr-0006` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-4-context-pack-anchors` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-5-adr-index-integrity` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-6-frameworkversion-matches-changelog` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-7-doc-sync-coverage` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-8-hooks-registered` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#step-9-findings-report` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#rules` | directives under this heading | process-contract |  |
-| `.claude/agents/validate-setup.md#project-specific-notes` | — | no-rules | |
 | `.claude/agents/brief-reviewer.md#when-invoked` | directives under this heading | process-contract |  |
 | `.claude/agents/brief-reviewer.md#configuration` | directives under this heading | model-workaround | MAX_ITERATIONS 5; assumption: executing models do not reliably detect non-convergence; sunset: re-evaluate per model upgrade via the WS4 eval suite; caps registered in references/iteration-caps.md |
 | `.claude/agents/brief-reviewer.md#design-note-no-claude-tier-at-the-brief-stage-by-design-not-a-gap` | directives under this heading | process-contract |  |

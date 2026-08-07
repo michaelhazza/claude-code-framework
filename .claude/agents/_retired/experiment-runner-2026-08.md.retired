@@ -1,9 +1,15 @@
 ---
 name: experiment-runner
-description: Generic metric-optimisation loop. Caller provides hypothesis, verify command, direction, min_delta, max_iterations, change-budget rule. Agent runs one atomic change per iteration, commits before verify, keeps or reverts per Contract 1, appends TSV row per Contract 7, escalates at 5/10 consecutive non-keeps.
+description: "[RETIRED 2.65.0] Generic metric-optimisation loop (perf/flake/ranker/prompt A/B): one atomic change per iteration, commit before verify, keep-or-revert, escalate at consecutive non-keeps. Pure loop helper scripts/experiment-runner-loopPure.ts retained."
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: sonnet
+retired: 2026-08-07
+retired_in_framework_version: 2.65.0
+superseded_by: none
+retired_reason: "Framework cost-optimization audit (report A12): near-zero real-world invocation; the structured tuning loop it offered was surfaced only as an advisory suggestion from triage-agent/bug-fixer, never a required pipeline stage. Retired to shrink the fleet. The tested pure helper (scripts/experiment-runner-loopPure.ts + test) is generic and retained. No successor agent. See .claude/CHANGELOG.md v2.65.0."
 ---
+
+> **RETIRED in framework v2.65.0 (2026-08-07).** No longer synced into the active fleet (lives under `_retired/`, outside the `.claude/agents/*.md` glob). Kept for history. Do not invoke. Original definition preserved below.
 
 **Project context (read first).** If `.claude/context/agent-context.md` exists, read it before anything else and treat the `##` section matching this agent's name as binding project context for this repo. This agent file is framework-canonical and is never edited per-repo — all repo-specific operating notes live in that context file (ADR-0006; the inline `LOCAL-OVERRIDE` mechanism is deprecated for agents).
 

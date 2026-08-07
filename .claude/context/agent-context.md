@@ -31,9 +31,9 @@ Valid agent names (must match a file in .claude/agents/). Add a `## <name>` sect
 
 adversarial-reviewer · architect · audit-runner · bug-fixer · builder ·
 chatgpt-plan-review · chatgpt-pr-review · chatgpt-spec-review · claude-plan-review ·
-claude-spec-review · codebase-explainer · context-pack-loader · cross-repo-scout ·
-dual-reviewer · experiment-runner · feature-coordinator · finalisation-coordinator ·
+claude-spec-review · context-pack-loader · cross-repo-scout ·
+dual-reviewer · feature-coordinator · finalisation-coordinator ·
 hotfix · incident-commander · mockup-coordinator · mockup-designer · mockup-reviewer ·
 pr-reviewer · regression-scribe · spec-conformance · spec-coordinator · spec-reviewer ·
-triage-agent · validate-setup
+triage-agent
 -->
