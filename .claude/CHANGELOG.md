@@ -32,6 +32,15 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.66.6 — 2026-08-07
+
+**Highlights:** patch — lint hygiene for the files shipped in 2.66.x. The framework repo has no lint lane, so a consuming repo's `eslint` CI was the first place these surfaced; they are dead initialisers only, no behaviour change.
+
+**Fixed:**
+- `scripts/gates/verify-doc-size.mjs` and `scripts/cleanfiles-audit-headless.test.mjs`: three `no-useless-assignment` errors — `entries`, `childAlive`, `grandchildAlive` were each initialised and then reassigned on BOTH the `try` and `catch` paths, so the initialiser could never be read. Declared without an initialiser.
+
+**Note for framework contributors:** shipped `.mjs`/`.js` under `scripts/` and `.claude/hooks/` is linted by consumers even though this repo has no lint gate. Until a lint lane exists here, run a consumer's `npx eslint <synced paths>` after touching shipped scripts.
+
 ## 2.66.5 — 2026-08-07
 
 **Highlights:** patch — fifth review round on the F1 safety controls, closing two High lifecycle gaps (an unbounded number of hung background rebuilds; POSIX killing only the direct child) and two Medium hardenings. No behavioural-surface additions; no migration. The locking ACQUISITION protocol is unchanged from v2.66.4 — this release is about process lifecycle.
