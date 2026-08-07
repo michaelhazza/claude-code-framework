@@ -599,9 +599,9 @@ Items in `tasks/todo.md` that are NOT closed by this build remain untouched.
 
 Deletes the review loop's raw working material now that its value has been extracted. Runs **after Step 7** deliberately — Step 7's KNOWLEDGE extraction is the last consumer the raw material could have.
 
-**What is scratch vs what is durable** (contract: `tasks/review-logs/README.md § Retention`): final reports and structured results (`.md` / `.json` / `.jsonl`) are the audit trail — committed, never deleted, they answer "did this review run and why was finding X rejected". Raw transcripts, prompt inputs and stdout/stderr captures (`.txt` / `.stderr` / `.tmp`) are scratch — everything durable in them is distilled into the final report **before a round closes** (that is the round's exit criterion), so after Step 7 they carry nothing the finals do not.
+**What is scratch vs what is durable** (this paragraph IS the retention contract — it was previously cross-cited to a `tasks/review-logs/README.md § Retention` section that consumer READMEs do not all carry; the citation is dropped, control C4): final reports and structured results (`.md` / `.json` / `.jsonl`) are the audit trail — committed, never deleted, they answer "did this review run and why was finding X rejected". Raw transcripts, prompt inputs and stdout/stderr captures (`.txt` / `.stderr` / `.tmp`) are scratch — everything durable in them is distilled into the final report **before a round closes** (that is the round's exit criterion), so after Step 7 they carry nothing the finals do not.
 
-1. Confirm the consuming repo's `.gitignore` covers `tasks/review-logs/*.txt`, `*.stderr`, `*.tmp`. If not, add the three lines (one-time, first finalisation after adoption) and include them in this phase's commit.
+1. **Fail-loud `.gitignore` pre-check (control C4) — run BEFORE the delete in step 2.** Verify the consuming repo's `.gitignore` contains all three lines: `tasks/review-logs/*.txt`, `tasks/review-logs/*.stderr`, `tasks/review-logs/*.tmp`. Do NOT silently assume they are present — a sweep that deletes tracked scratch files whose ignore lines are missing just re-stages them as deletions and the next run re-creates the churn. If ANY of the three is absent: STOP, print the exact missing line(s), add them to `.gitignore` in this phase's commit, record `Step 8a: added N missing review-logs .gitignore line(s)` in `progress.md`, and only THEN proceed to step 2. Never run the delete with the ignore lines still absent.
 2. Delete: `find tasks/review-logs -maxdepth 1 \( -name '*.txt' -o -name '*.stderr' -o -name '*.tmp' \) -delete`
 3. Record one line in `progress.md`: `Step 8a: swept <n> review-scratch file(s)`. Zero is a fine answer — record it anyway so "swept nothing" is distinguishable from "never ran".
 
@@ -1081,7 +1081,9 @@ node scripts/status/generate-current-focus.mjs
 node scripts/status/board-sync.mjs
 ```
 
-(The generator only rewrites the marked `STATUS:GENERATED` region — this build now reports `MERGED` and drops out of the generated non-terminal-build list. It does not touch the prose tail this step just hand-edited.)
+(The generator only rewrites the marked `STATUS:GENERATED` region — this build now reports `MERGED` and drops out of the generated non-terminal-build list. It does not touch the operator pointer block this step just hand-edited.)
+
+**Overwrite, don't append (control C2).** Any edit to the operator pointer block OVERWRITES it — never append a running history. Per-build history lives in `tasks/builds/<slug>/handoff.md`. The operator pointer block is hard-capped at ≤ 50 lines / ≤ 4KB (the `verify-doc-size.mjs` C1 budget measures exactly this region — see `references/doc-size-budgets.md`).
 
 Commit on main:
 
@@ -1097,6 +1099,8 @@ If branch protection on `main` requires PRs (no direct push allowed):
 
 - Skip 12.4 and surface the placeholder to the operator: "Squash sha is `{SQUASH_SHA}`. `tasks/current-focus.md` on main still says `pending-squash` and `status.json` still reads `MERGE_READY` — open a small follow-up PR to patch, OR amend in the next merge's pre-merge prep."
 - Do not force-push to main. Do not bypass branch protection.
+
+**Archive the merged build dir (control C4).** Once `MERGED` is written and pushed (or the branch-protection follow-up is queued), the build is terminal — its `tasks/builds/{slug}/` directory is retention, not working state. Archive it in this same post-merge commit (or the follow-up patch): `git mv tasks/builds/{slug} tasks/builds/_archive/{slug}`. This is the prevention half of the accumulation the scheduled cleanfiles audit (I3) otherwise sweeps in bulk — archiving at merge stops the active `tasks/builds/` dir from growing one stale directory per merge. If the repo pins the merged dir for an immediate follow-up (rare), record why in `progress.md` and leave it for the next cleanfiles sweep.
 
 ## Step 12.5 — Release-note block (advisory, non-blocking)
 

@@ -87,7 +87,9 @@ The generator and `board-sync.mjs` run together at every such write.
 - **`note` is operator language — the operator reads it on the card.** 1–4 short plain-English dot points (schema hard cap 6 × 200 chars): what was decided, what was found, how many issues were fixed, what happens next. Counts over detail. No file paths, no agent names, no internal jargon, no transcripts. Good: `"Spec accepted after 3 review rounds, 9 findings applied"`. Bad: `"chatgpt-spec-review returned auto_apply_eligible findings on §7"`.
 - `board-sync.mjs` renders `log[]` newest-first as the card's `## Activity` section — the card IS the operator's progress feed for an unattended session, and doubles as the compact build history later reviewers read. A missed append is a missed status write: same severity.
 
-**Hand-editing the generated current-focus block is a policy violation.** Never hand-edit the region between `<!-- STATUS:GENERATED:BEGIN -->` and `<!-- STATUS:GENERATED:END -->` in `tasks/current-focus.md` — the next `generate-current-focus.mjs` run overwrites it by design. The historical prose below the markers is untouched by the generator and remains this coordinator's to edit (Step 10).
+**Hand-editing the generated current-focus block is a policy violation.** Never hand-edit the region between `<!-- STATUS:GENERATED:BEGIN -->` and `<!-- STATUS:GENERATED:END -->` in `tasks/current-focus.md` — the next `generate-current-focus.mjs` run overwrites it by design. The operator pointer block (outside the markers) remains this coordinator's to edit (Step 10).
+
+**Overwrite, don't append (control C2).** When you edit the operator pointer block, OVERWRITE it — do not append a running history. Per-build history lives in `tasks/builds/<slug>/handoff.md`. The operator pointer block is hard-capped at ≤ 50 lines / ≤ 4KB (the `verify-doc-size.mjs` C1 budget measures exactly this region — see `references/doc-size-budgets.md`).
 
 **Board preflight — run ONCE, at context load, before the first status write.** Confirm the board can actually be written to, rather than discovering it transition by transition:
 

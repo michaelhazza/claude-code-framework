@@ -308,6 +308,12 @@
       "substituteAt": "never"
     },
     {
+      "path": "references/doc-size-budgets.md",
+      "category": "reference",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "references/test-gate-policy.md",
       "category": "reference",
       "mode": "sync",
@@ -1173,6 +1179,18 @@
     },
     {
       "path": "scripts/gates/verify-factory-invocation.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/gates/verify-doc-size.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/gates/verify-doc-size.test.mjs",
       "category": "helper-script-test",
       "mode": "sync",
       "substituteAt": "never"
