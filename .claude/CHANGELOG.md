@@ -32,6 +32,17 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.66.2 — 2026-08-07
+
+**Highlights:** patch — second focused review round on the F1 safety controls closed one High and four Medium residues left by v2.66.1. No behavioural-surface additions; no migration.
+
+**Fixed:**
+- `scripts/cleanfiles-audit-headless.mjs` (High): a failed spawn emits `'error'` AND then `'close'`; the wrapper ended/exited from each, racing a write-after-end on the log stream. Now a single `settled` flag owns settlement, a `log.on('error')` listener keeps a stream failure from crashing the wrapper, and the stdio pipes are guarded against a null-stream spawn failure. A non-existent executable now exits exactly `127` with a clean log (test added).
+- `scripts/gates/verify-growth-gate.mjs` (M1): `replaces:` must carry a real value — `replaces: ; footprint: 1200 bytes` no longer passes, because the `;` delimiter is not a value. The value is parsed and required to contain a word character (adversarial test added).
+- `scripts/gates/verify-doc-size.mjs` (M2/H4): doc-sync registration now reads the first-column backtick PATH of a registry table ROW, not any code span anywhere in the file — a backticked path mentioned in prose (e.g. "do not register …") no longer false-greens the megadoc gate (negative test added).
+- `code-graph-freshness-check.js` (M3): the hook previously `process.exit(0)`'d synchronously right after the detached spawn, so the async `'error'` was dropped (no crash, but also no cleanup or warning). It now defers exit to the `'spawn'`/`'error'` event (`unref()` only on `'spawn'`), so a failed spawn emits the visible fail-open warning and releases the rebuild lock; a bounded settle-timeout keeps session start from ever hanging (test asserts the warning + lock cleanup).
+- `scripts/gates/verify-growth-gate.mjs` (M4): the file header + config section now document the fail-CLOSED default for an unresolvable baseline and the `GATE_GROWTH_ADVISORY` escape hatch (they still described the removed fail-open behaviour).
+
 ## 2.66.1 — 2026-08-07
 
 **Highlights:** patch — hardening of the F1/F1-growth safety controls after an external code review found seven real defects in the mechanisms v2.65.0 + v2.66.0 introduced. These are the classic ways a safety control lies: fail-open enforcement paths, non-atomic concurrency, an async error that could crash the very hook meant to fail open, a dedup that discards unique data, and a substring registration check that false-greens. No behavioural-surface additions; no migration.
