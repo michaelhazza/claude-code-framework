@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.66.4 — 2026-08-07
+
+**Highlights:** patch — fourth review round on the F1 safety controls: two High (the lock takeover was still raceable; the timed-out audit child was left as an orphan) and two Medium. No behavioural-surface additions; no migration.
+
+**Fixed:**
+- `code-graph-freshness-check.js` (High): the rebuild lock is now a DIRECTORY (mkdir is the atomically-exclusive filesystem primitive on POSIX and Windows), and stale takeover elects a SINGLE reaper via a second atomic mkdir, then RE-CHECKS staleness while holding the reaper lock. This closes the last takeover race (a contender acquiring the reaper after another reaper finished could otherwise reap the now-fresh lock). Provable invariant: the main lock is replaced only while holding the reaper lock, which admits exactly one holder. The concurrency test (6 simultaneous contenders → exactly one takeover) is deterministic across 75+ stress runs; the prior rename-quarantine variant reproduced two winners.
+- `scripts/cleanfiles-audit-headless.mjs` (High): after the graceful kill and grace window, the wrapper now FORCE-terminates the child — POSIX `SIGKILL` (uncatchable), Windows `taskkill /PID <pid> /T /F` (whole tree) — so a child that ignores termination is not left running as an orphan for an unattended monthly scheduler. The test records the child pid and asserts it is dead after the wrapper returns.
+- `scripts/gates/verify-growth-gate.mjs` (Medium): declaration-target ownership is now a whole-token match, not a substring. A target of `.claude/agents/foo.md.backup` no longer counts as declaring `.claude/agents/foo.md`, and the bare-name fallback no longer matches a stem embedded in a path (path-form targets are matched by full path only).
+- `code-graph-freshness-check.js` (Medium): the audit fingerprint is now `name:size:mtime`. A content change that preserves the mtime (coarse filesystem timestamp resolution, restore/copy tools, or explicitly-preserved timestamps) now re-triggers the audit instead of being skipped.
+
 ## 2.66.3 — 2026-08-07
 
 **Highlights:** patch — third review round on the F1 safety controls: two High (a still-raceable lock takeover; declaration ownership matching the wrong field) and two Medium. No behavioural-surface additions; no migration.
