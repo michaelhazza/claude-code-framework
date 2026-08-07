@@ -32,6 +32,32 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.65.0 — 2026-08-07
+
+**Highlights:** minor — the F1 cost-optimization batch. A full-audit of the framework found the always-loaded and per-build context had grown far past what the work needed; this release cuts the safe, non-posture drivers and adds standing guardrails so the bloat cannot silently regrow. Three low-invocation agents retire, the session-start digest and context-pack loading get guard-rails, and a new doc-size gate plus overwrite-not-append conventions hold the line. Review-posture changes (reviewer-tier thinning, model demotions, playbook slimming) are deliberately NOT in this release — they ship as separately-gated staged releases. Migration `v2.65.0.js` ships (session-state gitignore).
+
+**Migration:** `v2.65.0.js` — appends `.claude/session-state/` to the consumer `.gitignore` when absent (idempotent, non-destructive), so the mtime-gated hook stamps + rebuild lock introduced in this release never dirty a consumer working tree. Auto-covered by the `migrations/v*.js` runner glob.
+
+**Deprecated:**
+- Retired three low-invocation agents to `.claude/agents/_retired/*.md.retired` (removed from the active `.claude/agents/*.md` fleet; `removedFiles` manifest entries warn consumers to drop the stale copies): `codebase-explainer` (human onboarding tour — overlaps `architecture.md` + repo docs), `validate-setup` (read-only health check — role now `/framework-doctor` + the deterministic gates; its aspirational build-failing enforcement was never a real CI gate, and genuine agent-divergence enforcement is `/claudeupdate`'s 6d2 guard), `experiment-runner` (metric-optimisation loop — never a required stage; its tested pure helper `scripts/experiment-runner-loopPure.ts` is retained). Reference cascade swept in the same change: rule-classification ledger rows, the dead `experiment-eligible` sections in `triage-agent`/`bug-fixer`, README/ADAPT FULL enumerations, enforcer claims repointed to the real mechanisms, and `check-profiles` fixture. The new-agent/skill/hook **growth gate** (report C5) moves to the release checklist (plan I5) now that `validate-setup` no longer hosts it.
+
+**Added:**
+- `scripts/gates/verify-doc-size.mjs` (+ test, + `references/doc-size-budgets.md`): control C1 — warning-level size budgets on the accretion-prone docs (current-focus operator portion, todo.md, KNOWLEDGE.md, architecture.md, capabilities.md, docs/ root new-megadoc prevention with a consumer grandfather baseline `.claude/doc-size-baseline.json`). Grace annotations on KNOWLEDGE/architecture/capabilities until their remediation chunks land.
+
+**Changed:**
+- `memory-digest.js` (control A8): hard ~8KB byte cap alongside the line cap, 200-char per-line truncation, focus block stops at `### Machine-readable`, body-hash dedupe, reduced entry caps — a real consumer's session-start digest dropped 22.3KB → 6.2KB.
+- `sync.js` (control A5): finalises a context pack's `Status: template` → `Status: mapped` and strips the adoption note only when zero unresolved `{{ARCHITECTURE_ANCHOR:` tokens remain; `architect`/`builder`/`pr-reviewer` fallback gates narrowed to unsubstituted anchors in the `## Sources` block; `audit-context-packs.ts` false-green fixed.
+- `code-graph-freshness-check.js` (control A10): mtime-gated `audit-context-packs` spawn, detached-with-atomic-lock rebuild on the watcher-dead cold path (no more blocking ≤120s), runtime state under gitignored `.claude/session-state/`.
+- Skill descriptions (control A9): trimmed 7 over-length framework descriptions (kept every trigger + NOT-for clause; `eval:routing` recall gate stays green at 92% rank-1).
+- Dispatch gates (control A11): `architect`/`spec-coordinator` skip the cross-repo-scout dispatch unless `sibling_repos[]` warrants it; the five grep-heavy agents exclude `.claude-framework/` by default.
+- `phase-lock.js` (control A4, framework half): removed the `docs/superpowers/specs/**` spec/plan allow-glob so new spec writes outside `tasks/builds/<slug>/` are blocked.
+- Coordinators (control C2): overwrite-not-append rule for the current-focus operator pointer block in `feature`/`spec`/`finalisation-coordinator`; `generate-current-focus.mjs` contract note.
+- `finalisation-coordinator` (control C4): Step 8a `.gitignore` review-logs check made fail-loud; dropped a dangling `review-logs/README § Retention` citation; post-merge step archives the merged build dir.
+- `cleanfiles.md` (control C6): target 14 reports any `context-load: full architecture.md` fallback in the most-recent build's logs (per-session budget regression signal).
+
+**Fixed:**
+- `check-migrations` version-ceiling + CHANGELOG-coverage findings for `v2.65.0.js` clear with this release (version bump + this entry's `v2.65.0.js` mention). The 4 pre-existing test-coverage findings (v2.8.0/2.12.0/2.13.0/2.27.0) predate this work and are unchanged.
+
 ## 2.64.1 — 2026-08-06
 
 **Highlights:** patch — the build board could stop being written to and nothing would say so. `board-sync.mjs` now emits a stable `NOT_SYNCED` marker and a distinct exit code on any run that did not reach the board, and the three coordinators are required to report that to the operator in-session rather than only to `progress.md`. Found in a consuming repo where `projects_board` had never been recorded: `loadBoardConfig()` returned null, the script warned and exited 0, and every coordinator push was a silent no-op for an unknown number of builds. The only thing that eventually surfaced it was an operator opening the board and finding an empty column. The board remains a view, not a gate — this change buys observability, not enforcement.
