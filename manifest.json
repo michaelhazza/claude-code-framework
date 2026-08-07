@@ -1190,6 +1190,18 @@
       "substituteAt": "never"
     },
     {
+      "path": "scripts/gates/verify-growth-gate.mjs",
+      "category": "helper-script",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
+      "path": "scripts/gates/verify-growth-gate.test.mjs",
+      "category": "helper-script-test",
+      "mode": "sync",
+      "substituteAt": "never"
+    },
+    {
       "path": "scripts/gates/verify-doc-size.test.mjs",
       "category": "helper-script-test",
       "mode": "sync",
