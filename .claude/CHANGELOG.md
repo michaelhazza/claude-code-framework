@@ -32,6 +32,16 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.66.0 — 2026-08-07
+
+**Highlights:** minor — the F1 prevention batch's last guardrail (report C5 / plan I5). New always-loaded behavioural additions (agents, skills, hooks, commands) can no longer land in a release without justifying their footprint. This closes the anti-bloat loop that v2.65.0 opened: v2.65.0 cut the accumulated cost and added the doc-size gate; this release stops the fleet/skill/hook/command surface from quietly regrowing it. The enforcement point moved here from the retired `validate-setup` agent to a deterministic release-flow gate.
+
+**Added:**
+- `scripts/gates/verify-growth-gate.mjs` (+ test): diffs files ADDED under `.claude/{agents,skills,hooks,commands}/` since the previous release tag and fails (exit 1) if any lacks a `> growth-gate: <path> — replaces: <what|none: why>; footprint: <N bytes|not-always-loaded>` declaration in the current CHANGELOG section. Fails-open only when the previous tag is unresolvable (tagless/shallow checkout). Precision over recall: only the four behavioural file classes are diffed; new tiers / always-loaded doc sections are declared in prose per the release checklist.
+
+**Changed:**
+- `/release` (`.claude/commands/release.md`): step 5 now requires a `> growth-gate:` declaration line per new behavioural file; step 7 runs `verify-growth-gate.mjs` after the CHANGELOG is written, before the release commit.
+
 ## 2.65.0 — 2026-08-07
 
 **Highlights:** minor — the F1 cost-optimization batch. A full-audit of the framework found the always-loaded and per-build context had grown far past what the work needed; this release cuts the safe, non-posture drivers and adds standing guardrails so the bloat cannot silently regrow. Three low-invocation agents retire, the session-start digest and context-pack loading get guard-rails, and a new doc-size gate plus overwrite-not-append conventions hold the line. Review-posture changes (reviewer-tier thinning, model demotions, playbook slimming) are deliberately NOT in this release — they ship as separately-gated staged releases. Migration `v2.65.0.js` ships (session-state gitignore).
