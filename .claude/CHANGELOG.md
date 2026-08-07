@@ -32,6 +32,21 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.66.1 — 2026-08-07
+
+**Highlights:** patch — hardening of the F1/F1-growth safety controls after an external code review found seven real defects in the mechanisms v2.65.0 + v2.66.0 introduced. These are the classic ways a safety control lies: fail-open enforcement paths, non-atomic concurrency, an async error that could crash the very hook meant to fail open, a dedup that discards unique data, and a substring registration check that false-greens. No behavioural-surface additions; no migration.
+
+**Fixed:**
+- `code-graph-freshness-check.js` (H1): the detached rebuild now registers a `child.on('error')` handler, so an async `spawn` failure (e.g. `npx` not on PATH → ENOENT) is caught and the hook stays fail-open instead of crashing session start on an unhandled `error` event. The lock is cleared on the error.
+- `code-graph-freshness-check.js` (H2): stale-lock takeover is now atomic — remove the stale lock then re-create it with an exclusive `wx` write, which is the arbiter. Two sessions that both observe the same stale timestamp can no longer both "take over" and launch duplicate rebuilds.
+- `code-graph-freshness-check.js` (M2): the audit stamp is a membership fingerprint (`name:mtime` per input, sorted), not a max mtime. Deleting a context-pack now changes the fingerprint and re-triggers `audit-context-packs` instead of being silently skipped because the remaining max mtime fell below the stamp.
+- `memory-digest.js` (H3): index-matched entry dedup is now EXACT body equality (normalised body, title excluded), not "≥50% of lines already shown". The overlap heuristic could discard a genuinely-new entry that shared boilerplate/template lines with a shown one, silently losing unique knowledge.
+- `scripts/gates/verify-doc-size.mjs` (H4): docs/ root-file registration is matched against backtick-quoted PATH tokens in `doc-sync.md` (full repo-relative path or exact filename), not an arbitrary substring. `docs/plan.md` no longer counts as "registered" because the word "plan" appears somewhere in the registry prose.
+- `scripts/gates/verify-growth-gate.mjs` (H5): the growth gate now FAILS CLOSED (exit 1) when a previous version exists but its baseline ref is unresolvable (tagless/shallow checkout, bad ref, git failure). The first release (no previous version) still passes. `GATE_GROWTH_ADVISORY=1` opts into local advisory (warn, exit 0).
+- `scripts/gates/verify-growth-gate.mjs` (M1): declarations must carry a non-empty `replaces:` value and a conforming `footprint:` (`<N> bytes` or `not-always-loaded`); an empty `replaces: ; footprint:` no longer passes. A bare-name-only declaration shared across two additions is rejected in favour of the full path.
+
+**Not changed (reviewed, out of scope):** `board-sync.mjs`'s non-zero `EXIT_NOT_SYNCED` is v2.64.1's deliberate observable-but-non-blocking contract (coordinators record + report it, per that release); it predates this batch and is unchanged here.
+
 ## 2.66.0 — 2026-08-07
 
 **Highlights:** minor — the F1 prevention batch's last guardrail (report C5 / plan I5). New always-loaded behavioural additions (agents, skills, hooks, commands) can no longer land in a release without justifying their footprint. This closes the anti-bloat loop that v2.65.0 opened: v2.65.0 cut the accumulated cost and added the doc-size gate; this release stops the fleet/skill/hook/command surface from quietly regrowing it. The enforcement point moved here from the retired `validate-setup` agent to a deterministic release-flow gate.
