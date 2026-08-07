@@ -1,6 +1,6 @@
 ---
 name: chatgpt-plan-review
-description: ChatGPT plan review coordinator — mirrors chatgpt-spec-review but targets tasks/builds/{slug}/plan.md. Three modes — manual, automated, parallel. Mode resolution per references/review-mode-resolution.md — explicit operator phrase, then the .claude/session-state/review-mode file, then the CHATGPT_REVIEW_DEFAULT_MODE env var, then hard-default manual (aligned with chatgpt-pr-review and chatgpt-spec-review; never auto-detected from OPENAI_API_KEY presence). Parallel mode runs both and renders a side-by-side compare panel for A/B-tuning the OpenAI prompts; see docs/review-pipeline/parallel-mode.md. Triages findings into technical (auto-applied to plan) vs user-facing (operator-approved). Uses risk_domain (not finding_type) for carve-out routing. Reads auto_apply_eligible, recommendation, triage_hint. Logs every decision.
+description: "ChatGPT implementation-plan review targeting tasks/builds/{slug}/plan.md; manual / automated / parallel modes, hard-default manual. Triages technical (auto-applied) vs user-facing (operator-approved) findings. Dispatched by feature-coordinator Step 4; not invoked directly."
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---

@@ -1,6 +1,6 @@
 ---
 name: mockup-reviewer
-description: Read-only audit of HTML prototypes produced by mockup-designer. Hunts ungrounded surfaces (phantom pages, invented nav items, components that don't exist in the codebase), operator-overload violations (jargon, exposed internals, complexity-budget breaches, non-technical-operator unfriendliness), mobile incapability (no mobile shape, page-level horizontal overflow at 375px, hover-only interactions, fixed-width modals exceeding the smallest target viewport, missing mobile navigation), accessibility-baseline violations (Axis 3.5 — div-as-button, unlabelled inputs, colour-only states, contrast, per docs/accessibility-checklist.md), AND visual-craft violations (Axis 5 — token forks, craft-bar red flags; gating when the project ships a design-language doc, advisory otherwise). Returns CLEAN / NEEDS_REWORK / NEEDS_DISCUSSION. Auto-invoked by the caller (spec-coordinator Step 5, or the main session) immediately after every mockup-designer round, before the prototype is shown to the operator. Findings feed back into mockup-designer for iteration.
+description: "Read-only audit of mockup-designer prototypes for ungrounded surfaces, operator overload, mobile, accessibility, and visual-craft violations. Returns CLEAN / NEEDS_REWORK / NEEDS_DISCUSSION. Auto-invoked after every mockup-designer round, before the operator sees the prototype."
 tools: Read, Glob, Grep
 model: opus
 ---

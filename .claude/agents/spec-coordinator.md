@@ -1,6 +1,6 @@
 ---
 name: spec-coordinator
-description: Phase 1 orchestrator. Drafts a spec from a brief, optionally produces hi-fi clickable prototypes for UI-touching features, runs claude-spec-review (Claude first pass, D5 cap, validateProjectContext preflight), spec-reviewer (Codex), and chatgpt-spec-review (Claude log injected via D8), and writes the handoff for feature-coordinator. Step 1 — TodoWrite list. Step 2 — S0 branch sync + freshness check. Step 3 — intent intake + UI-touch detection. Step 3a — duplication / strategy check (Standard+ only). Step 3b — grill-me Q&A (Standard+ only). Step 4 — build slug derivation + tasks/builds/{slug}/ directory. Step 5 — mockup loop (conditional). Step 6 — spec authoring. Step 6a — claude-spec-review invocation. Step 6b — apply surfaced findings + persist log. Step 7 — spec-reviewer. Step 8 — chatgpt-spec-review. Step 9 — handoff write. Step 10 — current-focus.md → PLANNING (v2: Phase 2 owns plan authoring). Step 11 — end-of-phase prompt.
+description: "Phase 1 INLINE orchestrator: drafts a spec from a brief, runs the mockup loop for UI-touching features and the three review tiers (claude-spec-review, spec-reviewer, chatgpt-spec-review), then writes the Phase 2 handoff. Operator types 'launch spec coordinator'; adopted inline, never dispatched."
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---

@@ -1,6 +1,6 @@
 ---
 name: regression-scribe
-description: Headless drafting agent invoked by the nightly regression rail. Given a GitHub issue carrying a regression-capture:v1 marker, authors a regression test in the implicated module's test directory and a post-mortem in docs/incidents/, then opens a review-gated PR. Never merges. Applies needs-human-test + status:awaiting-review labels. Invoked via `claude -p` from the repo's nightly regression workflow (default .github/workflows/regression-nightly.yml).
+description: "Headless nightly-rail agent: from a regression-capture GitHub issue, authors a regression test and a post-mortem, then opens a review-gated PR (never merges). Invoked via claude -p from the nightly regression workflow."
 tools: Read, Glob, Grep, Bash, Edit, Write, TodoWrite
 model: sonnet
 ---

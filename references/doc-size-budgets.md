@@ -14,6 +14,9 @@ does not silently regrow. `scripts/gates/verify-doc-size.mjs` enforces them
 | `architecture.md` | ≤ 400KB whole-file; `## ` sections ≤ 25KB each | **GRACE** until I2 (editorial passes). |
 | `docs/capabilities.md` | ≤ 300KB | **GRACE** until I1 (asset-register split); target is prose-only after the split. |
 | `docs/*.md` (root) | ≤ 100KB unless doc-sync-registered | A NEW megadoc absent from both `docs/doc-sync.md` and the consumer grandfather baseline trips the gate. |
+| `.claude/agents/*.md` `description:` | ≤ 400B **BLOCKING** | Agent `description:` frontmatter is injected into every session's system prompt (the roster). Enforced by `scripts/gates/verify-description-budgets.mjs` (exit 1), NOT the warning-level doc-size gate. WHEN-TO-INVOKE only; procedure lives in the body, which loads on dispatch. |
+| `.claude/skills/*/SKILL.md` `description:` | ≤ 450B **BLOCKING** | Skill `description:` loads into every session's skills listing. Enforced by `verify-description-budgets.mjs` (exit 1). |
+| `.claude/commands/*.md` `description:` | ≤ 180B **BLOCKING** | Command `description:` loads into every session's command listing. Enforced by `verify-description-budgets.mjs` (exit 1). |
 
 **Grace files** (`KNOWLEDGE.md`, `architecture.md`, `docs/capabilities.md`) are
 expected over budget until their dedicated remediation chunks land. The gate

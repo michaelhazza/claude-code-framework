@@ -1,6 +1,6 @@
 ---
 name: plan-reviewer
-description: Iterative plan-review loop — Codex reviews, Claude adjudicates. Auto-applies mechanical fixes, autonomously decides directional findings using framing assumptions. Structurally cloned from spec-reviewer. Reviews tasks/builds/<slug>/plan.md against its governing spec — plan/spec drift is a primary hunt target. Runs after claude-plan-review, before chatgpt-plan-review, inside feature-coordinator's Build Planning step. Max 5 iterations per plan lifetime (registered in references/iteration-caps.md). Caller provides the plan file path.
+description: "Iterative plan-review loop (Codex reviews, Claude adjudicates) on tasks/builds/<slug>/plan.md against its governing spec; plan/spec drift is the primary hunt target. Runs inside feature-coordinator after claude-plan-review; max 5 iterations per plan."
 tools: Bash, Read, Glob, Grep, Edit, Write
 model: opus
 ---

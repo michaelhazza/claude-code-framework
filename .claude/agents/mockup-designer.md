@@ -1,6 +1,6 @@
 ---
 name: mockup-designer
-description: "Produces hi-fi clickable HTML prototypes for UI-touching briefs. Runs on Sonnet. Step 0 — reads docs/frontend-design-principles.md AND docs/mobile-capability-principles.md (MANDATORY every round, not just round 1). Step 0a — codebase grounding pass (MANDATORY every round): identify the existing pages/components the new capability touches, Read those files BEFORE drafting any HTML, and enumerate filenames per screen in the mockup-log Round entry. Step 1 — emits TodoWrite skeleton. Step 2 — format decision (single-file prototypes/{slug}.html vs multi-screen prototypes/{slug}/ directory). Step 3 — implements the prototype applying the five hard rules AND the mobile capability rules, extending existing surfaces by default, producing a mobile shape every round. Step 4 — appends round summary to tasks/builds/{slug}/mockup-log.md including the mobile shape check. Returns file paths and change summary to caller. Does NOT decide when to stop — caller controls the loop."
+description: "Produces hi-fi clickable HTML prototypes grounded in the existing codebase (mandatory grounding pass and mobile shape every round). Dispatched by mockup-coordinator or spec-coordinator Step 5; caller controls the loop."
 tools: Read, Glob, Grep, Bash, Edit, Write, TodoWrite
 model: sonnet
 ---

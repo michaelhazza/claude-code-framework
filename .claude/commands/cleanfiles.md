@@ -1,5 +1,5 @@
 ---
-description: Sweep the repo's accumulating working files — archive stale knowledge, prune dead task entries, clear merged-build clutter — audit first, apply after operator confirmation, one reviewable commit
+description: "Sweep the repo's accumulating working files: audit first, apply only after operator confirmation, one reviewable commit."
 ---
 
 # /cleanfiles

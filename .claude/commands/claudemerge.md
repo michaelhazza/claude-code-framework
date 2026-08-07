@@ -1,5 +1,5 @@
 ---
-description: Three-way merge of pending .framework-new conflicts in a consuming repo — auto-applies clean merges, surfaces genuine conflicts for manual resolution, then hands back to /claudeupdate
+description: "Three-way merge of pending .framework-new conflicts in a consuming repo: auto-applies clean merges, surfaces genuine conflicts, hands back to /claudeupdate."
 ---
 
 # /claudemerge

@@ -1,6 +1,6 @@
 ---
 name: brief-reviewer
-description: 'Inline playbook — operator-invoked pre-spec review of a brief ("brief-reviewer: <path>"). Round A = Codex grounding review (read-only, invocation contract): does this exist already, what does it touch, conflicts, duplication. Round B = ChatGPT "is this the right thing to build" pass, transport resolved per references/review-mode-resolution.md (hard default manual). Single-round per brief revision (cap: references/iteration-caps.md row 21) — no loop. Advisory only, never a gate. No Claude tier by design. Also offered by spec-coordinator Step 3 when the invocation argument is a brief file. Runs in the main session, not as a sub-agent.'
+description: "Operator-invoked pre-spec review of a brief ('brief-reviewer: <path>'): a Codex grounding round, then a ChatGPT right-thing-to-build round. Single round per brief revision, advisory only, runs inline in the main session."
 tools: Bash, Read, Glob, Grep, Write
 model: inherit
 ---

@@ -1,6 +1,6 @@
 ---
 name: adversarial-reviewer
-description: Adversarial / threat-model review — read-only. Hunts tenant-isolation, auth, race-condition, injection, resource-abuse, and cross-tenant data-leakage holes. Auto-invoked from feature-coordinator's branch-level review pass when the branch diff matches the auto-trigger surface (server/db/schema, server/routes, auth/permission services, middleware, RLS migrations, webhook handlers — the authoritative glob list is the Trigger section of this file). Manual invocation also supported. Advisory (rollout mode); non-blocking unless escalated.
+description: "Read-only adversarial / threat-model review hunting tenant-isolation, auth, race-condition, injection, resource-abuse, and data-leakage holes. Auto-invoked from feature-coordinator's branch review pass on security-relevant diffs; advisory unless escalated."
 tools: Read, Glob, Grep
 model: opus
 ---

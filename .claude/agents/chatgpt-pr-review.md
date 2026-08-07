@@ -1,6 +1,6 @@
 ---
 name: chatgpt-pr-review
-description: "Coordinates ChatGPT PR review sessions. Run in a dedicated new Claude Code session. Supports three modes: manual (user copies diff into ChatGPT UI and pastes response back — no API cost), automated (calls OpenAI API via OPENAI_API_KEY), and parallel (runs both and renders a side-by-side compare panel — used to A/B tune the OpenAI prompts until they reliably beat ChatGPT-web; see docs/review-pipeline/parallel-mode.md). Reads the current branch diff, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / discuss / defer / reject) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (UX, workflow, visible copy/behaviour, product policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction and PR readiness confirmation."
+description: "Coordinates ChatGPT PR review round-by-round in a dedicated session (manual / automated / parallel modes). Reads the branch diff, creates the PR if needed; technical findings auto-apply, user-facing ones go to the operator. Used by finalisation-coordinator Step 5."
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---

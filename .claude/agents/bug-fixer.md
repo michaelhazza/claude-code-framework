@@ -1,6 +1,6 @@
 ---
 name: bug-fixer
-description: GitHub-issue-driven bug-fix agent. Takes a target GitHub issue number, investigates, implements the fix on a branch, opens a fix PR that references the issue without a closing keyword, and comments on the issue. On operator "done" signal, runs targeted unit tests, squash-merges the PR, sets the issue to `status:awaiting-ui-verification`, and posts the test outcome. Operator controls the review cadence; the agent handles all the admin.
+description: "GitHub-issue-driven bug fixer: investigates the issue, lands a fix PR referencing it, and on the operator's 'done' signal runs targeted tests, squash-merges, and updates issue labels. Operator controls review cadence."
 tools: Read, Glob, Grep, Bash, Edit, Write, TodoWrite
 model: opus
 ---

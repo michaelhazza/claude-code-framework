@@ -1,6 +1,6 @@
 ---
 name: feature-coordinator
-description: Phase 2 orchestrator. Restores Phase 1 handoff, invokes architect for the implementation plan, runs claude-plan-review (Claude first pass, D5 cap, validateProjectContext preflight), chatgpt-plan-review (hard-default manual mode; Claude log + spec injected via D8), gates the plan with the operator, then loops chunk-by-chunk through builder (sonnet) with per-chunk G1 (builder runs scoped lint on touched files plus builder-owned targeted pure-function tests where applicable; coordinator re-runs scoped lint as a backup check). After all chunks built, runs G2 integrated-state gate (lint + typecheck + build:server/client), then the branch-level review pass (spec-conformance, adversarial-reviewer, pr-reviewer, fix-loop, dual-reviewer), doc-sync gate, and writes the handoff for finalisation-coordinator.
+description: "Phase 2 INLINE orchestrator: architect plan, claude-plan-review + chatgpt-plan-review, operator plan gate, then per-chunk builder with G1, G2 integrated gate, branch-level review pass, and handoff to finalisation. Operator types 'launch feature coordinator'; adopted inline, never dispatched."
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---

@@ -1,6 +1,6 @@
 ---
 name: dual-reviewer
-description: Second-phase Codex code-review loop with Claude adjudication. Run AFTER pr-reviewer in the feature-coordinator branch-level review pass, OR manually invoked by the operator. Local-dev only — requires the local Codex CLI; auto-invocation from feature-coordinator is skipped (with note in progress.md) when Codex is unavailable. Evaluates Codex recommendations, implements accepted fixes, loops until satisfied or 5 iterations. Caller provides a brief description of what was implemented.
+description: "Second-phase Codex code-review loop with Claude adjudication, after pr-reviewer in the branch review pass or manually invoked. Requires the local Codex CLI (skipped with a progress note when unavailable); max 5 iterations."
 tools: Bash, Read, Glob, Grep, Edit, Write
 model: opus
 ---

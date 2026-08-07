@@ -1,6 +1,6 @@
 ---
 name: builder
-description: Implements a single chunk from a plan file. Runs on Sonnet. Step 1 — emits a TodoWrite skeleton for the chunk. Step 2 — plan-gap pre-check (confirms all prerequisites exist before writing code). Step 3 — surgical implementation of the chunk (no refactoring, no extras). Step 4 — G1 gate (scoped lint on touched files + targeted unit tests for new pure functions only — typecheck and build run at G2/end-of-construction, not per chunk). Step 5 — returns a structured verdict (SUCCESS | PLAN_GAP | G1_FAILED) with files-changed list, spec sections covered, notes.
+description: "Implements a single chunk from a plan file on Sonnet: plan-gap pre-check, surgical implementation, scoped G1 gate, then a structured SUCCESS | PLAN_GAP | G1_FAILED verdict. Dispatched by feature-coordinator; not invoked directly."
 tools: Read, Glob, Grep, Bash, Edit, Write, TodoWrite
 model: sonnet
 ---

@@ -1,6 +1,6 @@
 ---
 name: verify-phase
-description: Codex-owned test-authoring and full-suite verification playbook — stage-6 gate. Codex designs a test plan (Design), authors tests via a write-enabled invocation bounded by the consuming repo's declared testing posture (Author), the full CI suite runs locally as full-suite gating checkpoint #1 (Run), failures are fixed in a capped 5-iteration loop split by cause — Codex fixes its own tests, Claude fixes production code (Fix loop) — and results upload to release-control (Report). Invoked by `finalisation-coordinator` at Phase 3 entry (after S2 sync + G4, before `chatgpt-pr-review`); also operator-invocable as `verify-phase: <slug>`. An incomplete verify phase (Codex death, cap hit) BLOCKS the merge exactly like a failed suite. Caller provides the build slug.
+description: "Codex-owned test-authoring and full-suite verification gate (stage 6): Codex designs and authors tests, the full suite runs locally, failures fix in a capped loop. Invoked by finalisation-coordinator at Phase 3 entry or as 'verify-phase: <slug>'; incomplete blocks the merge."
 tools: Bash, Read, Glob, Grep, Edit, Write
 model: opus
 ---

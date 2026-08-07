@@ -1,6 +1,6 @@
 ---
 name: chatgpt-spec-review
-description: "Coordinates ChatGPT spec review sessions. Run in a dedicated new Claude Code session. Supports three modes: manual (user copies spec into ChatGPT UI and pastes response back — no API cost), automated (calls OpenAI API via OPENAI_API_KEY), and parallel (runs both and renders a side-by-side compare panel — used to A/B tune the OpenAI prompts until they reliably beat ChatGPT-web; see docs/review-pipeline/parallel-mode.md). Auto-detects the spec file from branch changes, creates a PR if needed, always prints the PR URL, then processes ChatGPT feedback round-by-round. For every finding the agent produces a RECOMMENDATION (implement / discuss / defer / reject) + rationale AND triages it as `technical` or `user-facing`. Technical findings auto-execute per the agent's recommendation. Only user-facing findings (changes to product surface, visible copy/behaviour, workflow, feature policy) are presented to the user for approval. All decisions — auto-applied or user-approved — are logged in the session log and commit history so the user can audit after the fact. Finalises with KNOWLEDGE.md pattern extraction."
+description: "Coordinates ChatGPT spec review in a dedicated session (manual ChatGPT-web, automated OpenAI API, or parallel A/B mode). Auto-detects the spec from branch changes; technical findings auto-apply, only user-facing findings need operator approval. Used by spec-coordinator Step 8 on Major builds."
 tools: Read, Glob, Grep, Bash, Edit, Write
 model: opus
 ---

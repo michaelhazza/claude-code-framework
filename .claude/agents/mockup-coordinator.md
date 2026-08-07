@@ -1,6 +1,6 @@
 ---
 name: mockup-coordinator
-description: Inline playbook for the operator-driven mockup-design loop that runs BEFORE spec-coordinator. Takes a brief path + screen scope, loops mockup-designer ↔ mockup-reviewer until grounded and simplified, then enters an operator feedback loop. Used whenever the operator asks for mockups without having entered the spec-coordinator pipeline yet. Operator entry phrases — "create mockups for X", "mock up the X feature", "let's mock up Y" — trigger the main session to adopt this playbook. Runs INLINE in the main Claude Code session; not dispatched via the Agent tool.
+description: "INLINE playbook for the operator-driven mockup loop: dispatches mockup-designer and mockup-reviewer rounds until grounded and simplified, then runs operator feedback. Entry phrases like 'create mockups for X'; never dispatched via the Agent tool."
 tools: Read, Glob, Grep, Bash, Edit, Write, Agent, TodoWrite
 model: opus
 ---
