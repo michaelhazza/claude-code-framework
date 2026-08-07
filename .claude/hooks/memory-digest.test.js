@@ -81,7 +81,7 @@ function check(label, actual, expected, extra) {
   rmSync(proj, { recursive: true, force: true });
 }
 
-// ── 3. KNOWLEDGE tail-only: newest 6 entries kept, oldest dropped ───────────
+// ── 3. KNOWLEDGE tail-only: newest 3 entries kept, oldest dropped ───────────
 {
   const proj = makeProj('md-know-');
   let k = '';
@@ -94,9 +94,9 @@ function check(label, actual, expected, extra) {
   const out = r.stdout || '';
   check('know: exit 0', r.status, 0, r.stderr);
   check('know: newest entry present', out.includes('ENTRY_10'), true, out);
-  check('know: 6th-from-newest present', out.includes('ENTRY_05'), true, out);
+  check('know: 3rd-from-newest present', out.includes('ENTRY_08'), true, out);
   check('know: oldest entry dropped', out.includes('ENTRY_01'), false, out);
-  check('know: 7th-from-newest dropped', out.includes('ENTRY_04'), false, out);
+  check('know: 4th-from-newest dropped', out.includes('ENTRY_07'), false, out);
   rmSync(proj, { recursive: true, force: true });
 }
 

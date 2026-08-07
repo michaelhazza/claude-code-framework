@@ -59,12 +59,12 @@ const LESSONS_MAX_BYTES = 262_144; // 256KB head — small in practice; cap remo
 const FOCUS_MAX_LINES = 40;
 const LESSONS_MAX_ENTRIES = 5;
 const LESSONS_MAX_LINES = 40;
-const KNOWLEDGE_MAX_ENTRIES = 6;
+const KNOWLEDGE_MAX_ENTRIES = 3;
 const KNOWLEDGE_MAX_LINES = 55;
 
 // Index-matched resurfacing (references/knowledge-index.md → current-focus domain).
 const INDEX_MAX_BYTES = 262_144; // 256KB head — one compact line per index entry
-const INDEX_MATCH_MAX_ENTRIES = 3; // bounded resurfacing budget beyond the newest-N window
+const INDEX_MATCH_MAX_ENTRIES = 1; // bounded resurfacing budget beyond the newest-N window
 const MATCHED_SOURCE_MAX_BYTES = 524_288; // 512KB head per source file — byte-bounded, cached per file
 const MATCHED_ENTRY_MAX_LINES = 12; // per resurfaced entry
 const MATCHED_MAX_LINES = 40; // whole matched block sub-budget
@@ -78,6 +78,8 @@ const FOCUS_STOPWORDS = new Set([
 
 // Global cap + soft time budget.
 const TOTAL_MAX_LINES = 150;
+const TOTAL_MAX_BYTES = 8192; // hard global byte cap on the emitted digest (~8KB)
+const LINE_MAX_CHARS = 200; // per-line truncation — one runaway line cannot dominate the budget
 const SOFT_BUDGET_MS = 100;
 
 // ── bounded reads ───────────────────────────────────────────────────────────
@@ -161,7 +163,12 @@ function isDateLikeHeadingText(rest) {
 function buildFocus(dir) {
   const raw = readHead(join(dir, 'tasks', 'current-focus.md'), FOCUS_MAX_BYTES);
   const body = stripLeadingHtmlComments(raw);
-  const lines = trimBlankEdges(body.split('\n'));
+  let lines = body.split('\n');
+  // Stop at the generated machine-readable block — the operator digest never
+  // needs the raw status-records.v1 JSON blob, which can be multi-KB per build.
+  const mrIdx = lines.findIndex((l) => /^#{2,3}\s+Machine-readable\b/.test(l));
+  if (mrIdx !== -1) lines = lines.slice(0, mrIdx);
+  lines = trimBlankEdges(lines);
   return lines.slice(0, FOCUS_MAX_LINES);
 }
 
@@ -277,10 +284,17 @@ function buildIndexMatched(dir, knowledgeLines) {
   const focusTokens = tokenize(focusRaw, FOCUS_STOPWORDS);
   if (focusTokens.size === 0) return []; // no domain to match against
 
-  const knowledgeText = knowledgeLines.join('\n');
+  // Dedup by BODY, not title: an entry whose actual body lines already appear in
+  // the recency block is a duplicate even if its index title differs (title drift,
+  // supersede-rename). Build a set of normalised non-empty content lines from the
+  // recency block; a matched entry is dropped when most of its body is already there.
+  const knowledgeBodySet = new Set();
+  for (const l of knowledgeLines) {
+    const norm = l.trim().toLowerCase();
+    if (norm.length >= TOKEN_MIN_LEN) knowledgeBodySet.add(norm);
+  }
   const scored = [];
   for (const e of entries) {
-    if (e.title && knowledgeText.includes(e.title)) continue; // already in the recency block
     let score = 0;
     for (const tok of e.tokens) if (focusTokens.has(tok)) score++;
     if (score > 0) scored.push({ e, score });
@@ -310,6 +324,13 @@ function buildIndexMatched(dir, knowledgeLines) {
     if (used >= INDEX_MATCH_MAX_ENTRIES) break;
     const body = sliceEntryAtLine(sourceLines(e.file), e.lineNo, MATCHED_ENTRY_MAX_LINES);
     if (body.length === 0) continue;
+    // Body-hash dedup: skip when the majority of this entry's content lines are
+    // already present in the recency block.
+    const bodyContent = body.filter((l) => l.trim().length >= TOKEN_MIN_LEN);
+    if (bodyContent.length > 0) {
+      const overlap = bodyContent.filter((l) => knowledgeBodySet.has(l.trim().toLowerCase())).length;
+      if (overlap * 2 >= bodyContent.length) continue; // ≥50% already shown
+    }
     const chunk = [`[${e.file}:${e.lineNo}]`, ...body];
     if (out.length + chunk.length > MATCHED_MAX_LINES) break;
     out.push(...chunk);
@@ -341,6 +362,22 @@ function totalLines(blocks) {
   return n;
 }
 
+/** Emitted byte size: header + content lines + separators, newline-joined. */
+function totalBytes(blocks) {
+  let bytes = 0;
+  for (let i = 0; i < blocks.length; i++) {
+    if (i > 0) bytes += 1; // blank separator line
+    bytes += Buffer.byteLength(blocks[i].header) + 1;
+    for (const l of blocks[i].lines) bytes += Buffer.byteLength(l) + 1;
+  }
+  return bytes;
+}
+
+/** Truncate one line to LINE_MAX_CHARS so a single runaway line cannot dominate. */
+function truncateLine(l) {
+  return l.length > LINE_MAX_CHARS ? l.slice(0, LINE_MAX_CHARS - 1) + '…' : l;
+}
+
 try {
   const start = Date.now();
 
@@ -364,10 +401,14 @@ try {
   if (knowledge.length) blocks.push({ role: 'knowledge', header: '— Recent knowledge (KNOWLEDGE.md) —', lines: knowledge, dropFrom: 'start' });
   if (matched.length) blocks.push({ role: 'matched', header: '— Related knowledge (index-matched to current focus) —', lines: matched, dropFrom: 'end' });
 
+  // Per-line truncation before any budgeting so byte/line counts are accurate.
+  for (const b of blocks) b.lines = b.lines.map(truncateLine);
+
   // Global cap — trim oldest/lowest-priority content first; current-focus last.
-  // 'matched' is supplementary → trimmed before the recency blocks.
+  // 'matched' is supplementary → trimmed before the recency blocks. Both the line
+  // cap and the ~8KB byte cap must hold; the loop trims until both are satisfied.
   const dropOrder = ['matched', 'knowledge', 'lessons', 'focus'];
-  while (totalLines(blocks) > TOTAL_MAX_LINES) {
+  while (totalLines(blocks) > TOTAL_MAX_LINES || totalBytes(blocks) > TOTAL_MAX_BYTES) {
     let dropped = false;
     for (const role of dropOrder) {
       const b = blocks.find((x) => x.role === role && x.lines.length > 0);
