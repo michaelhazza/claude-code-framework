@@ -212,7 +212,7 @@ function info(message) {
     const m = line.match(/^\s*\|\s*`([^`]+)`\s*\|/);
     if (m) docSyncPaths.add(m[1].trim());
   }
-  let entries = [];
+  let entries;
   try {
     entries = fs.readdirSync(docsDir, { withFileTypes: true });
   } catch {

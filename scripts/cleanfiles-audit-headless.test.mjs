@@ -144,8 +144,8 @@ function stillAlive(pid) {
   }
   return alive;
 }
-let childAlive = false;
-let grandchildAlive = false;
+let childAlive;
+let grandchildAlive;
 try {
   const pids = readFileSync(hangPidFile, 'utf8').trim().split('\n').map(Number);
   childAlive = stillAlive(pids[0]);
