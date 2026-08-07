@@ -32,6 +32,23 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.67.0 — 2026-08-07
+
+**Highlights:** Always-loaded and per-dispatch context-cost reductions measured at a live consumer (cryptotrackr, ~90-session transcript audit, 2026-08-07): agents read only their own agent-context.md section, description frontmatter is trimmed to WHEN-TO-INVOKE signals, the memory digest caps each recent-knowledge entry, the doc-size gate is wired into the cleanup surfaces, and the code-graph cache becomes opt-in. One new BLOCKING release gate (`verify-description-budgets.mjs`). No additions to the growth-gate behavioural surface (`.claude/{agents,skills,hooks,commands}`).
+
+**Added:** `scripts/gates/verify-description-budgets.mjs` (+ test) — BLOCKING frontmatter description-budget gate (agents 400B / skills 450B / commands 180B), registered in the /release gate step and `references/doc-size-budgets.md`. It lives under `scripts/gates/`, NOT the always-loaded surface, so no growth-gate declaration is required.
+
+**Changed:**
+- Sectioned agent-context read contract in all 29 agent files: each agent Greps `agent-context.md` for `## ` boundaries and reads only the binding preamble plus its own `## <name>` section, never the whole file (~27KB/dispatch saved at one consumer; 24 of 29 agents have no section). Template preamble, ADR-0006, `ADAPT.md`, and the local-override e2e read-instruction pin aligned.
+- 32 description trims (19 agents, 8 skills, 5 commands) to WHEN-TO-INVOKE signals; procedure stays in file bodies. Skill-routing eval regression-checked (0 errors, rank-1 at the 92% baseline).
+- memory-digest per-entry cap on the recent-knowledge block (`KNOWLEDGE_ENTRY_MAX_LINES = 12`, heading excluded), with a shared `### [` / `## ` entry predicate matching `verify-doc-size`'s live-entry census so a bare `### Subheading` no longer resets the cap or counts as a recent entry.
+- doc-size enforcement wired in: cleanfiles target 15 turns `[action-needed]` rows into archive actions; finalisation Step 8 archives todo.md debt and surfaces standing doc debt at every merge; `CLAUDE.md` joins the budget table (16KB / 400 lines, advisory).
+- code-graph demoted to on-demand (FUQ-2): the shipped `settings.json` no longer registers the SessionStart freshness hook (the hook ships as an opt-in library, allowlisted under `hookLibraries`), the no-args build exits without a watcher (`--watch` / `--watch-only` start one), `project-map.md` carries a generated-on stamp, and zoom-out treats the map as rebuild-first.
+
+**Breaking:** none. The code-graph default behaviour intentionally changes from always-on / session-start to opt-in; consumers relying on the previous watcher or SessionStart freshness check must explicitly opt back in (re-add the one `settings.json` SessionStart entry and use the `--watch` flag, documented in the hook header).
+
+**Fixed:** `validate-framework` hook-wiring no longer fails on the now-unregistered code-graph hook — it is declared under `hookLibraries` in `scripts/validate-framework-allowlist.json` (the opt-in-hook skip), and the allowlist comment now documents intentionally-unregistered opt-in entry hooks alongside require()d libraries.
+
 ## 2.66.6 — 2026-08-07
 
 **Highlights:** patch — lint hygiene for the files shipped in 2.66.x. The framework repo has no lint lane, so a consuming repo's `eslint` CI was the first place these surfaced; they are dead initialisers only, no behaviour change.
