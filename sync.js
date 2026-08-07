@@ -769,6 +769,43 @@ function applySubstitutions(content, substitutions) {
   return result;
 }
 
+/**
+ * Finalise a context-pack file after substitution. When EVERY
+ * `{{ARCHITECTURE_ANCHOR:...}}` token inside the pack's `## Sources` block has
+ * been resolved, strip the adoption placeholder note and flip the singular
+ * `Status: template` line to `Status: mapped`. A partially-mapped pack is left
+ * untouched so its consumer-side gate still trips the whole-file fallback.
+ * Non-pack files and packs without a `## Sources` block pass through unchanged.
+ * Keyed on the exact singular `Status: template` line so the blockquoted
+ * `> **Status: templates ...` header in docs/context-packs/README.md is untouched.
+ * @param {string} content
+ * @param {ManifestEntry} entry
+ * @returns {string}
+ */
+function finaliseContextPack(content, entry) {
+  if (!entry || entry.category !== 'context-pack') return content;
+  const lines = content.split('\n');
+  const srcIdx = lines.findIndex((l) => /^##\s+Sources\b/.test(l));
+  if (srcIdx === -1) return content;
+  let endIdx = lines.length;
+  for (let i = srcIdx + 1; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i])) { endIdx = i; break; }
+  }
+  const sourcesBlock = lines.slice(srcIdx, endIdx).join('\n');
+  // Partially mapped — leave the template state (and its fallback gate) intact.
+  // Strict purpose charset [a-z0-9_-]+ so the note's own `{{ARCHITECTURE_ANCHOR:<purpose>}}`
+  // example (with angle brackets) never counts as a real unresolved token — mirrors
+  // scripts/audit-context-packs.ts's extractUnmappedTokens.
+  if (/\{\{ARCHITECTURE_ANCHOR:[a-z0-9_-]+\}\}/.test(sourcesBlock)) return content;
+  const out = [];
+  for (const line of lines) {
+    if (/^>\s*\*\*Anchor placeholders:\*\*/.test(line)) continue; // drop the adoption note
+    if (/^Status:\s*template\b/.test(line)) { out.push('Status: mapped'); continue; }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // LOCAL-OVERRIDE block mechanism (v2.10.0)
 // ---------------------------------------------------------------------------
@@ -990,6 +1027,7 @@ async function writeUpdated(ctx, entry, relativePath) {
   if (entry.substituteAt !== 'never') {
     content = applySubstitutions(content, ctx.state ? ctx.state.substitutions : {});
   }
+  content = finaliseContextPack(content, entry);
   const targetPath = path.join(targetRoot, relativePath);
   // Apply LOCAL-OVERRIDE blocks: if the framework declares override slots and the consumer
   // has filled them, preserve the consumer's content between the markers.
@@ -1045,6 +1083,7 @@ async function writeFrameworkNew(ctx, entry, relativePath) {
   if (entry.substituteAt !== 'never') {
     content = applySubstitutions(content, ctx.state ? ctx.state.substitutions : {});
   }
+  content = finaliseContextPack(content, entry);
   const targetPath = path.join(targetRoot, relativePath);
   // Inject consumer's LOCAL-OVERRIDE block contents into .framework-new too, so the
   // operator's manual merge diff only shows the actually-customised-outside-blocks lines.
@@ -1126,6 +1165,7 @@ async function writeNewFile(ctx, entry, relativePath) {
   if (entry.substituteAt !== 'never') {
     content = applySubstitutions(content, ctx.state ? ctx.state.substitutions : {});
   }
+  content = finaliseContextPack(content, entry);
   const normalisedContent = normaliseContent(content);
   const newHash = hashContent(normalisedContent);
   const targetPath = path.join(targetRoot, relativePath);
@@ -2070,6 +2110,7 @@ module.exports = {
   validateSubstitutions,
   checkSubstitutionDrift,
   applySubstitutions,
+  finaliseContextPack,
   writeUpdated,
   writeFrameworkNew,
   writeNewFile,

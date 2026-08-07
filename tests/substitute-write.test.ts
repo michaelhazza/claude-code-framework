@@ -11,6 +11,7 @@ const {
   validateSubstitutions,
   checkSubstitutionDrift,
   applySubstitutions,
+  finaliseContextPack,
   hashSubstitutions,
   normaliseContent,
   hashContent,
@@ -43,6 +44,58 @@ function makeCtx(overrides: Record<string, unknown> = {}): any {
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// finaliseContextPack — strip note + flip Status only when fully substituted
+// ---------------------------------------------------------------------------
+
+describe('finaliseContextPack', () => {
+  const PACK_ENTRY = { category: 'context-pack' };
+  const packBody = (sourcesLines: string) =>
+    [
+      '# Implement pack',
+      '',
+      'Status: template — anchors must be mapped at adoption.',
+      '',
+      '## Sources',
+      '',
+      '> **Anchor placeholders:** map each `{{ARCHITECTURE_ANCHOR:<purpose>}}` at adoption.',
+      '',
+      sourcesLines,
+      '',
+      '## Skip',
+      '- nothing',
+      '',
+    ].join('\n');
+
+  test('fully substituted → strips note and flips Status to mapped', () => {
+    const input = packBody('- architecture.md#project-structure\n- architecture.md#migrations');
+    const out = finaliseContextPack(input, PACK_ENTRY);
+    assert.ok(/^Status: mapped$/m.test(out), 'Status flipped to mapped');
+    assert.ok(!/Status: template/.test(out), 'no template Status remains');
+    assert.ok(!/\*\*Anchor placeholders:\*\*/.test(out), 'placeholder note stripped');
+    assert.ok(/## Skip/.test(out), 'rest of the file preserved');
+  });
+
+  test('partially substituted → left untouched (keeps template + note + gate)', () => {
+    const input = packBody('- architecture.md#project-structure\n- {{ARCHITECTURE_ANCHOR:migrations}}');
+    const out = finaliseContextPack(input, PACK_ENTRY);
+    assert.equal(out, input, 'partial pack is byte-identical');
+    assert.ok(/Status: template/.test(out), 'template status retained');
+    assert.ok(/\{\{ARCHITECTURE_ANCHOR:/.test(out), 'unresolved token retained');
+  });
+
+  test('non-context-pack entry is passed through unchanged', () => {
+    const input = packBody('- architecture.md#project-structure');
+    assert.equal(finaliseContextPack(input, { category: 'agent' }), input);
+    assert.equal(finaliseContextPack(input, null), input);
+  });
+
+  test('pack without a ## Sources block is passed through unchanged', () => {
+    const input = '# Pack\n\nStatus: template — x.\n\nno sources heading here\n';
+    assert.equal(finaliseContextPack(input, PACK_ENTRY), input);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // validateSubstitutions
