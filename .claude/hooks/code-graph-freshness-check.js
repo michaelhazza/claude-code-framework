@@ -51,14 +51,22 @@
  *   - If the script is missing (pre-v2.13.0 consumer), silently skip.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 
 const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const REFERENCES_DIR = join(PROJECT_DIR, 'references');
 const WATCHER_PID_PATH = join(REFERENCES_DIR, '.watcher.pid');
 const BUILD_SCRIPT_PATH = join(PROJECT_DIR, 'scripts', 'build-code-graph.ts');
+
+// Mutable runtime state (stamps, locks) MUST live under the gitignored
+// .claude/session-state/ — never references/ (committed tree). A migration
+// (v2.65.0) appends this path to the consumer .gitignore when absent.
+const SESSION_STATE_DIR = join(PROJECT_DIR, '.claude', 'session-state');
+const AUDIT_STAMP_PATH = join(SESSION_STATE_DIR, '.audit-context-packs.stamp');
+const REBUILD_LOCK_PATH = join(SESSION_STATE_DIR, '.code-graph-rebuild.lock');
+const REBUILD_LOCK_STALE_MS = 10 * 60_000; // a crashed rebuild cannot wedge the cold path past this
 
 // Paths for audit-context-packs: prefer consumer-local, fall back to framework submodule.
 const AUDIT_SCRIPT_LOCAL = join(PROJECT_DIR, 'scripts', 'audit-context-packs.ts');
@@ -90,21 +98,6 @@ function watcherAlive() {
   } catch {
     return false;
   }
-}
-
-function refreshCache() {
-  if (!existsSync(BUILD_SCRIPT_PATH)) {
-    return { skipped: true, reason: 'build script missing' };
-  }
-  const result = spawnSync('npx', ['tsx', BUILD_SCRIPT_PATH], {
-    cwd: PROJECT_DIR,
-    timeout: BUILD_TIMEOUT_MS,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    encoding: 'utf8',
-    // npx is a `.cmd` shim on Windows; shell=true lets the OS resolve it.
-    shell: process.platform === 'win32',
-  });
-  return { skipped: false, result };
 }
 
 /**
@@ -189,53 +182,142 @@ function runAuditContextPacks() {
   return { audit: 'ok' };
 }
 
+/** Best-effort mkdir for the runtime state dir. Never throws. */
+function ensureSessionStateDir() {
+  try { mkdirSync(SESSION_STATE_DIR, { recursive: true }); } catch { /* fail-open */ }
+}
+
+/**
+ * Newest mtime (ms) across the audit-context-packs inputs (architecture.md and
+ * every docs/context-packs/*). 0 when none exist — an absent input never
+ * triggers a run. Used to skip the ~sub-second audit spawn in steady state.
+ */
+function auditInputsMtime() {
+  let max = 0;
+  try {
+    const arch = join(PROJECT_DIR, 'architecture.md');
+    if (existsSync(arch)) max = Math.max(max, statSync(arch).mtimeMs);
+  } catch { /* ignore */ }
+  try {
+    const packDir = join(PROJECT_DIR, 'docs', 'context-packs');
+    if (existsSync(packDir)) {
+      for (const name of readdirSync(packDir)) {
+        try { max = Math.max(max, statSync(join(packDir, name)).mtimeMs); } catch { /* ignore */ }
+      }
+    }
+  } catch { /* ignore */ }
+  return max;
+}
+
+/**
+ * mtime-gated audit: skip the spawn when neither architecture.md nor any
+ * context-pack changed since the last successful run (steady-state fast path).
+ * Only a SUCCESSFUL audit stamps, so a failing state (broken anchors) keeps
+ * re-surfacing every session until fixed. Stamp write is best-effort and lands
+ * in the gitignored session-state dir, so it never dirties git status.
+ */
+function maybeRunAudit() {
+  const cur = auditInputsMtime();
+  let stamp = 0;
+  try { stamp = Number.parseFloat(readFileSync(AUDIT_STAMP_PATH, 'utf8').trim()) || 0; } catch { /* no stamp yet */ }
+  if (cur !== 0 && cur <= stamp) return { audit: 'skipped', reason: 'inputs_unchanged' };
+  const res = runAuditContextPacks();
+  if (res.audit === 'ok' && cur !== 0) {
+    ensureSessionStateDir();
+    try { writeFileSync(AUDIT_STAMP_PATH, String(cur)); } catch { /* fail-open */ }
+  }
+  return res;
+}
+
+/**
+ * Atomically claim the rebuild lock so two sessions starting together cannot
+ * both launch a CPU-heavy detached rebuild. Returns 'claimed' | 'takeover' |
+ * 'busy'. 'wx' makes the create fail if the lock exists; a lock older than
+ * REBUILD_LOCK_STALE_MS is taken over so a crashed rebuild cannot wedge the path.
+ */
+function tryClaimRebuildLock() {
+  ensureSessionStateDir();
+  try {
+    writeFileSync(REBUILD_LOCK_PATH, String(Date.now()), { flag: 'wx' });
+    return 'claimed';
+  } catch {
+    let ts = 0;
+    try { ts = Number.parseInt(readFileSync(REBUILD_LOCK_PATH, 'utf8').trim(), 10) || 0; } catch { /* unreadable */ }
+    if (Date.now() - ts >= REBUILD_LOCK_STALE_MS) {
+      try { writeFileSync(REBUILD_LOCK_PATH, String(Date.now())); return 'takeover'; } catch { /* fall through */ }
+    }
+    return 'busy';
+  }
+}
+
+/** Best-effort lock removal (called once a live watcher proves the rebuild finished). */
+function clearRebuildLock() {
+  try { rmSync(REBUILD_LOCK_PATH, { force: true }); } catch { /* fail-open */ }
+}
+
+/**
+ * Spawn the code-graph rebuild DETACHED and return immediately, so session start
+ * is never blocked for the cold rebuild (previously up to BUILD_TIMEOUT_MS). The
+ * detached child rebuilds the cache and re-establishes the watcher; the lock it
+ * ran under is cleared by a later watcher-alive session or by stale-takeover.
+ */
+function spawnDetachedRebuild() {
+  if (!existsSync(BUILD_SCRIPT_PATH)) return { skipped: true, reason: 'build script missing' };
+  try {
+    const child = spawn('npx', ['tsx', BUILD_SCRIPT_PATH], {
+      cwd: PROJECT_DIR,
+      detached: true,
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+    });
+    child.unref();
+    return { skipped: false };
+  } catch (err) {
+    return { skipped: false, error: err };
+  }
+}
+
 function runSessionStartChecks() {
   // branch: watcher-alive — watcher is live; cache is current.
   if (watcherAlive()) {
+    // A live watcher proves any prior detached rebuild finished — clear its lock.
+    clearRebuildLock();
     // Cache is being kept live — no refresh needed, but the audit-context-packs
-    // check MUST still run: stale anchors can drift in the watcher-alive steady
-    // state too (a heading rename invalidates context-pack links regardless of
-    // whether the code-intelligence cache is fresh).
-    runAuditContextPacks();
+    // check MUST still run (mtime-gated): stale anchors can drift in the
+    // watcher-alive steady state too (a heading rename invalidates context-pack
+    // links regardless of whether the code-intelligence cache is fresh).
+    maybeRunAudit();
     return { freshness: 'watcher_alive' };
   }
 
-  const refresh = refreshCache();
+  // branch: watcher-dead — rebuild is needed. Do NOT block session start on it:
+  // claim the lock and spawn the rebuild detached, exiting immediately.
   let freshnessResult;
-
-  if (refresh.skipped) {
-    // branch: build-script-missing — framework not (yet) fully imported; degrade silently.
-    freshnessResult = { freshness: 'skipped', reason: 'build script missing' };
+  const claim = tryClaimRebuildLock();
+  if (claim === 'busy') {
+    process.stdout.write('Code intelligence cache rebuild already running in another session; session continues.\n');
+    freshnessResult = { freshness: 'rebuild_in_progress' };
   } else {
-    const { result } = refresh;
-    if (result.error) {
-      // branch: spawn-failed — spawnSync itself failed (e.g. timeout, ENOENT on npx).
+    const spawned = spawnDetachedRebuild();
+    if (spawned.skipped) {
+      // branch: build-script-missing — framework not (yet) fully imported; degrade silently.
+      clearRebuildLock();
+      freshnessResult = { freshness: 'skipped', reason: 'build script missing' };
+    } else if (spawned.error) {
+      // branch: spawn-failed — spawn itself threw (e.g. ENOENT on npx).
+      clearRebuildLock();
       process.stderr.write(
-        `code-graph-freshness-check: spawn failed (${result.error.code || result.error.message}). ` +
+        `code-graph-freshness-check: detached rebuild spawn failed (${spawned.error.code || spawned.error.message}). ` +
         `Cache is advisory; session continues.\n`,
       );
       freshnessResult = { freshness: 'failed', reason: 'spawn' };
-    } else if (result.status !== 0) {
-      // branch: refresh-failed — build exited non-zero.
-      process.stderr.write(
-        `code-graph-freshness-check: build exited ${result.status}. ` +
-        `Cache may be stale; session continues.\n`,
-      );
-      if (result.stderr) {
-        process.stderr.write(`build stderr (last 400 chars): ${String(result.stderr).slice(-400)}\n`);
-      }
-      freshnessResult = { freshness: 'failed', reason: 'build_status_nonzero' };
     } else {
-      // branch: refresh-succeeded — cache refreshed successfully.
-      // Surface a one-line note into the SessionStart context so the agent
-      // knows the cache was just refreshed (and that any prior staleness has
-      // been resolved for this session).
-      process.stdout.write('Code intelligence cache refreshed at session start (watcher restarted).\n');
-      freshnessResult = { freshness: 'refreshed' };
+      process.stdout.write('Code intelligence cache rebuilding in the background (watcher was down); session continues.\n');
+      freshnessResult = { freshness: 'rebuild_spawned' };
     }
   }
 
-  runAuditContextPacks();
+  maybeRunAudit();
   return freshnessResult;
 }
 

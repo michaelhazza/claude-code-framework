@@ -30,6 +30,7 @@ const requireCjs = createRequire(__filename);
 const FRAMEWORK_ROOT = path.resolve(__dirname, '../');
 const RUN_MIGRATIONS_SRC = path.join(FRAMEWORK_ROOT, 'scripts', 'run-migrations.js');
 const V2_30_0_SRC = path.join(FRAMEWORK_ROOT, 'migrations', 'v2.30.0.js');
+const V2_65_0_SRC = path.join(FRAMEWORK_ROOT, 'migrations', 'v2.65.0.js');
 const V2_33_0_SRC = path.join(FRAMEWORK_ROOT, 'migrations', 'v2.33.0.js');
 const HELPERS_SRC = path.join(FRAMEWORK_ROOT, 'migrations', '_helpers.js');
 const SKILL_CONTEXT_REL = '.claude/context/skill-context.md';
@@ -311,6 +312,31 @@ test('v2.30.0: appends *.framework-new to an existing .gitignore (status applied
 
     const content = await fsp.readFile(path.join(consumer, '.gitignore'), 'utf8');
     assert.equal(content, 'node_modules/\ndist\n*.framework-new\n');
+  } finally {
+    rmrf(consumer);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Test 6b: v2.65.0 gitignore migration — fresh append + idempotent re-run
+// ---------------------------------------------------------------------------
+
+test('v2.65.0: appends .claude/session-state/ on fresh consumer (applied), then re-run is a no-op (skipped)', async () => {
+  const { migrate } = requireCjs(V2_65_0_SRC);
+  const consumer = await makeConsumer();
+  try {
+    await fsp.writeFile(path.join(consumer, '.gitignore'), 'node_modules/\n', 'utf8');
+    const ctx = { consumerRoot: consumer, frameworkRoot: FRAMEWORK_ROOT, fromVersion: '2.64.1', toVersion: '2.65.0' };
+
+    const first = await migrate(ctx);
+    assert.equal(first.status, 'applied');
+    const afterFirst = await fsp.readFile(path.join(consumer, '.gitignore'), 'utf8');
+    assert.ok(afterFirst.split('\n').includes('.claude/session-state/'), 'ignore line appended');
+
+    const second = await migrate(ctx);
+    assert.equal(second.status, 'skipped', 're-run is a no-op');
+    const afterSecond = await fsp.readFile(path.join(consumer, '.gitignore'), 'utf8');
+    assert.equal(afterSecond, afterFirst, 're-run must not modify .gitignore');
   } finally {
     rmrf(consumer);
   }

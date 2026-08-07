@@ -114,13 +114,17 @@ function check(label, actual, expected, extra) {
   rmSync(proj, { recursive: true, force: true });
 }
 
-// ── 2. Generator present, no watcher → spawns the build, reports refresh ───
+// ── 2. Generator present, no watcher → spawns detached rebuild, claims lock ─
+// The rebuild is now detached (non-blocking), so the STUB_LOG write races the
+// parent exit; assert the synchronously-written lock + the background message.
 {
-  const { proj, log, run } = makeProject({ withGenerator: true });
+  const { proj, run } = makeProject({ withGenerator: true });
   const r = run();
+  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock');
   check('generator present: exit 0', r.status, 0, r.stderr);
-  check('generator present: stdout reports refresh', /refreshed/.test(r.stdout || ''), true, `stdout=${r.stdout} stderr=${r.stderr}`);
-  check('generator present: npx tsx spawned with the build script', /build-code-graph\.ts/.test(stubCalls(log)), true, stubCalls(log));
+  check('generator present: stdout reports background rebuild', /rebuilding in the background/.test(r.stdout || ''), true, `stdout=${r.stdout} stderr=${r.stderr}`);
+  check('generator present: rebuild lock claimed', existsSync(lock), true, r.stdout);
+  check('generator present: no "refreshed" claim (no longer synchronous)', /refreshed/.test(r.stdout || ''), false, r.stdout);
   rmSync(proj, { recursive: true, force: true });
 }
 
@@ -135,30 +139,79 @@ function check(label, actual, expected, extra) {
   rmSync(proj, { recursive: true, force: true });
 }
 
-// ── 4. Watcher pid dead or garbage → falls through to the build ────────────
+// ── 4. Watcher pid dead or garbage → falls through to detached rebuild ──────
 {
   // A pid far beyond any plausible live process.
-  const { proj, log, run } = makeProject({ withGenerator: true, watcherPid: 999999999 });
+  const { proj, run } = makeProject({ withGenerator: true, watcherPid: 999999999 });
   const r = run();
+  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock');
   check('dead watcher pid: exit 0', r.status, 0, r.stderr);
-  check('dead watcher pid: build spawned', /build-code-graph\.ts/.test(stubCalls(log)), true, stubCalls(log));
+  check('dead watcher pid: rebuild lock claimed', existsSync(lock), true, r.stdout);
   rmSync(proj, { recursive: true, force: true });
 }
 {
-  const { proj, log, run } = makeProject({ withGenerator: true, watcherPid: 'not-a-pid' });
+  const { proj, run } = makeProject({ withGenerator: true, watcherPid: 'not-a-pid' });
   const r = run();
+  const lock = join(proj, '.claude', 'session-state', '.code-graph-rebuild.lock');
   check('garbage watcher pid: exit 0', r.status, 0, r.stderr);
-  check('garbage watcher pid: build spawned', /build-code-graph\.ts/.test(stubCalls(log)), true, stubCalls(log));
+  check('garbage watcher pid: rebuild lock claimed', existsSync(lock), true, r.stdout);
   rmSync(proj, { recursive: true, force: true });
 }
 
-// ── 5. Build exits non-zero → hook still exits 0 (fail-open), warns ────────
+// ── 5. Detached rebuild is non-blocking: a failing build never surfaces at ──
+// session start (the whole point — the hook does not wait for the child).
 {
   const { proj, run } = makeProject({ withGenerator: true });
-  const r = run({ STUB_EXIT: '3' });
-  check('build fails: hook still exits 0 (fail-open)', r.status, 0, r.stderr);
-  check('build fails: stderr warns about the build', /build exited/.test(r.stderr || ''), true, r.stderr);
-  check('build fails: no "refreshed" claim', /refreshed/.test(r.stdout || ''), false, r.stdout);
+  const r = run({ STUB_EXIT: '3' }); // only the detached child sees this; hook does not observe it
+  check('detached rebuild: hook exits 0 regardless of build outcome', r.status, 0, r.stderr);
+  check('detached rebuild: no synchronous "build exited" block', /build exited/.test(r.stderr || ''), false, r.stderr);
+  check('detached rebuild: no "refreshed" claim', /refreshed/.test(r.stdout || ''), false, r.stdout);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 6. Rebuild lock already held (fresh) → reports in-progress, no takeover ─
+{
+  const { proj, run } = makeProject({ withGenerator: true });
+  const ss = join(proj, '.claude', 'session-state');
+  mkdirSync(ss, { recursive: true });
+  writeFileSync(join(ss, '.code-graph-rebuild.lock'), String(Date.now())); // fresh lock held by "another session"
+  const r = run();
+  check('busy lock: exit 0', r.status, 0, r.stderr);
+  check('busy lock: reports rebuild already running', /already running/.test(r.stdout || ''), true, r.stdout);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 7. Stale lock (>10 min) → taken over, rebuild proceeds ──────────────────
+{
+  const { proj, run } = makeProject({ withGenerator: true });
+  const ss = join(proj, '.claude', 'session-state');
+  mkdirSync(ss, { recursive: true });
+  writeFileSync(join(ss, '.code-graph-rebuild.lock'), String(Date.now() - 11 * 60_000)); // stale
+  const r = run();
+  check('stale lock: exit 0', r.status, 0, r.stderr);
+  check('stale lock: taken over, background rebuild proceeds', /rebuilding in the background/.test(r.stdout || ''), true, r.stdout);
+  rmSync(proj, { recursive: true, force: true });
+}
+
+// ── 8. Hook run leaves git status --porcelain clean (session-state ignored) ─
+{
+  const { proj, run } = makeProject({ withGenerator: true });
+  const gitq = (args) => spawnSync('git', args, { cwd: proj, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' } });
+  const init = gitq(['init', '-q']);
+  if (init.status === 0) {
+    // First line is what the v2.65.0 migration ensures; second ignores this
+    // test's own npx-stub log scaffold so only the hook's writes are measured.
+    writeFileSync(join(proj, '.gitignore'), '.claude/session-state/\nstub-*.log\n');
+    gitq(['add', '-A']);
+    gitq(['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init']);
+    const before = (gitq(['status', '--porcelain']).stdout || '').trim();
+    run(); // writes the rebuild lock into the ignored session-state dir
+    const after = (gitq(['status', '--porcelain']).stdout || '').trim();
+    check('git-clean: status unchanged after hook run', after, before, `before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
+  } else {
+    // git unavailable in this environment — skip without failing the suite.
+    check('git-clean: skipped (git unavailable)', true, true);
+  }
   rmSync(proj, { recursive: true, force: true });
 }
 
