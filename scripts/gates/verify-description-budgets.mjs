@@ -76,8 +76,11 @@ function extractDescription(content) {
   }
   while (cont.length && cont[cont.length - 1] === '') cont.pop();
 
-  // Block scalar (folded `>` or literal `|`, with optional chomping indicator).
-  if (/^[>|][-+]?$/.test(inline)) {
+  // Block scalar (folded `>` or literal `|`, with optional YAML indentation
+  // and/or chomping indicators in either order: `>`, `>-`, `|+`, `>2`, `|2-`,
+  // `>-4`). Detection only — the actual indent is auto-derived from the content
+  // lines below, so the indicator's digit does not need parsing here.
+  if (/^[>|][0-9+-]*$/.test(inline)) {
     const style = inline[0];
     const nonBlank = cont.filter((l) => l.trim() !== '');
     const minIndent = nonBlank.length

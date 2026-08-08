@@ -126,4 +126,64 @@ describe('verify-description-budgets gate', () => {
     expect(r.code).toBe(0);
     expect(r.out).toContain('violations=0');
   });
+
+  it('measures a literal (|) block scalar and passes when under budget', () => {
+    const root = tmpRoot();
+    const literal =
+      '---\nname: a\ndescription: |\n' +
+      '  line one of the literal block\n' +
+      '  line two of the literal block\n' +
+      'tools: Read\n---\n\nbody\n';
+    write(root, '.claude/agents/literal.md', literal);
+    const r = run(root);
+    expect(r.out).toContain('[GATE] verify-description-budgets: violations=0');
+    expect(r.code).toBe(0);
+  });
+
+  it('fails an OVER-budget literal (|) block scalar', () => {
+    const root = tmpRoot();
+    const literal =
+      '---\nname: a\ndescription: |\n' +
+      Array.from({ length: 5 }, () => `  ${'x'.repeat(100)}`).join('\n') +
+      '\ntools: Read\n---\n\nbody\n';
+    write(root, '.claude/agents/literal-over.md', literal);
+    const r = run(root);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain('[FAIL] .claude/agents/literal-over.md: description');
+    expect(r.out).toContain('> 400B');
+  });
+
+  it('unwraps a single-quoted inline description before measuring', () => {
+    const root = tmpRoot();
+    // 420 chars inside single quotes trips the 400B agent budget ONLY if the
+    // quotes are stripped and the inner bytes measured — proves unwrapping.
+    write(root, '.claude/agents/sq.md', `---\nname: a\ndescription: '${'x'.repeat(420)}'\ntools: Read\n---\n\nbody\n`);
+    const r = run(root);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain('[FAIL] .claude/agents/sq.md: description 420B > 400B');
+  });
+
+  it('unescapes an escaped double-quote inside a double-quoted description', () => {
+    const root = tmpRoot();
+    // File value: description: "he said \"hi\""  →  unescaped: he said "hi" (12B).
+    write(root, '.claude/agents/dq.md', '---\nname: a\ndescription: "he said \\"hi\\""\ntools: Read\n---\n\nbody\n');
+    const r = run(root);
+    expect(r.out).toContain('violations=0');
+    expect(r.code).toBe(0);
+  });
+
+  it('recognises a block scalar with an explicit indent indicator (>2) and stops at the next key', () => {
+    const root = tmpRoot();
+    // With '>2' treated as a block scalar, the short folded body is measured
+    // (under budget) and the long following tools: value is NOT counted.
+    const folded =
+      '---\nname: a\ndescription: >2\n' +
+      '  short folded body line\n' +
+      `tools: ${'T'.repeat(600)}\n` +
+      '---\n\nbody\n';
+    write(root, '.claude/agents/indent-indicator.md', folded);
+    const r = run(root);
+    expect(r.out).toContain('violations=0');
+    expect(r.code).toBe(0);
+  });
 });

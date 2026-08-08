@@ -32,6 +32,14 @@ Repos can stay on older versions intentionally. The framework is designed to be 
 
 ---
 
+## 2.67.1 — 2026-08-07
+
+**Highlights:** Defensive hardening of the v2.67.0 description-budget gate. No behavioural change for any current agent/skill/command file — a robustness + test-coverage patch surfaced by the v2.67.0 PR review.
+
+**Fixed:**
+- `scripts/gates/verify-description-budgets.mjs`: the block-scalar detector now recognises YAML block headers carrying indentation and/or chomping indicators (`>2`, `|-4`, `|2-`), so such a `description:` is measured as a block scalar instead of being mis-parsed as an inline plain scalar. Detection-only — the indent is still auto-derived from the content lines.
+- `scripts/gates/verify-description-budgets.test.mjs`: added coverage for the literal (`|`) block scalar (under + over budget), single-quoted inline unwrapping, escaped-double-quote unescaping, and the `>2` indent-indicator path, closing the gap between the extractor's implemented scalar styles and its tests (self-test now 12 cases).
+
 ## 2.67.0 — 2026-08-07
 
 **Highlights:** Always-loaded and per-dispatch context-cost reductions measured at a live consumer (cryptotrackr, ~90-session transcript audit, 2026-08-07): agents read only their own agent-context.md section, description frontmatter is trimmed to WHEN-TO-INVOKE signals, the memory digest caps each recent-knowledge entry, the doc-size gate is wired into the cleanup surfaces, and the code-graph cache becomes opt-in. One new BLOCKING release gate (`verify-description-budgets.mjs`). No additions to the growth-gate behavioural surface (`.claude/{agents,skills,hooks,commands}`).
